@@ -37,7 +37,7 @@ The one case where a true reinstall is required: changes to a manifest itself (`
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
 - `git` — feature branches, init, PR, auto-commit hooks across all phases
-- `graphify` — build (`speckit.graphify.init`) and refresh (`speckit.graphify.update`) the `graphify-out/` knowledge graph; update is hooked into `after_specify`/`after_implement`, init is a one-time manual action
+- `graphify` — build (`speckit.graphify.init`) and refresh (`speckit.graphify.update`) the `graphify-out/` knowledge graph; update is hooked into `after_specify`/`after_implement`, init is a one-time manual action. Scope is controlled by `graphify-config.yml#scan_subpath` (default `.`); init prompts on first run with the worktree's top-level dirs
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 **Presets**

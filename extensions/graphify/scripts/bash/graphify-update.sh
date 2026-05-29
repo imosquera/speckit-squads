@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # graphify-update.sh — Spec Kit after-hook for Principle VIII (Knowledge Graph Freshness).
 #
-# Resolves the feature's worktree path, then runs `graphify <worktree-path> --update`
+# Resolves the feature's worktree path, then runs `graphify update <worktree-path>`
 # if and only if (a) graphify-out/ already exists in that worktree and (b) the
 # `graphify` binary is on PATH. Non-blocking by design: every failure path exits 0
 # with a warning so the triggering Spec Kit command is not aborted.
 #
-# Invoked by .specify/extensions/graphify-update/commands/speckit.graphify.update.md.
+# Invoked by .specify/extensions/graphify/commands/speckit.graphify.update.md.
 
 set -u   # NOT set -e — we want to swallow failures from /graphify itself.
 
@@ -38,8 +38,8 @@ if ! command -v graphify >/dev/null 2>&1; then
 fi
 
 # 4. Run the update non-blockingly.
-log "updating graphify-out/ via: graphify ${WORKTREE_PATH} --update"
-if ! graphify "${WORKTREE_PATH}" --update; then
-  log "warn: graphify --update exited non-zero; graph may be stale. Not blocking the Spec Kit phase."
+log "updating graphify-out/ via: graphify update ${WORKTREE_PATH}"
+if ! graphify update "${WORKTREE_PATH}"; then
+  log "warn: graphify update exited non-zero; graph may be stale. Not blocking the Spec Kit phase."
 fi
 exit 0

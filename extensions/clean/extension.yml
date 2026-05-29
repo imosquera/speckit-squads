@@ -19,8 +19,8 @@ requires:
 
 provides:
   commands:
-    - name: speckit.clean
-      file: commands/speckit.clean.md
+    - name: speckit.clean.feature
+      file: commands/speckit.clean.feature.md
       description: "Clean up the current feature worktree, branch, issue, and uncommitted changes"
 
 tags:

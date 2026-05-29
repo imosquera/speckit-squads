@@ -18,9 +18,12 @@ Both scripts auto-discover every directory under `extensions/` and `presets/` th
 Both require a `<project-dir>` argument — there is no implicit `$PWD` default, so you can't accidentally install into the wrong place.
 
 ```bash
-./install.sh ~/Code/myproj
+./install.sh ~/Code/myproj            # idempotent: anything already installed prints "skipped"
+./install.sh --force ~/Code/myproj    # remove existing first, then reinstall everything
 ./uninstall.sh ~/Code/myproj
 ```
+
+`install.sh` is idempotent by default — "already installed" is reported as a skip, not a failure. Use `--force` to wipe and reinstall each item; this is how you refresh after editing a manifest or command file.
 
 ## Currently shipped
 

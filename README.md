@@ -27,22 +27,31 @@ Each item is a self-contained directory with its own `extension.yml` or `preset.
 
 ## Install into a project
 
-From any Spec Kit project:
+Set `SQUADS` to wherever you checked out this repo, then run the commands from any Spec Kit project:
 
 ```bash
+export SQUADS=/path/to/your/speckit-squads   # adjust to your checkout
+
 # extensions
-specify extension add --dev ~/Code/speckit-squads/extensions/archive
-specify extension add --dev ~/Code/speckit-squads/extensions/git
-specify extension add --dev ~/Code/speckit-squads/extensions/graphify
-specify extension add --dev ~/Code/speckit-squads/extensions/review
+specify extension add --dev "$SQUADS/extensions/archive"
+specify extension add --dev "$SQUADS/extensions/git"
+specify extension add --dev "$SQUADS/extensions/graphify"
+specify extension add --dev "$SQUADS/extensions/review"
 
 # presets
-specify preset add --dev ~/Code/speckit-squads/presets/claude-ask-questions
-specify preset add --dev ~/Code/speckit-squads/presets/explicit-task-dependencies
-specify preset add --dev ~/Code/speckit-squads/presets/lite
-specify preset add --dev ~/Code/speckit-squads/presets/portfolio-audit
-specify preset add --dev ~/Code/speckit-squads/presets/ui-preview-in-spec
-specify preset add --dev ~/Code/speckit-squads/presets/worktree-isolation
+specify preset add --dev "$SQUADS/presets/claude-ask-questions"
+specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
+specify preset add --dev "$SQUADS/presets/lite"
+specify preset add --dev "$SQUADS/presets/portfolio-audit"
+specify preset add --dev "$SQUADS/presets/ui-preview-in-spec"
+specify preset add --dev "$SQUADS/presets/worktree-isolation"
+```
+
+Or use the bundled script from inside the checkout:
+
+```bash
+./install.sh /path/to/your/spec-kit-project
+./install.sh --force /path/to/your/spec-kit-project   # reinstall everything
 ```
 
 `--dev` keeps each install pointed at this source tree, so edits here are picked up without re-adding.

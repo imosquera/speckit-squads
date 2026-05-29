@@ -39,7 +39,7 @@ Both require a `<project-dir>` argument — there is no implicit `$PWD` default,
 
 **Presets**
 - `claude-ask-questions` — interactive clarify/checklist for Claude
-- `explicit-task-dependencies` — `tasks-template` with explicit dependency edges
+- `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
 - `lite` — trim `/speckit-specify` (drops Assumptions + Key Entities) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `ui-preview-in-spec` — `/speckit-specify` override that embeds UI previews

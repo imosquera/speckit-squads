@@ -1,0 +1,47 @@
+schema_version: "1.0"
+
+preset:
+  id: "worktree-isolation"
+  name: "Worktree Isolation (from /speckit-specify)"
+  version: "1.1.0"
+  description: "Overrides the five feature-scoped Spec Kit commands (/speckit-specify, /speckit-clarify, /speckit-plan, /speckit-tasks, /speckit-implement) to require operation inside the feature's dedicated git worktree. /speckit-specify uses the before_specify hook to create the worktree; the other four resolve it from .specify/feature.json on resume and `cd` in before writing any artifacts. Implements BeadBits Constitution v2.3.0 Principle VII (Feature-Work Isolation) at the command layer; the create-new-feature.sh script in .specify/extensions/git/ implements it at the script layer."
+  author: "beadbits"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "/speckit-specify with mandatory cd into the worktree created by the before_specify hook"
+      replaces: "speckit.specify"
+    - type: "command"
+      name: "speckit.clarify"
+      file: "commands/speckit.clarify.md"
+      description: "/speckit-clarify with mandatory cd into the feature's worktree resolved from .specify/feature.json"
+      replaces: "speckit.clarify"
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "/speckit-plan with mandatory cd into the feature's worktree resolved from .specify/feature.json"
+      replaces: "speckit.plan"
+    - type: "command"
+      name: "speckit.tasks"
+      file: "commands/speckit.tasks.md"
+      description: "/speckit-tasks with mandatory cd into the feature's worktree resolved from .specify/feature.json"
+      replaces: "speckit.tasks"
+    - type: "command"
+      name: "speckit.implement"
+      file: "commands/speckit.implement.md"
+      description: "/speckit-implement with mandatory cd into the feature's worktree resolved from .specify/feature.json"
+      replaces: "speckit.implement"
+
+tags:
+  - "worktree"
+  - "isolation"
+  - "constitution-vii"
+  - "claude"

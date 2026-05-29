@@ -1,0 +1,5 @@
+# Graphify internal state (machine-specific or absolute paths)
+graphify-out/cache/
+graphify-out/manifest.json
+graphify-out/cost.json
+.graphify_root

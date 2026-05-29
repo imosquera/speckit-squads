@@ -1,0 +1,32 @@
+schema_version: "1.0"
+
+preset:
+  id: "lite"
+  name: "Lite Spec & Plan"
+  version: "1.0.0"
+  description: "Trims the artifacts /speckit-specify and /speckit-plan produce. Specify still writes spec.md but skips the Assumptions and Key Entities sections. Plan still writes plan.md but does not create data-model.md, quickstart.md, or contracts/. research.md is kept because it carries actual decisions, not boilerplate."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "Lite specify — spec.md without Assumptions or Key Entities sections"
+      replaces: "speckit.specify"
+
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Lite plan — writes plan.md and research.md only; no data-model/quickstart/contracts"
+      replaces: "speckit.plan"
+
+tags:
+  - "lite"
+  - "minimal"
+  - "artifacts"

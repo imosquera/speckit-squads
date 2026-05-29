@@ -1,87 +1,52 @@
 # speckit-squads
 
-> A starter repository for building and organizing Speckit squad-related extensions, experiments, and supporting tooling.
+A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and presets, packaged for local-dev installation via `specify`.
 
-## Usage example
+## Layout
 
-```bash
-# clone the repository
-git clone https://github.com/imosquera/speckit-squads.git
-cd speckit-squads
+```
+extensions/   # Spec Kit extensions (commands + hooks)
+  archive/         Archive completed feature folders, close linked GH issues
+  git/             Feature-branch workflow, init, PR, auto-commit hooks
+  graphify/        Refresh graphify-out/ knowledge graph after specify/implement
+  review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
-# inspect the project and start building
-ls -la
+presets/      # Spec Kit presets (template + command overrides)
+  claude-ask-questions/         Interactive clarify/checklist for Claude
+  explicit-task-dependencies/   tasks-template with explicit dependency edges
+  lite/                         trim /speckit-specify and /speckit-plan markdown output
+  portfolio-audit/              Portfolio-wide analyze override
+  ui-preview-in-spec/           specify override that embeds UI previews
+  worktree-isolation/           Forces feature commands to run inside their worktree
 ```
 
-## What this project does
+Each item is a self-contained directory with its own `extension.yml` or `preset.yml` manifest, conforming to Spec Kit's schema:
 
-`speckit-squads` is a foundation repo intended to support work around Speckit squads. It can be used as a place to organize extensions, prototype ideas, document workflows, and add code or assets as the project evolves.
+- Extensions: <https://github.com/github/spec-kit/blob/main/extensions/EXTENSION-DEVELOPMENT-GUIDE.md>
+- Presets: <https://github.com/github/spec-kit/blob/main/presets/README.md>
 
-Because the repository is currently minimal, this README provides a practical starting point that can grow along with the codebase.
+## Install into a project
 
-## Who it’s for
-
-This repository is useful for:
-
-- maintainers shaping the Speckit squads project structure
-- contributors adding new squad-related features or integrations
-- collaborators who need a shared place for documentation, experiments, and implementation details
-
-## Install / run
-
-At the moment, there is no published package or runnable application checked into the repository yet.
-
-To get started locally:
+From any Spec Kit project:
 
 ```bash
-git clone https://github.com/imosquera/speckit-squads.git
-cd speckit-squads
+# extensions
+specify extension add --dev ~/Code/speckit-squads/extensions/archive
+specify extension add --dev ~/Code/speckit-squads/extensions/git
+specify extension add --dev ~/Code/speckit-squads/extensions/graphify
+specify extension add --dev ~/Code/speckit-squads/extensions/review
+
+# presets
+specify preset add --dev ~/Code/speckit-squads/presets/claude-ask-questions
+specify preset add --dev ~/Code/speckit-squads/presets/explicit-task-dependencies
+specify preset add --dev ~/Code/speckit-squads/presets/lite
+specify preset add --dev ~/Code/speckit-squads/presets/portfolio-audit
+specify preset add --dev ~/Code/speckit-squads/presets/ui-preview-in-spec
+specify preset add --dev ~/Code/speckit-squads/presets/worktree-isolation
 ```
 
-Then add the project files that match your intended stack, for example:
+`--dev` keeps each install pointed at this source tree, so edits here are picked up without re-adding.
 
-- a `package.json` for a Node.js/TypeScript project
-- a `pyproject.toml` or `requirements.txt` for a Python project
-- a `Dockerfile` if you want a containerized development workflow
+## Authoring
 
-## Tech stack
-
-The stack is currently **to be defined**.
-
-Based on the repository’s current state, this appears to be an early-stage project or newly renamed repository. Update this section once the first implementation files are added.
-
-Suggested sections to refine later:
-
-- primary language/runtime
-- framework or SDKs
-- package manager
-- testing tools
-- deployment target
-
-## Project status
-
-**Status:** Early setup / scaffold stage.
-
-The repository currently appears to be in its initial state, with documentation being established before the main implementation is added.
-
-## Roadmap ideas
-
-Possible next steps for this repository:
-
-- define the project scope for Speckit squads
-- add initial source structure
-- document local development steps
-- add examples and tests
-- configure CI/CD
-
-## Contributing
-
-Contributions are welcome once the initial structure is in place. If you plan to extend the repository:
-
-1. create a feature branch
-2. make focused changes
-3. open a pull request with a clear description
-
-## License
-
-MIT License
+Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. After non-trivial changes, re-run the matching `specify ... add --dev` in any consuming project to refresh registered commands.

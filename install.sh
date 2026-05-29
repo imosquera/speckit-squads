@@ -3,12 +3,16 @@
 # via `specify ... add --dev`.
 #
 # Usage:
-#   ./install.sh                  # install into $PWD
-#   ./install.sh ~/Code/myproj    # install into the given project dir
+#   ./install.sh <project-dir>    # install into the given Spec Kit project
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="${1:-$PWD}"
+
+if [[ $# -lt 1 || -z "${1:-}" ]]; then
+  echo "usage: $(basename "$0") <project-dir>" >&2
+  exit 2
+fi
+PROJECT_DIR="$1"
 
 if [[ ! -d "$PROJECT_DIR/.specify" ]]; then
   echo "error: $PROJECT_DIR is not a Spec Kit project (.specify/ missing)" >&2

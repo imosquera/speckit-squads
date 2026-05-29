@@ -15,9 +15,10 @@ uninstall.sh       remove every extension+preset from a Spec Kit project
 
 Both scripts auto-discover every directory under `extensions/` and `presets/` that contains a manifest — there is **no hardcoded list to maintain**.
 
+Both require a `<project-dir>` argument — there is no implicit `$PWD` default, so you can't accidentally install into the wrong place.
+
 ```bash
-./install.sh                  # into $PWD
-./install.sh ~/Code/myproj    # into a specific project
+./install.sh ~/Code/myproj
 ./uninstall.sh ~/Code/myproj
 ```
 

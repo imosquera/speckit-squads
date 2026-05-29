@@ -1,26 +1,18 @@
 #!/usr/bin/env bash
 # graphify-init.sh — one-time initial build of the knowledge graph for a worktree.
 #
-# Resolves the feature's worktree and the configured scan_subpath, then runs
-# `graphify <worktree>/<scan_subpath>` to create graphify-out/ from scratch.
-# Refuses to clobber an existing graphify-out/ — use the update script for that.
+# Always runs `graphify <worktree-path>` to create graphify-out/ at the
+# worktree root. Refuses to clobber an existing graphify-out/ — use the update
+# script for that.
+#
+# Scope (which files get indexed) is controlled by a .graphifyignore file at
+# the worktree root, NOT by a Spec Kit config knob. See graphify's docs.
 #
 # Invoked by .specify/extensions/graphify/commands/speckit.graphify.init.md.
-# The command MD is responsible for writing scan_subpath into
-# graphify-config.yml interactively BEFORE this script runs; this script only
-# reads the resulting config.
 
 set -u
 
 log() { printf '[graphify-init] %s\n' "$*"; }
-
-yaml_scalar() {
-  local file="$1" key="$2"
-  [[ -f "$file" ]] || return 0
-  grep -E "^[[:space:]]*${key}[[:space:]]*:" "$file" 2>/dev/null \
-    | head -1 \
-    | sed -E "s/^[[:space:]]*${key}[[:space:]]*:[[:space:]]*//; s/[[:space:]]*#.*$//; s/^['\"]//; s/['\"]$//"
-}
 
 # 1. Resolve worktree path.
 WORKTREE_PATH=""
@@ -46,23 +38,7 @@ if ! command -v graphify >/dev/null 2>&1; then
   exit 1
 fi
 
-# 4. Resolve scan_subpath (default ".").
-CONFIG_FILE=".specify/extensions/graphify/graphify-config.yml"
-SCAN_SUBPATH="$(yaml_scalar "$CONFIG_FILE" scan_subpath)"
-[[ -z "$SCAN_SUBPATH" ]] && SCAN_SUBPATH="."
-
-if [[ "$SCAN_SUBPATH" == "." ]]; then
-  TARGET="${WORKTREE_PATH}"
-else
-  TARGET="${WORKTREE_PATH}/${SCAN_SUBPATH}"
-fi
-
-if [[ ! -d "$TARGET" ]]; then
-  log "scan_subpath '${SCAN_SUBPATH}' resolves to '${TARGET}' which does not exist. Edit ${CONFIG_FILE} or re-run the init command so it can rewrite the config."
-  exit 1
-fi
-
-# 5. Ensure .gitignore covers graphify's machine-specific internal state.
+# 4. Ensure .gitignore covers graphify's machine-specific internal state.
 ensure_gitignore() {
   local gi="${WORKTREE_PATH}/.gitignore"
   local marker="# Graphify internal state (machine-specific or absolute paths)"
@@ -81,6 +57,6 @@ ensure_gitignore() {
 }
 ensure_gitignore
 
-# 6. Run the initial build over the configured target.
-log "building initial knowledge graph via: graphify ${TARGET}"
-graphify "${TARGET}"
+# 5. Run the initial build at the worktree root.
+log "building initial knowledge graph via: graphify ${WORKTREE_PATH}"
+graphify "${WORKTREE_PATH}"

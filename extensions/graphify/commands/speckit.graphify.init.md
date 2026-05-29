@@ -1,5 +1,5 @@
 ---
-description: "Build the initial graphify-out/ knowledge graph. On first run, scans the worktree and writes scan_subpath to graphify-config.yml."
+description: "Build the initial graphify-out/ knowledge graph at the worktree root. Optionally seeds .graphifyignore on first run."
 ---
 
 ## User Input
@@ -10,9 +10,15 @@ $ARGUMENTS
 
 # Initialize Knowledge Graph
 
-Run a one-time full build so the worktree gets a fresh `graphify-out/` directory.
+Run a one-time full build so the worktree gets a fresh `graphify-out/` directory at its root.
 
-This command is an explicit developer action — not a hook. Run it once per worktree before any `after_*` hook tries to update the graph.
+This is an explicit developer action — not a hook. Run it once per worktree before any `after_*` hook tries to update the graph.
+
+## Why scope lives in `.graphifyignore`, not a Spec Kit config
+
+`graphify` writes its output (`graph.json`, `graph.html`, `GRAPH_REPORT.md`, `cache/`, …) **next to whatever path you scan**. If you point it at `<worktree>/src`, `graphify-out/` lands at `<worktree>/src/graphify-out/`, which fragments the artifact location and breaks the gitignore patterns this extension installs at the worktree root.
+
+So this extension always scans the worktree root and lets `graphify`'s native `.graphifyignore` file control what gets indexed. The format mirrors `.gitignore`.
 
 ## Behavior
 
@@ -25,32 +31,24 @@ Read `.specify/feature.json#worktree_path`. Fall back to `pwd` if absent.
 If `<worktree-path>/graphify-out/` exists, ABORT with:
 > graphify-out/ already exists. Use /speckit-graphify-update for refreshes, or delete graphify-out/ first for a clean rebuild.
 
-### 3. Resolve or elicit `scan_subpath`
+### 3. Offer to seed `.graphifyignore` (only if absent)
 
-Config file: `.specify/extensions/graphify/graphify-config.yml`. The relevant key is `scan_subpath` (string; default `.`).
+If `<worktree-path>/.graphifyignore` does NOT exist, list the worktree's top-level directories (excluding dotfiles, `node_modules/`, `graphify-out/`, common build dirs `dist/`/`build/`/`out/`/`target/`/`.next/`, virtualenvs `venv/`/`.venv/`).
 
-**If the config file is missing OR `scan_subpath` is unset:**
+Use `AskUserQuestion` with **multi-select** to ask: **"Which top-level directories should `graphify` skip? (These become entries in `.graphifyignore`.)"**. Offer up to four typical candidates from what's present, e.g.:
+- `ios/`, `android/`, `web/` (platform mirrors of the same logic)
+- `scripts/`, `infra/`, `specs/`, `docs/` (non-source noise)
+- `tests/`, `__tests__/` (depending on project conventions)
 
-1. List the worktree's top-level directories, excluding dotfiles, `node_modules/`, `graphify-out/`, build artifacts (`dist/`, `build/`, `out/`, `target/`, `.next/`), virtualenvs (`venv/`, `.venv/`), and the directories `tests/` / `__tests__/` (those usually shouldn't be the *only* scope).
+Write the user's selections to `<worktree-path>/.graphifyignore`, one per line, each with a trailing `/` to indicate a directory pattern. Prepend a one-line header comment dated today.
 
-2. Use `AskUserQuestion` to ask: **"Which subpath should graphify scan? Pick a single source root, or `.` for the entire worktree."** Offer up to four options:
-   - The top 3 most-likely source directories (typically `src/`, `app/`, `lib/`, `packages/`, or the language-specific equivalent — pick what's actually present).
-   - **"`.` (whole worktree)"** — for small repos with no clear single source root.
+If the user picks nothing, write an empty file with the header so the next init doesn't re-prompt.
 
-3. Write the user's choice to `.specify/extensions/graphify/graphify-config.yml`:
-
-   ```yaml
-   # Written by /speckit-graphify-init on <YYYY-MM-DD>.
-   scan_subpath: <user-choice>
-   ```
-
-   Create the directory if missing. Preserve any existing keys in the file if it already exists with other content.
-
-**If the config file already has `scan_subpath`:** use it. Do not re-prompt. (Re-prompting is a manual action — the user can edit the file or delete the key and re-run init.)
+If `.graphifyignore` already exists, skip this step entirely.
 
 ### 4. Ensure `.gitignore` covers graphify's internal state
 
-Append the block below to `<worktree-path>/.gitignore` if the comment header isn't already present:
+Append the block below to `<worktree-path>/.gitignore` if the comment header isn't already present (the bash script does this; no manual action needed here):
 
 ```
 # Graphify internal state (machine-specific or absolute paths)
@@ -62,7 +60,7 @@ graphify-out/cost.json
 
 ### 5. Run the build
 
-Invoke the bash script (which re-reads worktree + config and runs `graphify "<worktree>/<scan_subpath>"`). Surface its exit code.
+Invoke the bash script. It runs `graphify "<worktree-path>"` and graphify writes to `<worktree-path>/graphify-out/`. Surface the exit code.
 
 ## Execution
 
@@ -71,4 +69,4 @@ Invoke the bash script (which re-reads worktree + config and runs `graphify "<wo
 
 ## Configuration
 
-- `graphify-config.yml#scan_subpath` (string, default `.`) — relative path within the worktree that both init and update operate on. Edit by hand to change scope; the init command will not re-prompt once the key is set.
+None at the Spec Kit layer. Scope is `.graphifyignore` (worktree-rooted, gitignore-style). Edit by hand to refine; both `init` and `update` always run against the worktree root, so the ignore file is the single lever.

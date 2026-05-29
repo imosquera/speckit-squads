@@ -11,11 +11,11 @@ This command is wired into the Spec Kit after-hook chain (`after_specify`, `afte
 ## Behavior
 
 1. Resolve the worktree path from `.specify/feature.json#worktree_path`. If the file is missing or the field is absent, fall back to `pwd`.
-2. Read `scan_subpath` from `.specify/extensions/graphify/graphify-config.yml`. Default to `.` if the file or key is absent.
-3. If `<worktree-path>/graphify-out/` does not exist: log a single-line skip message pointing at `/speckit-graphify-init` and exit 0. **Do not** trigger a full initial build — that is an explicit developer action.
-4. If the `graphify` binary is not on `PATH`: log a single-line warning and exit 0.
-5. If `<worktree-path>/<scan_subpath>` does not exist: log a skip message pointing at the config file and exit 0.
-6. Otherwise run `graphify update "<worktree-path>/<scan_subpath>"`. Capture the exit code; if non-zero, surface stdout and stderr as a warning and still exit 0. The triggering Spec Kit command MUST NOT abort because of this hook.
+2. If `<worktree-path>/graphify-out/` does not exist: log a single-line skip message pointing at `/speckit-graphify-init` and exit 0. **Do not** trigger a full initial build — that is an explicit developer action.
+3. If the `graphify` binary is not on `PATH`: log a single-line warning and exit 0.
+4. Otherwise run `graphify update "<worktree-path>"`. Capture the exit code; if non-zero, surface stdout and stderr as a warning and still exit 0. The triggering Spec Kit command MUST NOT abort because of this hook.
+
+Scope (which files get indexed) is controlled by `<worktree-path>/.graphifyignore` (graphify's native ignore file, gitignore-style). This command always scans the worktree root so `graphify-out/` lands in a stable, predictable location.
 
 ## Execution
 

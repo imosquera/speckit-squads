@@ -3,6 +3,10 @@
 # project. Only items present in the project's registry are removed; missing
 # ones are skipped silently.
 #
+# This only de-registers the items from <project-dir>/.specify/ — it does
+# NOT delete or modify the source files in this repo. Re-run install.sh to
+# re-register.
+#
 # Usage:
 #   ./uninstall.sh <project-dir>    # uninstall from the given Spec Kit project
 set -euo pipefail

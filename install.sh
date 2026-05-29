@@ -2,26 +2,31 @@
 # Install every extension and preset in this repo into a Spec Kit project
 # via `specify ... add --dev`.
 #
+# Because every install uses --dev, the project's .specify/extensions/<id>/
+# and .specify/presets/<id>/ stay pointed at this repo's source tree —
+# edits to command files, scripts, or templates are picked up live with no
+# reinstall step. "Already installed" is therefore a no-op success, not an
+# error.
+#
+# (If you change a manifest itself — extension.yml / preset.yml — re-register
+# manually: ./uninstall.sh <project-dir> && ./install.sh <project-dir>.)
+#
 # Usage:
-#   ./install.sh <project-dir>           # install; skip anything already installed
-#   ./install.sh --force <project-dir>   # remove existing first, then reinstall
-#   ./install.sh <project-dir> --force   # same
+#   ./install.sh <project-dir>
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-FORCE=false
 PROJECT_DIR=""
 for arg in "$@"; do
   case "$arg" in
-    --force|-f) FORCE=true ;;
     -h|--help)
-      echo "usage: $(basename "$0") [--force] <project-dir>"
+      echo "usage: $(basename "$0") <project-dir>"
       exit 0
       ;;
     -*)
       echo "error: unknown flag: $arg" >&2
-      echo "usage: $(basename "$0") [--force] <project-dir>" >&2
+      echo "usage: $(basename "$0") <project-dir>" >&2
       exit 2
       ;;
     *)
@@ -35,7 +40,7 @@ for arg in "$@"; do
 done
 
 if [[ -z "$PROJECT_DIR" ]]; then
-  echo "usage: $(basename "$0") [--force] <project-dir>" >&2
+  echo "usage: $(basename "$0") <project-dir>" >&2
   exit 2
 fi
 
@@ -49,16 +54,9 @@ cd "$PROJECT_DIR"
 shopt -s nullglob
 
 # install_one <kind> <name> <source-dir>
-#   kind: "extension" or "preset"
-# Returns/prints one of: installed, skipped (already), reinstalled, failed
 install_one() {
   local kind="$1" name="$2" src="$3"
   local out rc
-
-  if $FORCE; then
-    # Best-effort removal; ignore errors (e.g. not installed).
-    yes | specify "$kind" remove "$name" >/dev/null 2>&1 || true
-  fi
 
   # `yes | specify` produces SIGPIPE on `yes`; pipefail would surface it as
   # the pipeline's exit code even when `specify` itself succeeded. Disable
@@ -69,16 +67,14 @@ install_one() {
   set -o pipefail
 
   if [[ $rc -eq 0 ]]; then
-    if $FORCE; then
-      echo "  reinstalled"
-    else
-      echo "  installed"
-    fi
+    echo "  installed"
     return 0
   fi
 
   if grep -q "already installed" <<<"$out"; then
-    echo "  skipped (already installed; pass --force to reinstall)"
+    # --dev means the existing registration already points at this source
+    # tree, so file edits are live. Nothing to do.
+    echo "  already installed (live via --dev; no action needed)"
     return 0
   fi
 
@@ -104,9 +100,5 @@ for preset_dir in "$REPO_DIR"/presets/*/; do
 done
 
 echo
-if $FORCE; then
-  echo "Done (--force). Target: $PROJECT_DIR"
-else
-  echo "Done. Target: $PROJECT_DIR"
-fi
+echo "Done. Target: $PROJECT_DIR"
 exit $EXIT

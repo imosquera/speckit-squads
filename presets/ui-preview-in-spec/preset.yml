@@ -1,0 +1,27 @@
+schema_version: "1.0"
+
+preset:
+  id: "ui-preview-in-spec"
+  name: "Inline UI Preview in Spec (from /speckit-specify)"
+  version: "1.0.0"
+  description: "Overrides /speckit-specify so that whenever the feature description implies any user-facing UI change (a new page, component, layout, visual state, copy change, color/typography change, empty/error state, etc.), the generated spec.md MUST embed a self-contained inline HTML preview inside a <details> block. The preview is a requirement artifact — it pins the visual intent at spec time so reviewers and downstream /speckit-plan, /speckit-tasks, and /speckit-implement work against a shared visual reference. GitHub-safe: inline style attributes only, no <script>, no <style>, no external assets."
+  author: "beadbits"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "/speckit-specify with mandatory inline HTML preview when the feature touches UI"
+      replaces: "speckit.specify"
+
+tags:
+  - "ui"
+  - "preview"
+  - "spec"
+  - "claude"

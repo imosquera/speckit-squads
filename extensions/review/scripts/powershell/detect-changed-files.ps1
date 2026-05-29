@@ -159,10 +159,18 @@ if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch))
             $unstagedFiles = @($uJoined -split "`0" | Where-Object { $_ -ne "" })
         }
 
-        # Combine and deduplicate
-        $ChangedFiles = @($committedFiles + $stagedFiles + $unstagedFiles | Sort-Object -Unique)
+        # Untracked (newly created, not yet staged) files — honors .gitignore
+        $untrackedRaw = git ls-files --others --exclude-standard -z 2>$null
+        $untrackedFiles = @()
+        if ($untrackedRaw) {
+            $nJoined = ($untrackedRaw -join "`n")
+            $untrackedFiles = @($nJoined -split "`0" | Where-Object { $_ -ne "" })
+        }
 
-        $Mode = "Feature branch diff ($DefaultBranch...HEAD) + uncommitted changes"
+        # Combine and deduplicate
+        $ChangedFiles = @($committedFiles + $stagedFiles + $unstagedFiles + $untrackedFiles | Sort-Object -Unique)
+
+        $Mode = "Feature branch diff ($DefaultBranch...HEAD) + uncommitted changes (staged + unstaged + untracked)"
     } else {
         # merge-base failed - fall through to Mode B
         $DefaultBranch = ""
@@ -173,6 +181,7 @@ if (-not $Mode) {
     # Mode B - Working Directory Changes
     $stagedRaw = git diff --cached --name-only -z --diff-filter=ACMR 2>$null
     $unstagedRaw = git diff --name-only -z --diff-filter=ACMR 2>$null
+    $untrackedRaw = git ls-files --others --exclude-standard -z 2>$null
 
     $allFiles = @()
     if ($stagedRaw) {
@@ -183,11 +192,15 @@ if (-not $Mode) {
         $uJoined = ($unstagedRaw -join "`n")
         $allFiles += @($uJoined -split "`0" | Where-Object { $_ -ne "" })
     }
+    if ($untrackedRaw) {
+        $nJoined = ($untrackedRaw -join "`n")
+        $allFiles += @($nJoined -split "`0" | Where-Object { $_ -ne "" })
+    }
 
     # Deduplicate
     $ChangedFiles = @($allFiles | Sort-Object -Unique)
 
-    $Mode = "Working directory changes (staged + unstaged)"
+    $Mode = "Working directory changes (staged + unstaged + untracked)"
     if (-not $DefaultBranch) { $DefaultBranch = "(unknown)" }
 }
 

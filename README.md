@@ -7,6 +7,7 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
+  clean/           Clean abandoned feature worktrees, branches, issues, and dirt
   git/             Feature-branch workflow, init, PR, auto-commit hooks
   graphify/        Refresh graphify-out/ knowledge graph after specify/implement
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
@@ -34,6 +35,7 @@ export SQUADS=/path/to/your/speckit-squads   # adjust to your checkout
 
 # extensions
 specify extension add --dev "$SQUADS/extensions/archive"
+specify extension add --dev "$SQUADS/extensions/clean"
 specify extension add --dev "$SQUADS/extensions/git"
 specify extension add --dev "$SQUADS/extensions/graphify"
 specify extension add --dev "$SQUADS/extensions/review"
@@ -55,6 +57,8 @@ Or use the bundled script from inside the checkout:
 ```
 
 `--dev` keeps each install pointed at this source tree, so edits here are picked up without re-adding.
+
+`install.sh` and `uninstall.sh` auto-discover every `extensions/*/extension.yml`, so the new `clean` extension is included automatically once its manifest exists.
 
 ## Authoring
 

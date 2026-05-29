@@ -1,0 +1,31 @@
+schema_version: "1.0"
+
+extension:
+  id: clean
+  name: "Feature Cleanup Workflow"
+  version: "1.0.0"
+  description: "Clean up an abandoned or completed feature worktree by discarding uncommitted changes, removing the feature worktree, deleting its branch, and closing any linked GitHub issue when available."
+  author: beadbits
+  repository: local
+  license: same-as-project
+
+requires:
+  speckit_version: ">=0.2.0"
+  tools:
+    - name: git
+      required: true
+    - name: gh
+      required: false
+
+provides:
+  commands:
+    - name: speckit.clean
+      file: commands/speckit.clean.md
+      description: "Clean up the current feature worktree, branch, issue, and uncommitted changes"
+
+tags:
+  - clean
+  - workflow
+  - git
+  - worktree
+  - github

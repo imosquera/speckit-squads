@@ -18,6 +18,7 @@ This extension provides Git operations as an optional, self-contained module. It
 |---------|-------------|
 | `speckit.git.initialize` | Initialize a Git repository with a configurable commit message |
 | `speckit.git.feature` | Create a feature branch with sequential or timestamp numbering |
+| `speckit.git.worktree` | Create a worktree under the `${PROJ}.worktrees` collector directory |
 | `speckit.git.validate` | Validate current branch follows feature branch naming conventions |
 | `speckit.git.remote` | Detect Git remote URL for GitHub integration |
 | `speckit.git.commit` | Auto-commit changes (configurable per-command enable/disable and messages) |

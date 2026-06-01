@@ -4,7 +4,7 @@ preset:
   id: "lite"
   name: "Lite Spec & Plan"
   version: "1.0.0"
-  description: "Trims the artifacts /speckit-specify and /speckit-plan produce by default. Specify still writes spec.md but skips the Assumptions and Key Entities sections. Plan still writes plan.md but does not create data-model.md, quickstart.md, or contracts/. research.md is kept because it carries actual decisions, not boilerplate. Pass --full to either command to run the complete stock behavior instead of lite mode."
+  description: "Trims the artifacts /speckit-specify and /speckit-plan produce by default. Specify still writes spec.md but skips the Assumptions, Key Entities, and Success Criteria sections. Plan still writes plan.md but does not create data-model.md, quickstart.md, or contracts/. research.md is kept because it carries actual decisions, not boilerplate. Pass --full to either command to run the complete stock behavior instead of lite mode."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"
   license: "MIT"
@@ -17,7 +17,7 @@ provides:
     - type: "command"
       name: "speckit.specify"
       file: "commands/speckit.specify.md"
-      description: "Lite-by-default specify — spec.md without Assumptions or Key Entities sections unless --full is provided"
+      description: "Lite-by-default specify — spec.md without Assumptions, Key Entities, or Success Criteria sections unless --full is provided"
       replaces: "speckit.specify"
 
     - type: "command"

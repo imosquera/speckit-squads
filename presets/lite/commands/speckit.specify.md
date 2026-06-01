@@ -26,8 +26,9 @@ Run the standard `before_specify` hook chain exactly as the canonical `/speckit-
 
    - **DROP** the `## Assumptions` section entirely (do not output the header or any bullets).
    - **DROP** the `### Key Entities` section entirely. If the feature genuinely needs entity modeling, that belongs in a follow-up `/speckit-plan` cycle (which under the lite preset also skips `data-model.md`, so consider whether you really need entities at all).
+   - **DROP** the `## Success Criteria` section entirely (do not output the header or any content).
 
-3. Keep all other mandatory sections: User Scenarios (P1/P2/P3 as applicable), Edge Cases, Functional Requirements, Functional Programming Constraints, Platform Constraints, Success Criteria.
+3. Keep all other mandatory sections: User Scenarios (P1/P2/P3 as applicable), Edge Cases, Functional Requirements, Functional Programming Constraints, Platform Constraints.
 
 4. Write the result to `<feature_directory>/spec.md`.
 
@@ -37,3 +38,4 @@ Run the standard `before_specify` hook chain exactly as the canonical `/speckit-
 
 - **Assumptions** is almost always either empty or a dumping ground for things that belong in the spec body or in `research.md`. Removing it forces relevant context into the right home.
 - **Key Entities** without a corresponding `data-model.md` (which lite plan also skips) is duplicate noise. The Functional Requirements section already names the data the feature touches.
+- **Success Criteria** as typically written are either obvious restatements of the Functional Requirements or untestable platitudes. Concrete acceptance signals belong in the tasks (as done-conditions on individual tasks), not as a separate spec section.

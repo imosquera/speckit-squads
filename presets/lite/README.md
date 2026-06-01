@@ -6,7 +6,7 @@ Trims the markdown footprint of `/speckit-specify` and `/speckit-plan`.
 
 | Command | Default artifacts | Under `lite` |
 |---|---|---|
-| `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions** and **Key Entities** |
+| `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria** |
 | `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `plan.md` (+ `research.md` only if decisions were made) |
 
 ## Install

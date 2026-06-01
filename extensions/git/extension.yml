@@ -20,6 +20,9 @@ provides:
     - name: speckit.git.feature
       file: commands/speckit.git.feature.md
       description: "Create a feature branch with sequential or timestamp numbering"
+    - name: speckit.git.clean
+      file: commands/speckit.git.clean.md
+      description: "Clean up the current feature worktree, branch, issue, and uncommitted changes"
     - name: speckit.git.validate
       file: commands/speckit.git.validate.md
       description: "Validate current branch follows feature branch naming conventions"

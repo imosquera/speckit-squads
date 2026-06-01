@@ -1,5 +1,5 @@
 ---
-description: "Create spec.md from a feature description, omitting Assumptions and Key Entities sections (lite preset)"
+description: "Create spec.md in lite mode by default; pass --full to run the complete stock /speckit-specify flow"
 ---
 
 ## User Input
@@ -9,6 +9,10 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding.
+
+## Mode Switch
+
+Lite mode is the default. If `$ARGUMENTS` contains `--full`, remove that token from the arguments and run the canonical stock `/speckit-specify` behavior unchanged (including all standard sections such as Assumptions and Key Entities). Do not apply any lite trimming when `--full` is present.
 
 ## Pre-Execution Checks
 

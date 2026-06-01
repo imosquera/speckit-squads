@@ -33,7 +33,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution
 
-- **Bash**: `.specify/extensions/clean/scripts/bash/clean.sh [--force|-f] [--worktree <path>] [--spec <path>] [--issue <number>] [target]`
+- **Bash**: `.specify/extensions/git/scripts/bash/clean.sh [--force|-f] [--worktree <path>] [--spec <path>] [--issue <number>] [target]`
 
 ## Graceful Degradation
 

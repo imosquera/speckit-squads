@@ -1,5 +1,5 @@
 ---
-description: "Create plan.md (and research.md only if needed); skip data-model.md, quickstart.md, and contracts/ (lite preset)"
+description: "Create plan.md in lite mode by default; pass --full to run the complete stock /speckit-plan flow"
 ---
 
 ## User Input
@@ -9,6 +9,10 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding.
+
+## Mode Switch
+
+Lite mode is the default. If `$ARGUMENTS` contains `--full`, remove that token from the arguments and run the canonical stock `/speckit-plan` behavior unchanged (including generation of any standard plan artifacts). Do not apply lite skips when `--full` is present.
 
 ## Pre-Execution Checks
 

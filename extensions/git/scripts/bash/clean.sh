@@ -105,19 +105,6 @@ get_status_files() {
   git -C "$worktree_root" status --porcelain
 }
 
-resolve_worktree_root_from_spec() {
-  local spec_path="$1"
-  if [[ -d "$spec_path" ]]; then
-    local parent_dir
-    parent_dir="$(dirname "$spec_path")"
-    if [[ "$(basename "$parent_dir")" == specs ]]; then
-      dirname "$parent_dir"
-      return 0
-    fi
-  fi
-  return 1
-}
-
 REPO_ROOT="$(find_project_root "$SCRIPT_DIR")" || REPO_ROOT="$(pwd)"
 cd "$REPO_ROOT"
 

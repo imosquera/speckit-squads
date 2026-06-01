@@ -25,7 +25,26 @@ You **MUST** consider the user input before proceeding (if not empty).
 3. Derive the target path using the shared collector convention unless overridden.
 4. Create the collector directory when missing.
 5. Create the worktree with `git worktree add`.
-6. Print a short summary including branch and path.
+6. After successful creation, ask the user whether to move into the new worktree directory using the `AskUserQuestion` tool.
+7. Print a short status summary including branch and path.
+
+## Post-Creation Prompt
+
+After parsing command output and obtaining `WORKTREE_PATH`, call the `AskUserQuestion` tool with a yes/no choice:
+
+- `question`: `Worktree created at <WORKTREE_PATH>. Move into this directory now?`
+- `options[]`:
+	- `{label: "Yes", description: "I will move into the new worktree now"}`
+	- `{label: "No", description: "Stay in the current directory"}`
+- `multiSelect`: `false`
+
+If the user selects **Yes**, output and execute the command:
+
+```bash
+cd <WORKTREE_PATH>
+```
+
+If the user selects **No**, continue without changing directories.
 
 ## Arguments
 

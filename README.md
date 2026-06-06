@@ -14,6 +14,7 @@ extensions/   # Spec Kit extensions (commands + hooks)
 presets/      # Spec Kit presets (template + command overrides)
   claude-ask-questions/         Interactive clarify/checklist for Claude
   explicit-task-dependencies/   tasks-template with explicit dependency edges
+  functional-constitution/      constitution override that enforces FP governance
   lite/                         trim /speckit-specify and /speckit-plan markdown output
   portfolio-audit/              Portfolio-wide analyze override
   ui-preview-in-spec/           specify override that embeds UI previews
@@ -41,6 +42,7 @@ specify extension add --dev "$SQUADS/extensions/review"
 # presets
 specify preset add --dev "$SQUADS/presets/claude-ask-questions"
 specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
+specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/lite"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/ui-preview-in-spec"

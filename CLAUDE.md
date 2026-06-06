@@ -24,7 +24,7 @@ Both require a `<project-dir>` argument — there is no implicit `$PWD` default,
 
 Every install uses `specify ... add --dev <repo-path>`, which keeps the project's `.specify/extensions/<id>/` and `.specify/presets/<id>/` pointed at this repo's source tree. Edits to command files, scripts, or templates here are picked up live — no reinstall step. `install.sh` therefore treats "already installed" as a no-op success.
 
-The one case where a true reinstall is required: changes to a manifest itself (`extension.yml` / `preset.yml`) — adding a new command, renaming the id, changing hooks. For that, run `./uninstall.sh <project>` then `./install.sh <project>`.
+The one case where a registry refresh is required: changes to a manifest itself (`extension.yml` / `preset.yml`) — adding a new command, renaming the id, changing hooks. For that, run `./install.sh --force <project>`.
 
 `uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
 
@@ -43,6 +43,7 @@ The one case where a true reinstall is required: changes to a manifest itself (`
 **Presets**
 - `claude-ask-questions` — interactive clarify/checklist for Claude
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
+- `functional-constitution` — `/speckit-constitution` override that always injects and normalizes a mandatory functional-programming governance section
 - `lite` — trim `/speckit-specify` (drops Assumptions + Key Entities) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `ui-preview-in-spec` — `/speckit-specify` override that embeds UI previews

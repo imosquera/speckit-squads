@@ -1,33 +1,30 @@
 # Git Branching Workflow Extension
 
-Git repository initialization, feature branch creation, numbering (sequential/timestamp), validation, remote detection, and auto-commit for Spec Kit.
+Feature branch creation, numbering (sequential/timestamp), worktree management, cleanup, PR creation, and auto-commit for Spec Kit.
 
 ## Overview
 
 This extension provides Git operations as an optional, self-contained module. It manages:
 
-- **Repository initialization** with configurable commit messages
 - **Feature branch creation** with sequential (`001-feature-name`) or timestamp (`20260319-143022-feature-name`) numbering
-- **Branch validation** to ensure branches follow naming conventions
-- **Git remote detection** for GitHub integration (e.g., issue creation)
+- **Worktree creation and cleanup** for feature isolation
+- **PR creation** for completed feature branches
 - **Auto-commit** after core commands (configurable per-command with custom messages)
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `speckit.git.initialize` | Initialize a Git repository with a configurable commit message |
 | `speckit.git.feature` | Create a feature branch with sequential or timestamp numbering |
 | `speckit.git.worktree` | Create a worktree under the `${PROJ}.worktrees` collector directory |
-| `speckit.git.validate` | Validate current branch follows feature branch naming conventions |
-| `speckit.git.remote` | Detect Git remote URL for GitHub integration |
+| `speckit.git.clean` | Clean up the current feature worktree, branch, issue, and uncommitted changes |
 | `speckit.git.commit` | Auto-commit changes (configurable per-command enable/disable and messages) |
+| `speckit.git.pr` | Open a GitHub PR for the current feature branch |
 
 ## Hooks
 
 | Event | Command | Optional | Description |
 |-------|---------|----------|-------------|
-| `before_constitution` | `speckit.git.initialize` | No | Init git repo before constitution |
 | `before_specify` | `speckit.git.feature` | No | Create feature branch before specification |
 | `before_clarify` | `speckit.git.commit` | Yes | Commit outstanding changes before clarification |
 | `before_plan` | `speckit.git.commit` | Yes | Commit outstanding changes before planning |
@@ -53,9 +50,6 @@ Configuration is stored in `.specify/extensions/git/git-config.yml`:
 ```yaml
 # Branch numbering strategy: "sequential" or "timestamp"
 branch_numbering: sequential
-
-# Custom commit message for git init
-init_commit_message: "[Spec Kit] Initial commit"
 
 # Auto-commit per command (all disabled by default)
 # Example: enable auto-commit after specify
@@ -87,9 +81,8 @@ specify extension enable git
 
 When Git is not installed or the directory is not a Git repository:
 - Spec directories are still created under `specs/`
-- Branch creation is skipped with a warning
-- Branch validation is skipped with a warning
-- Remote detection returns empty results
+- Branch and worktree operations are skipped with a warning
+- PR operations are skipped with a warning
 
 ## Scripts
 

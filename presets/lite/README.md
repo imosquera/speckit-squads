@@ -17,7 +17,7 @@ specify preset add --dev ~/Code/speckit-squads/presets/lite
 
 ## Stacking
 
-Both overridden commands (`speckit.specify`, `speckit.plan`) are also replaced by the `worktree-isolation` preset. Whichever is installed with the lower priority number wins. If you want both behaviors (worktree `cd` enforcement **and** trimmed artifacts), you need to fold the lite-preset's instructions into worktree-isolation's command files rather than stack them.
+The `lite` preset can be stacked with implement-focused presets (for example `worktree-isolation` and `graphify-on-implement`) without command collisions because `lite` only overrides `speckit.specify` and `speckit.plan`.
 
 ## When NOT to use
 

@@ -84,7 +84,8 @@ Given that feature description, do this:
      ```json
      {
        "feature_directory": "<resolved feature dir>",
-       "worktree_path": "<absolute path returned by the before_specify hook, or null if no hook ran>"
+       "worktree_path": "<absolute path returned by the before_specify hook, or null if no hook ran>",
+       "source_issue": "<GitHub issue number linked to this spec, when available>"
      }
      ```
 
@@ -164,11 +165,40 @@ Given that feature description, do this:
 
 7. Write the specification to `SPEC_FILE` (inside the worktree) using the template structure, replacing placeholders with concrete details derived from the feature description while preserving section order and headings. If the UI-touch check fired, the preview block from step 6 is included.
 
-8. **Specification Quality Validation**: write `SPECIFY_FEATURE_DIRECTORY/checklists/requirements.md` (inside the worktree) and iterate per the stock command's flow (max 3 iterations; handle `[NEEDS CLARIFICATION]` markers with up to 3 `AskUserQuestion` calls or markdown question tables, depending on preset stack).
+8. **GitHub issue sync (MANDATORY)**: always create or update a corresponding GitHub issue for this spec.
 
-9. **Report completion** to the user with `SPECIFY_FEATURE_DIRECTORY`, `SPEC_FILE`, **`WORKTREE_PATH`** (so the user can `cd` themselves on the next session), whether the UI preview block was inserted, checklist results, and readiness for the next phase (`/speckit-clarify` or `/speckit-plan`).
+   8a. Determine issue context from `.specify/feature.json`:
+   - If `source_issue` exists and is a valid number, treat this as update mode for that issue.
+   - Otherwise create a new issue and persist its number as `source_issue`.
 
-10. **Check for extension hooks (after specification)**: same as the stock command — read `hooks.after_specify` from `.specify/extensions.yml` and surface optional / mandatory hooks per the standard format.
+   8b. Build issue content from the spec:
+   - **Title**: use a concise feature title derived from the short name and user intent.
+   - **Body**: include at minimum:
+     - `Spec path: <SPECIFY_FEATURE_DIRECTORY/spec.md>`
+     - A short summary paragraph
+     - `## User Scenarios` (key bullets)
+     - `## Functional Requirements` (numbered list)
+     - `## Success Criteria` (bullets)
+     - `## Notes` with `Generated/updated by /speckit-specify`
+
+   8c. Execute with GitHub CLI in the current repo/worktree:
+   - Create mode: `gh issue create --title "..." --body-file <temp-file>`
+   - Update mode: `gh issue edit <source_issue> --title "..." --body-file <temp-file>`
+   - Parse/retain the resulting issue number and URL.
+
+   8d. Persist linkage in `.specify/feature.json`:
+   - Ensure `source_issue` is set to the issue number.
+   - Preserve existing fields (`feature_directory`, `worktree_path`, etc.).
+
+   8e. Failure policy (strict):
+   - If `gh` is unavailable, unauthenticated, or issue create/edit fails, stop and surface a clear error with the exact command to run after auth.
+   - Do not silently skip issue sync for this preset.
+
+9. **Specification Quality Validation**: write `SPECIFY_FEATURE_DIRECTORY/checklists/requirements.md` (inside the worktree) and iterate per the stock command's flow (max 3 iterations; handle `[NEEDS CLARIFICATION]` markers with up to 3 `AskUserQuestion` calls or markdown question tables, depending on preset stack).
+
+10. **Report completion** to the user with `SPECIFY_FEATURE_DIRECTORY`, `SPEC_FILE`, **`WORKTREE_PATH`** (so the user can `cd` themselves on the next session), `source_issue`, issue URL, whether the UI preview block was inserted, checklist results, and readiness for the next phase (`/speckit-clarify` or `/speckit-plan`).
+
+11. **Check for extension hooks (after specification)**: same as the stock command — read `hooks.after_specify` from `.specify/extensions.yml` and surface optional / mandatory hooks per the standard format.
 
 ## Quick Guidelines
 

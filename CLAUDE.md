@@ -36,18 +36,18 @@ The one case where a registry refresh is required: changes to a manifest itself 
 
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
-- `git` — feature branches, init, PR, auto-commit hooks across all phases
-- `graphify` — build (`speckit.graphify.init`) and refresh (`speckit.graphify.update`) the `graphify-out/` knowledge graph at the worktree root; update is hooked into `after_specify`/`after_implement`, init is a one-time manual action. Scope is `.graphifyignore` at the worktree root (graphify's native ignore file); init optionally seeds it interactively on first run
+- `git` — feature branches, worktree+clean, PR, auto-commit hooks across all phases
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 **Presets**
 - `claude-ask-questions` — interactive clarify/checklist for Claude
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
+- `graphify-on-implement` — `/speckit-implement` override that always runs `graphify update` as the final mandatory step
 - `functional-constitution` — `/speckit-constitution` override that always injects and normalizes a mandatory functional-programming governance section
 - `lite` — trim `/speckit-specify` (drops Assumptions + Key Entities) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `ui-preview-in-spec` — `/speckit-specify` override that embeds UI previews
-- `worktree-isolation` — forces the five feature commands to run inside their worktree
+- `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 
 ## When you add a new extension or preset
 

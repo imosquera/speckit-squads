@@ -7,18 +7,18 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
-  git/             Feature-branch workflow, init, PR, auto-commit hooks
-  graphify/        Refresh graphify-out/ knowledge graph after specify/implement
+  git/             Feature-branch workflow, worktree+clean, PR, auto-commit hooks
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 presets/      # Spec Kit presets (template + command overrides)
   claude-ask-questions/         Interactive clarify/checklist for Claude
   explicit-task-dependencies/   tasks-template with explicit dependency edges
+  graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
   lite/                         trim /speckit-specify and /speckit-plan markdown output
   portfolio-audit/              Portfolio-wide analyze override
   ui-preview-in-spec/           specify override that embeds UI previews
-  worktree-isolation/           Forces feature commands to run inside their worktree
+  worktree-isolation/           Forces /speckit-implement to run inside feature worktree
 ```
 
 Each item is a self-contained directory with its own `extension.yml` or `preset.yml` manifest, conforming to Spec Kit's schema:
@@ -36,12 +36,12 @@ export SQUADS=/path/to/your/speckit-squads   # adjust to your checkout
 # extensions
 specify extension add --dev "$SQUADS/extensions/archive"
 specify extension add --dev "$SQUADS/extensions/git"
-specify extension add --dev "$SQUADS/extensions/graphify"
 specify extension add --dev "$SQUADS/extensions/review"
 
 # presets
 specify preset add --dev "$SQUADS/presets/claude-ask-questions"
 specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
+specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/lite"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"

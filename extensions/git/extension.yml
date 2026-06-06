@@ -4,7 +4,7 @@ extension:
   id: git
   name: "Git Branching Workflow"
   version: "1.0.0"
-  description: "Feature branch creation, numbering (sequential/timestamp), validation, and Git remote detection"
+  description: "Feature branch creation, worktree management, feature cleanup, auto-commit hooks, and PR creation"
   author: spec-kit-core
   repository: https://github.com/github/spec-kit
   license: MIT
@@ -26,15 +26,6 @@ provides:
     - name: speckit.git.clean
       file: commands/speckit.git.clean.md
       description: "Clean up the current feature worktree, branch, issue, and uncommitted changes"
-    - name: speckit.git.validate
-      file: commands/speckit.git.validate.md
-      description: "Validate current branch follows feature branch naming conventions"
-    - name: speckit.git.remote
-      file: commands/speckit.git.remote.md
-      description: "Detect Git remote URL for GitHub integration"
-    - name: speckit.git.initialize
-      file: commands/speckit.git.initialize.md
-      description: "Initialize a Git repository with an initial commit"
     - name: speckit.git.commit
       file: commands/speckit.git.commit.md
       description: "Auto-commit changes after a Spec Kit command completes"
@@ -49,10 +40,6 @@ provides:
       required: false
 
 hooks:
-  before_constitution:
-    command: speckit.git.initialize
-    optional: false
-    description: "Initialize Git repository before constitution setup"
   before_specify:
     command: speckit.git.feature
     optional: false
@@ -146,4 +133,3 @@ tags:
 config:
   defaults:
     branch_numbering: sequential
-    init_commit_message: "[Spec Kit] Initial commit"

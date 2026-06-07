@@ -44,9 +44,8 @@ The one case where a registry refresh is required: changes to a manifest itself 
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
 - `graphify-on-implement` — `/speckit-implement` override that always runs `graphify update` as the final mandatory step
 - `functional-constitution` — `/speckit-constitution` override that always injects and normalizes a mandatory functional-programming governance section
-- `lite` — trim `/speckit-specify` (drops Assumptions + Key Entities) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
+- `spec-minimal` — trim `/speckit-specify` (drops Assumptions + Key Entities + Success Criteria, adds UI preview for UI-touching specs) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
-- `ui-preview-in-spec` — `/speckit-specify` override that embeds UI previews
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 
 ## When you add a new extension or preset

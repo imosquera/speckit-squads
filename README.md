@@ -15,9 +15,8 @@ presets/      # Spec Kit presets (template + command overrides)
   explicit-task-dependencies/   tasks-template with explicit dependency edges
   graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
-  lite/                         trim /speckit-specify and /speckit-plan markdown output
+  spec-minimal/                 trim /speckit-specify and /speckit-plan markdown output, with UI preview support
   portfolio-audit/              Portfolio-wide analyze override
-  ui-preview-in-spec/           specify override that embeds UI previews
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
 ```
 
@@ -43,9 +42,8 @@ specify preset add --dev "$SQUADS/presets/claude-ask-questions"
 specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
 specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
-specify preset add --dev "$SQUADS/presets/lite"
+specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
-specify preset add --dev "$SQUADS/presets/ui-preview-in-spec"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 ```
 

@@ -1,0 +1,32 @@
+schema_version: "1.0"
+
+preset:
+  id: "spec-minimal"
+  name: "Spec Minimal"
+  version: "1.0.0"
+  description: "Trims the artifacts /speckit-specify and /speckit-plan produce by default. Specify still writes spec.md but skips the Assumptions, Key Entities, and Success Criteria sections, and embeds a GitHub-safe inline HTML preview for UI-touching features. Plan still writes plan.md but does not create data-model.md, quickstart.md, or contracts/. research.md is kept because it carries actual decisions, not boilerplate. Pass --full to either command to run the complete stock behavior instead of spec-minimal mode."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "Spec-minimal-by-default specify — spec.md without Assumptions, Key Entities, or Success Criteria sections, plus an inline HTML UI preview when the feature touches UI, unless --full is provided"
+      replaces: "speckit.specify"
+
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Spec-minimal-by-default plan — writes plan.md and research.md only unless --full is provided"
+      replaces: "speckit.plan"
+
+tags:
+  - "spec-minimal"
+  - "minimal"
+  - "artifacts"

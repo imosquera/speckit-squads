@@ -1,5 +1,5 @@
 ---
-description: "Create plan.md in lite mode by default; pass --full to run the complete stock /speckit-plan flow"
+description: "Create plan.md in spec-minimal mode by default; pass --full to run the complete stock /speckit-plan flow"
 ---
 
 ## User Input
@@ -12,7 +12,7 @@ You **MUST** consider the user input before proceeding.
 
 ## Mode Switch
 
-Lite mode is the default. If `$ARGUMENTS` contains `--full`, remove that token from the arguments and run the canonical stock `/speckit-plan` behavior unchanged (including generation of any standard plan artifacts). Do not apply lite skips when `--full` is present.
+Spec-minimal mode is the default. If `$ARGUMENTS` contains `--full`, remove that token from the arguments and run the canonical stock `/speckit-plan` behavior unchanged (including generation of any standard plan artifacts). Do not apply spec-minimal skips when `--full` is present.
 
 ## Pre-Execution Checks
 
@@ -24,7 +24,7 @@ Run the standard `before_plan` hook chain. Do not skip it.
 
 2. Load context: `.specify/memory/constitution.md` and `<feature_directory>/spec.md`.
 
-3. Write `<feature_directory>/plan.md` from the standard `plan-template.md`. In the **Project Structure → Documentation (this feature)** subsection, replace the documentation tree with the lite-preset version:
+3. Write `<feature_directory>/plan.md` from the standard `plan-template.md`. In the **Project Structure → Documentation (this feature)** subsection, replace the documentation tree with the spec-minimal preset version:
 
    ```text
    specs/[###-feature]/

@@ -1,23 +1,23 @@
-# lite preset
+# spec-minimal preset
 
 Trims the markdown footprint of `/speckit-specify` and `/speckit-plan`.
 
 ## What it cuts
 
-| Command | Default artifacts | Under `lite` |
+| Command | Default artifacts | Under `spec-minimal` |
 |---|---|---|
-| `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria** |
+| `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria**, plus an inline HTML preview for UI-touching features |
 | `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `plan.md` (+ `research.md` only if decisions were made) |
 
 ## Install
 
 ```bash
-specify preset add --dev ~/Code/speckit-squads/presets/lite
+specify preset add --dev ~/Code/speckit-squads/presets/spec-minimal
 ```
 
 ## Stacking
 
-The `lite` preset can be stacked with implement-focused presets (for example `worktree-isolation` and `graphify-on-implement`) without command collisions because `lite` only overrides `speckit.specify` and `speckit.plan`.
+The `spec-minimal` preset can be stacked with implement-focused presets (for example `worktree-isolation` and `graphify-on-implement`) without command collisions because `spec-minimal` only overrides `speckit.specify` and `speckit.plan`.
 
 ## When NOT to use
 

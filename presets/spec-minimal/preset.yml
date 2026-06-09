@@ -4,7 +4,7 @@ preset:
   id: "spec-minimal"
   name: "Spec Minimal"
   version: "1.0.0"
-  description: "Trims the artifacts /speckit-specify and /speckit-plan produce by default. Specify still writes spec.md but skips the Assumptions, Key Entities, and Success Criteria sections, and embeds a GitHub-safe inline HTML preview for UI-touching features. Plan still writes plan.md but does not create data-model.md, quickstart.md, or contracts/. research.md is kept because it carries actual decisions, not boilerplate. Pass --full to either command to run the complete stock behavior instead of spec-minimal mode."
+  description: "Wraps /speckit-specify and /speckit-plan to trim generated artifacts without replacing the stock command flow. Specify still drops Assumptions, Key Entities, and Success Criteria and adds a GitHub-safe inline HTML preview for UI-touching features. Plan still trims the documentation tree and avoids data-model.md, quickstart.md, and contracts/ unless truly needed."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"
   license: "MIT"
@@ -17,14 +17,14 @@ provides:
     - type: "command"
       name: "speckit.specify"
       file: "commands/speckit.specify.md"
-      description: "Spec-minimal-by-default specify — spec.md without Assumptions, Key Entities, or Success Criteria sections, plus an inline HTML UI preview when the feature touches UI, unless --full is provided"
-      replaces: "speckit.specify"
+      description: "Composable wrapper for /speckit-specify that trims spec output and adds a GitHub-safe inline HTML UI preview when needed."
+      strategy: "wrap"
 
     - type: "command"
       name: "speckit.plan"
       file: "commands/speckit.plan.md"
-      description: "Spec-minimal-by-default plan — writes plan.md and research.md only unless --full is provided"
-      replaces: "speckit.plan"
+      description: "Composable wrapper for /speckit-plan that trims the documentation tree produced by the stock command."
+      strategy: "wrap"
 
 tags:
   - "spec-minimal"

@@ -15,7 +15,7 @@ presets/      # Spec Kit presets (template + command overrides)
   explicit-task-dependencies/   tasks-template with explicit dependency edges
   graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
-  spec-minimal/                 trim /speckit-specify and /speckit-plan markdown output, with UI preview support
+  spec-minimal/                 composable wrapper for /speckit-specify and /speckit-plan, with UI preview support
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
 ```

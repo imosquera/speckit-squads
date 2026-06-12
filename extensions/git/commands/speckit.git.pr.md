@@ -26,9 +26,10 @@ If either command is unavailable or fails, stop and return an error. Do not cont
 3. Read `.specify/feature.json`:
    - `feature_directory` → used to derive the PR title from the spec's H1 and to mention spec/plan/tasks paths in the PR body.
    - `source_issue` → if present and numeric, append `Closes #N` to the PR body.
-4. If the branch isn't yet on `origin`, push it (`git push -u origin <branch>`).
-5. If a PR already exists for the branch, print its URL and exit.
-6. Otherwise, run `gh pr create --base <base> --head <branch> --title <derived> --body <derived>`.
+4. If `squash_before_pr: true` in `git-config.yml`, squash every commit between `merge-base(HEAD, <base>)` and `HEAD` into a single commit (title from the spec H1, body listing the original commit subjects). Aborts if the working tree has uncommitted changes.
+5. If the branch isn't yet on `origin`, push it (`git push -u origin <branch>`). If it was already pushed and a squash happened, force-push with `--force-with-lease`.
+6. If a PR already exists for the branch, print its URL and exit.
+7. Otherwise, run `gh pr create --base <base> --head <branch> --title <derived> --body <derived>`.
 
 ## Execution
 
@@ -45,3 +46,4 @@ Default `base_branch` is `main`. Pass an alternative as the first argument if ne
 - If the current branch equals the base branch: refuse.
 - If no `source_issue` is recorded: PR is created without a closing keyword (still works, just doesn't auto-close an issue).
 - If a PR already exists for this branch: prints the existing URL, does not duplicate.
+- If `squash_before_pr: true` but the merge-base with `<base>` cannot be computed, or the working tree has uncommitted changes: error and stop before pushing.

@@ -1,10 +1,28 @@
 ---
-description: "Create a feature branch with sequential or timestamp numbering"
+description: "Create a feature branch + worktree and a linked GitHub issue numbered to match the spec"
 ---
 
 # Create Feature Branch
 
-Create and switch to a new git feature branch for the given specification. This command handles **branch creation only** — the spec directory and files are created by the core `__SPECKIT_COMMAND_SPECIFY__` workflow.
+Create and switch to a new git feature branch for the given specification, materialise its dedicated worktree, and (when `gh` is available) open a tracking GitHub issue whose number drives the spec/branch numbering. This command handles **branch + worktree + tracking-issue creation** — the spec directory and files are created by the core `__SPECKIT_COMMAND_SPECIFY__` workflow.
+
+## GitHub Issue Integration
+
+When `gh` is installed and authenticated and numbering is sequential, the script:
+
+1. Creates a stub GitHub issue *before* numbering the branch.
+2. Uses the issue number as `FEATURE_NUM` so the spec dir, branch, and issue all share the same identifier (e.g. `specs/008-user-auth/`, branch `008-user-auth`, issue `#8`).
+3. After the branch + worktree are materialised, prefixes the issue title with `NNN: ` and writes `source_issue` into the new worktree's `.specify/feature.json` so `/speckit-git-pr`, `/speckit-git-commit`, `/speckit-archive-feature`, and `/speckit-git-clean` automatically pick up the linked issue.
+
+If the issue's number ends up below the next free spec number (e.g. issue #5 created while `specs/008-*` already exists), the branch is still numbered using the next free spec number and the issue title is updated to match — so the alignment stays visible.
+
+The issue body is intentionally a stub; `/speckit-specify` (when wrapped by the `spec-minimal` preset) updates the issue body with the rendered spec content because `source_issue` is already set.
+
+Issue creation is **skipped** (and numbering falls back to the normal sequential / timestamp logic) when:
+- `gh` is missing or unauthenticated
+- `--timestamp`, `--number`, or `GIT_BRANCH_NAME` is in effect
+- `--dry-run` is set
+- `gh issue create` fails (a warning is printed; branch creation continues)
 
 ## User Input
 
@@ -65,3 +83,6 @@ If Git is not installed or the current directory is not a Git repository:
 The script outputs JSON with:
 - `BRANCH_NAME`: The branch name (e.g., `003-user-auth` or `20260319-143022-user-auth`)
 - `FEATURE_NUM`: The numeric or timestamp prefix used
+- `WORKTREE_PATH`: The absolute path of the materialised feature worktree
+- `SOURCE_ISSUE` (when an issue was created): The numeric GitHub issue id (also written to the worktree's `.specify/feature.json`)
+- `ISSUE_URL` (when an issue was created): The full URL of the tracking issue

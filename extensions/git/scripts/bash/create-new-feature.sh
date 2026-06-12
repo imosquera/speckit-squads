@@ -331,6 +331,58 @@ else
         BRANCH_NUMBER=""
     fi
 
+    # ---------------------------------------------------------------------
+    # GitHub issue creation drives FEATURE_NUM.
+    #
+    # When `gh` is available, authenticated, and the repo is on GitHub, we
+    # create a stub issue *before* branch numbering and use the resulting
+    # issue number as FEATURE_NUM. This keeps the spec directory, branch
+    # name, and tracking issue all aligned on one identifier (e.g.
+    # specs/008-user-auth/, branch 008-user-auth, issue #8).
+    #
+    # Skipped when:
+    #   - GIT_BRANCH_NAME is set (caller controls the branch name explicitly)
+    #   - --timestamp is used (different naming scheme)
+    #   - --number is passed (caller controls numbering explicitly)
+    #   - --dry-run is set
+    #   - gh is missing, unauthenticated, or `gh issue create` fails
+    # ---------------------------------------------------------------------
+    SOURCE_ISSUE=""
+    ISSUE_URL=""
+    if [ "$USE_TIMESTAMP" != true ] \
+       && [ -z "$BRANCH_NUMBER" ] \
+       && [ "$DRY_RUN" != true ] \
+       && [ "$HAS_GIT" = true ] \
+       && command -v gh >/dev/null 2>&1; then
+
+        if gh auth status >/dev/null 2>&1; then
+            _issue_body="Tracking issue for feature: ${FEATURE_DESCRIPTION}
+
+Stub created by \`/speckit-git-feature\`. The full spec body will be filled in by \`/speckit-specify\`."
+
+            _issue_out=""
+            if _issue_out=$(gh issue create --title "$FEATURE_DESCRIPTION" --body "$_issue_body" 2>&1); then
+                ISSUE_URL=$(printf '%s\n' "$_issue_out" | grep -Eo 'https?://[^[:space:]]+/issues/[0-9]+' | head -1)
+                if [ -n "$ISSUE_URL" ]; then
+                    SOURCE_ISSUE=$(printf '%s' "$ISSUE_URL" | grep -Eo '[0-9]+$')
+                fi
+
+                if [ -n "$SOURCE_ISSUE" ]; then
+                    >&2 echo "[specify] Created GitHub issue #${SOURCE_ISSUE}: ${ISSUE_URL}"
+                    BRANCH_NUMBER="$SOURCE_ISSUE"
+                else
+                    >&2 echo "[specify] Warning: created issue but could not parse number from gh output; falling back to sequential numbering:"
+                    >&2 printf '%s\n' "$_issue_out" | sed 's/^/[specify]   /'
+                fi
+            else
+                >&2 echo "[specify] Warning: gh issue create failed; falling back to sequential numbering:"
+                >&2 printf '%s\n' "$_issue_out" | sed 's/^/[specify]   /'
+            fi
+        else
+            >&2 echo "[specify] Note: gh not authenticated; skipping GitHub issue creation"
+        fi
+    fi
+
     # Determine branch prefix
     if [ "$USE_TIMESTAMP" = true ]; then
         FEATURE_NUM=$(date +%Y%m%d-%H%M%S)
@@ -476,10 +528,63 @@ if [ "$DRY_RUN" != true ]; then
         >&2 echo "[specify] Warning: Git repository not detected; skipped branch + worktree creation for $BRANCH_NAME"
     fi
 
+    # ---------------------------------------------------------------------
+    # Persist source_issue into the worktree's .specify/feature.json and
+    # prefix the issue title with the actual FEATURE_NUM.
+    #
+    # In the common case FEATURE_NUM == SOURCE_ISSUE because issue creation
+    # drives numbering. They can diverge if the next free spec number was
+    # already higher than the issue number (e.g. issue #5 created while
+    # specs/008-* already exists), in which case we still write the issue
+    # title with FEATURE_NUM so the issue ↔ spec alignment is visible.
+    # ---------------------------------------------------------------------
+    if [ -n "$SOURCE_ISSUE" ] && [ "$HAS_GIT" = true ] && [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
+        _wt_specify_dir="$WORKTREE_PATH/.specify"
+        _wt_feature_json="$_wt_specify_dir/feature.json"
+        mkdir -p "$_wt_specify_dir"
+
+        if [ ! -f "$_wt_feature_json" ]; then
+            if command -v jq >/dev/null 2>&1; then
+                jq -n \
+                    --arg branch_name "$BRANCH_NAME" \
+                    --arg feature_num "$FEATURE_NUM" \
+                    --arg worktree_path "$WORKTREE_PATH" \
+                    --argjson source_issue "$SOURCE_ISSUE" \
+                    '{branch_name:$branch_name,feature_num:$feature_num,worktree_path:$worktree_path,source_issue:$source_issue}' \
+                    > "$_wt_feature_json"
+            else
+                if type json_escape >/dev/null 2>&1; then
+                    _je_branch=$(json_escape "$BRANCH_NAME")
+                    _je_num=$(json_escape "$FEATURE_NUM")
+                    _je_wt=$(json_escape "$WORKTREE_PATH")
+                else
+                    _je_branch="$BRANCH_NAME"
+                    _je_num="$FEATURE_NUM"
+                    _je_wt="$WORKTREE_PATH"
+                fi
+                printf '{"branch_name":"%s","feature_num":"%s","worktree_path":"%s","source_issue":%s}\n' \
+                    "$_je_branch" "$_je_num" "$_je_wt" "$SOURCE_ISSUE" \
+                    > "$_wt_feature_json"
+            fi
+        fi
+
+        # Prefix the issue title with the spec number so the issue list
+        # mirrors the specs/ layout. Best-effort; failures are non-fatal.
+        if command -v gh >/dev/null 2>&1; then
+            _new_title="${FEATURE_NUM}: ${FEATURE_DESCRIPTION}"
+            if ! gh issue edit "$SOURCE_ISSUE" --title "$_new_title" >/dev/null 2>&1; then
+                >&2 echo "[specify] Warning: failed to prefix issue #${SOURCE_ISSUE} title with '${FEATURE_NUM}:'"
+            fi
+        fi
+    fi
+
     printf '# To persist: export SPECIFY_FEATURE=%q\n' "$BRANCH_NAME" >&2
     if [ -n "$WORKTREE_PATH" ]; then
         printf '# Worktree created at: %s\n' "$WORKTREE_PATH" >&2
         printf '# NEXT STEP (Constitution v2.3.0 Principle VII): cd %q\n' "$WORKTREE_PATH" >&2
+    fi
+    if [ -n "$ISSUE_URL" ]; then
+        printf '# Linked GitHub issue: %s\n' "$ISSUE_URL" >&2
     fi
 fi
 
@@ -491,24 +596,39 @@ if $JSON_MODE; then
                 --arg feature_num "$FEATURE_NUM" \
                 '{BRANCH_NAME:$branch_name,FEATURE_NUM:$feature_num,DRY_RUN:true}'
         else
-            jq -cn \
-                --arg branch_name "$BRANCH_NAME" \
-                --arg feature_num "$FEATURE_NUM" \
-                --arg worktree_path "$WORKTREE_PATH" \
-                '{BRANCH_NAME:$branch_name,FEATURE_NUM:$feature_num,WORKTREE_PATH:$worktree_path}'
+            if [ -n "$SOURCE_ISSUE" ]; then
+                jq -cn \
+                    --arg branch_name "$BRANCH_NAME" \
+                    --arg feature_num "$FEATURE_NUM" \
+                    --arg worktree_path "$WORKTREE_PATH" \
+                    --argjson source_issue "$SOURCE_ISSUE" \
+                    --arg issue_url "$ISSUE_URL" \
+                    '{BRANCH_NAME:$branch_name,FEATURE_NUM:$feature_num,WORKTREE_PATH:$worktree_path,SOURCE_ISSUE:$source_issue,ISSUE_URL:$issue_url}'
+            else
+                jq -cn \
+                    --arg branch_name "$BRANCH_NAME" \
+                    --arg feature_num "$FEATURE_NUM" \
+                    --arg worktree_path "$WORKTREE_PATH" \
+                    '{BRANCH_NAME:$branch_name,FEATURE_NUM:$feature_num,WORKTREE_PATH:$worktree_path}'
+            fi
         fi
     else
         if type json_escape >/dev/null 2>&1; then
             _je_branch=$(json_escape "$BRANCH_NAME")
             _je_num=$(json_escape "$FEATURE_NUM")
             _je_wt=$(json_escape "$WORKTREE_PATH")
+            _je_url=$(json_escape "$ISSUE_URL")
         else
             _je_branch="$BRANCH_NAME"
             _je_num="$FEATURE_NUM"
             _je_wt="$WORKTREE_PATH"
+            _je_url="$ISSUE_URL"
         fi
         if [ "$DRY_RUN" = true ]; then
             printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","DRY_RUN":true}\n' "$_je_branch" "$_je_num"
+        elif [ -n "$SOURCE_ISSUE" ]; then
+            printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","WORKTREE_PATH":"%s","SOURCE_ISSUE":%s,"ISSUE_URL":"%s"}\n' \
+                "$_je_branch" "$_je_num" "$_je_wt" "$SOURCE_ISSUE" "$_je_url"
         else
             printf '{"BRANCH_NAME":"%s","FEATURE_NUM":"%s","WORKTREE_PATH":"%s"}\n' "$_je_branch" "$_je_num" "$_je_wt"
         fi
@@ -518,6 +638,10 @@ else
     echo "FEATURE_NUM: $FEATURE_NUM"
     if [ "$DRY_RUN" != true ] && [ -n "$WORKTREE_PATH" ]; then
         echo "WORKTREE_PATH: $WORKTREE_PATH"
+    fi
+    if [ -n "$SOURCE_ISSUE" ]; then
+        echo "SOURCE_ISSUE: $SOURCE_ISSUE"
+        echo "ISSUE_URL: $ISSUE_URL"
     fi
     if [ "$DRY_RUN" != true ]; then
         printf '# To persist in your shell: export SPECIFY_FEATURE=%q\n' "$BRANCH_NAME"

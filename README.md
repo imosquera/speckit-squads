@@ -7,7 +7,7 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
-  git/             Feature-branch workflow, worktree+clean, PR, auto-commit hooks
+  git/             Feature-branch + worktree + linked GitHub issue, clean, PR, auto-commit hooks
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 presets/      # Spec Kit presets (template + command overrides)

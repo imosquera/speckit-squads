@@ -36,7 +36,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
-- `git` — feature branches, worktree+clean, PR, auto-commit hooks across all phases
+- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), clean, PR, auto-commit hooks across all phases
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 **Presets**

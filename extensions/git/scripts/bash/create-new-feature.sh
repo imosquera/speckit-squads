@@ -263,6 +263,42 @@ cd "$REPO_ROOT"
 
 SPECS_DIR="$REPO_ROOT/specs"
 
+# ---------------------------------------------------------------------------
+# Auto-detect branch_numbering = timestamp from configuration when --timestamp
+# was not explicitly passed. Lookup order:
+#   1. .specify/extensions/git/git-config.yml (yaml: branch_numbering: ...)
+#   2. .specify/init-options.json (json: { "branch_numbering": "..." })
+# Defaults to sequential (USE_TIMESTAMP=false) when neither exists.
+# ---------------------------------------------------------------------------
+if [ "$USE_TIMESTAMP" != true ] && [ -z "${GIT_BRANCH_NAME:-}" ]; then
+    _branch_numbering=""
+    _cfg_yaml="$REPO_ROOT/.specify/extensions/git/git-config.yml"
+    _cfg_json="$REPO_ROOT/.specify/init-options.json"
+
+    if [ -f "$_cfg_yaml" ]; then
+        _branch_numbering=$(grep -E '^[[:space:]]*branch_numbering:' "$_cfg_yaml" 2>/dev/null \
+            | head -1 \
+            | sed -E 's/^[[:space:]]*branch_numbering:[[:space:]]*//; s/[[:space:]]*$//; s/^"(.*)"$/\1/; s/^'\''(.*)'\''$/\1/' \
+            | tr '[:upper:]' '[:lower:]')
+    fi
+
+    if [ -z "$_branch_numbering" ] && [ -f "$_cfg_json" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            _branch_numbering=$(jq -r '.branch_numbering // ""' "$_cfg_json" 2>/dev/null \
+                | tr '[:upper:]' '[:lower:]')
+        else
+            _branch_numbering=$(grep -Eo '"branch_numbering"[[:space:]]*:[[:space:]]*"[^"]*"' "$_cfg_json" 2>/dev/null \
+                | head -1 \
+                | sed -E 's/.*"branch_numbering"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/' \
+                | tr '[:upper:]' '[:lower:]')
+        fi
+    fi
+
+    if [ "$_branch_numbering" = "timestamp" ]; then
+        USE_TIMESTAMP=true
+    fi
+fi
+
 # Function to generate branch name with stop word filtering
 generate_branch_name() {
     local description="$1"
@@ -393,7 +429,26 @@ Stub created by \`/speckit-git-feature\`. The full spec body will be filled in b
         fi
 
         >&2 echo "[specify] Created GitHub issue #${SOURCE_ISSUE}: ${ISSUE_URL}"
-        BRANCH_NUMBER="$SOURCE_ISSUE"
+
+        # Compare the newly-created issue number with the next-free spec/branch
+        # number. When the GitHub issue counter is behind existing specs/NNN-*
+        # directories or branches (common when enabling this integration on an
+        # existing project), using the raw issue number would either reuse a
+        # taken slot or fail later on an existing branch — leaving the issue
+        # orphaned. Pick the larger of the two so FEATURE_NUM is always free.
+        if [ "$HAS_GIT" = true ]; then
+            _next_free=$(check_existing_branches "$SPECS_DIR")
+        else
+            _highest=$(get_highest_from_specs "$SPECS_DIR")
+            _next_free=$((_highest + 1))
+        fi
+
+        if [ "$((10#$SOURCE_ISSUE))" -lt "$((10#$_next_free))" ]; then
+            >&2 echo "[specify] Issue #${SOURCE_ISSUE} is behind next free spec number ${_next_free}; using ${_next_free} for FEATURE_NUM (issue title will be updated to match)."
+            BRANCH_NUMBER="$_next_free"
+        else
+            BRANCH_NUMBER="$SOURCE_ISSUE"
+        fi
     fi
 
     # Determine branch prefix
@@ -556,8 +611,37 @@ if [ "$DRY_RUN" != true ]; then
         _wt_feature_json="$_wt_specify_dir/feature.json"
         mkdir -p "$_wt_specify_dir"
 
-        if [ ! -f "$_wt_feature_json" ]; then
-            if command -v jq >/dev/null 2>&1; then
+        # Write or merge feature.json. When the file already exists (e.g. the
+        # previous feature committed it and it was carried into the new worktree
+        # via the base branch), we OVERWRITE the four feature-identity fields
+        # rather than skipping — otherwise the worktree keeps the stale
+        # source_issue/feature_directory and downstream commands (PR, archive,
+        # clean, auto-commit) would close or operate on the previous feature's
+        # tracking artefacts.
+        if command -v jq >/dev/null 2>&1; then
+            if [ -f "$_wt_feature_json" ]; then
+                _tmp_json="${_wt_feature_json}.tmp.$$"
+                if jq \
+                    --arg branch_name "$BRANCH_NAME" \
+                    --arg feature_num "$FEATURE_NUM" \
+                    --arg worktree_path "$WORKTREE_PATH" \
+                    --argjson source_issue "$SOURCE_ISSUE" \
+                    '. + {branch_name:$branch_name,feature_num:$feature_num,worktree_path:$worktree_path,source_issue:$source_issue} | del(.feature_directory)' \
+                    "$_wt_feature_json" > "$_tmp_json"; then
+                    mv "$_tmp_json" "$_wt_feature_json"
+                    >&2 echo "[specify] Updated stale .specify/feature.json in worktree with new feature identity (source_issue=${SOURCE_ISSUE})."
+                else
+                    rm -f "$_tmp_json"
+                    >&2 echo "[specify] Warning: failed to merge .specify/feature.json; overwriting with new feature identity."
+                    jq -n \
+                        --arg branch_name "$BRANCH_NAME" \
+                        --arg feature_num "$FEATURE_NUM" \
+                        --arg worktree_path "$WORKTREE_PATH" \
+                        --argjson source_issue "$SOURCE_ISSUE" \
+                        '{branch_name:$branch_name,feature_num:$feature_num,worktree_path:$worktree_path,source_issue:$source_issue}' \
+                        > "$_wt_feature_json"
+                fi
+            else
                 jq -n \
                     --arg branch_name "$BRANCH_NAME" \
                     --arg feature_num "$FEATURE_NUM" \
@@ -565,20 +649,26 @@ if [ "$DRY_RUN" != true ]; then
                     --argjson source_issue "$SOURCE_ISSUE" \
                     '{branch_name:$branch_name,feature_num:$feature_num,worktree_path:$worktree_path,source_issue:$source_issue}' \
                     > "$_wt_feature_json"
-            else
-                if type json_escape >/dev/null 2>&1; then
-                    _je_branch=$(json_escape "$BRANCH_NAME")
-                    _je_num=$(json_escape "$FEATURE_NUM")
-                    _je_wt=$(json_escape "$WORKTREE_PATH")
-                else
-                    _je_branch="$BRANCH_NAME"
-                    _je_num="$FEATURE_NUM"
-                    _je_wt="$WORKTREE_PATH"
-                fi
-                printf '{"branch_name":"%s","feature_num":"%s","worktree_path":"%s","source_issue":%s}\n' \
-                    "$_je_branch" "$_je_num" "$_je_wt" "$SOURCE_ISSUE" \
-                    > "$_wt_feature_json"
             fi
+        else
+            # No jq → write minimal JSON, overwriting any prior content. This
+            # loses non-identity fields the previous owner may have stashed,
+            # but keeping stale identity fields is the worse failure mode.
+            if type json_escape >/dev/null 2>&1; then
+                _je_branch=$(json_escape "$BRANCH_NAME")
+                _je_num=$(json_escape "$FEATURE_NUM")
+                _je_wt=$(json_escape "$WORKTREE_PATH")
+            else
+                _je_branch="$BRANCH_NAME"
+                _je_num="$FEATURE_NUM"
+                _je_wt="$WORKTREE_PATH"
+            fi
+            if [ -f "$_wt_feature_json" ]; then
+                >&2 echo "[specify] Warning: jq not installed; overwriting stale .specify/feature.json (non-identity fields will be lost)."
+            fi
+            printf '{"branch_name":"%s","feature_num":"%s","worktree_path":"%s","source_issue":%s}\n' \
+                "$_je_branch" "$_je_num" "$_je_wt" "$SOURCE_ISSUE" \
+                > "$_wt_feature_json"
         fi
 
         # Prefix the issue title with the spec number so the issue list

@@ -4,11 +4,13 @@ description: "Create a feature branch + worktree and a linked GitHub issue numbe
 
 # Create Feature Branch
 
-Create and switch to a new git feature branch for the given specification, materialise its dedicated worktree, and (when `gh` is available) open a tracking GitHub issue whose number drives the spec/branch numbering. This command handles **branch + worktree + tracking-issue creation** — the spec directory and files are created by the core `__SPECKIT_COMMAND_SPECIFY__` workflow.
+Create and switch to a new git feature branch for the given specification, materialise its dedicated worktree, and open a tracking GitHub issue whose number drives the spec/branch numbering. This command handles **branch + worktree + tracking-issue creation** — the spec directory and files are created by the core `__SPECKIT_COMMAND_SPECIFY__` workflow.
 
-## GitHub Issue Integration
+## GitHub Issue Integration (Required)
 
-When `gh` is installed and authenticated and numbering is sequential, the script:
+`gh` **MUST** be installed and authenticated for this command to run. If `gh` is missing or `gh auth status` fails, the script errors out and creates nothing — there is no silent fallback.
+
+When numbering is sequential, the script:
 
 1. Creates a stub GitHub issue *before* numbering the branch.
 2. Uses the issue number as `FEATURE_NUM` so the spec dir, branch, and issue all share the same identifier (e.g. `specs/008-user-auth/`, branch `008-user-auth`, issue `#8`).
@@ -18,11 +20,11 @@ If the issue's number ends up below the next free spec number (e.g. issue #5 cre
 
 The issue body is intentionally a stub; `/speckit-specify` (when wrapped by the `spec-minimal` preset) updates the issue body with the rendered spec content because `source_issue` is already set.
 
-Issue creation is **skipped** (and numbering falls back to the normal sequential / timestamp logic) when:
-- `gh` is missing or unauthenticated
+Issue creation is bypassed (and numbering falls back to the normal sequential / timestamp logic) only when the caller has explicitly opted out of issue-driven numbering:
 - `--timestamp`, `--number`, or `GIT_BRANCH_NAME` is in effect
 - `--dry-run` is set
-- `gh issue create` fails (a warning is printed; branch creation continues)
+
+In every other case `gh` is mandatory: a missing binary, an unauthenticated session, or a failing `gh issue create` is a hard error.
 
 ## User Input
 

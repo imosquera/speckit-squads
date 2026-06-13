@@ -332,55 +332,68 @@ else
     fi
 
     # ---------------------------------------------------------------------
-    # GitHub issue creation drives FEATURE_NUM.
+    # GitHub issue creation drives FEATURE_NUM. `gh` is REQUIRED.
     #
-    # When `gh` is available, authenticated, and the repo is on GitHub, we
-    # create a stub issue *before* branch numbering and use the resulting
-    # issue number as FEATURE_NUM. This keeps the spec directory, branch
-    # name, and tracking issue all aligned on one identifier (e.g.
-    # specs/008-user-auth/, branch 008-user-auth, issue #8).
+    # We create a stub issue *before* branch numbering and use the
+    # resulting issue number as FEATURE_NUM. This keeps the spec
+    # directory, branch name, and tracking issue all aligned on one
+    # identifier (e.g. specs/008-user-auth/, branch 008-user-auth, issue #8).
     #
-    # Skipped when:
+    # Bypassed only when the caller has explicitly opted out of
+    # issue-driven numbering:
     #   - GIT_BRANCH_NAME is set (caller controls the branch name explicitly)
     #   - --timestamp is used (different naming scheme)
     #   - --number is passed (caller controls numbering explicitly)
     #   - --dry-run is set
-    #   - gh is missing, unauthenticated, or `gh issue create` fails
+    #
+    # Outside those cases, a missing `gh`, an unauthenticated session, or a
+    # failing `gh issue create` is a hard error.
     # ---------------------------------------------------------------------
     SOURCE_ISSUE=""
     ISSUE_URL=""
     if [ "$USE_TIMESTAMP" != true ] \
        && [ -z "$BRANCH_NUMBER" ] \
        && [ "$DRY_RUN" != true ] \
-       && [ "$HAS_GIT" = true ] \
-       && command -v gh >/dev/null 2>&1; then
+       && [ "$HAS_GIT" = true ]; then
 
-        if gh auth status >/dev/null 2>&1; then
-            _issue_body="Tracking issue for feature: ${FEATURE_DESCRIPTION}
+        if ! command -v gh >/dev/null 2>&1; then
+            >&2 echo "[specify] Error: \`gh\` is required for /speckit-git-feature but is not installed."
+            >&2 echo "[specify]   Install GitHub CLI from https://cli.github.com/ and run \`gh auth login\`,"
+            >&2 echo "[specify]   or pass --timestamp / --number / GIT_BRANCH_NAME to bypass issue creation."
+            exit 1
+        fi
+
+        if ! gh auth status >/dev/null 2>&1; then
+            >&2 echo "[specify] Error: \`gh\` is installed but not authenticated."
+            >&2 echo "[specify]   Run \`gh auth login\`,"
+            >&2 echo "[specify]   or pass --timestamp / --number / GIT_BRANCH_NAME to bypass issue creation."
+            exit 1
+        fi
+
+        _issue_body="Tracking issue for feature: ${FEATURE_DESCRIPTION}
 
 Stub created by \`/speckit-git-feature\`. The full spec body will be filled in by \`/speckit-specify\`."
 
-            _issue_out=""
-            if _issue_out=$(gh issue create --title "$FEATURE_DESCRIPTION" --body "$_issue_body" 2>&1); then
-                ISSUE_URL=$(printf '%s\n' "$_issue_out" | grep -Eo 'https?://[^[:space:]]+/issues/[0-9]+' | head -1)
-                if [ -n "$ISSUE_URL" ]; then
-                    SOURCE_ISSUE=$(printf '%s' "$ISSUE_URL" | grep -Eo '[0-9]+$')
-                fi
-
-                if [ -n "$SOURCE_ISSUE" ]; then
-                    >&2 echo "[specify] Created GitHub issue #${SOURCE_ISSUE}: ${ISSUE_URL}"
-                    BRANCH_NUMBER="$SOURCE_ISSUE"
-                else
-                    >&2 echo "[specify] Warning: created issue but could not parse number from gh output; falling back to sequential numbering:"
-                    >&2 printf '%s\n' "$_issue_out" | sed 's/^/[specify]   /'
-                fi
-            else
-                >&2 echo "[specify] Warning: gh issue create failed; falling back to sequential numbering:"
-                >&2 printf '%s\n' "$_issue_out" | sed 's/^/[specify]   /'
-            fi
-        else
-            >&2 echo "[specify] Note: gh not authenticated; skipping GitHub issue creation"
+        _issue_out=""
+        if ! _issue_out=$(gh issue create --title "$FEATURE_DESCRIPTION" --body "$_issue_body" 2>&1); then
+            >&2 echo "[specify] Error: \`gh issue create\` failed:"
+            >&2 printf '%s\n' "$_issue_out" | sed 's/^/[specify]   /'
+            exit 1
         fi
+
+        ISSUE_URL=$(printf '%s\n' "$_issue_out" | grep -Eo 'https?://[^[:space:]]+/issues/[0-9]+' | head -1)
+        if [ -n "$ISSUE_URL" ]; then
+            SOURCE_ISSUE=$(printf '%s' "$ISSUE_URL" | grep -Eo '[0-9]+$')
+        fi
+
+        if [ -z "$SOURCE_ISSUE" ]; then
+            >&2 echo "[specify] Error: created issue but could not parse number from gh output:"
+            >&2 printf '%s\n' "$_issue_out" | sed 's/^/[specify]   /'
+            exit 1
+        fi
+
+        >&2 echo "[specify] Created GitHub issue #${SOURCE_ISSUE}: ${ISSUE_URL}"
+        BRANCH_NUMBER="$SOURCE_ISSUE"
     fi
 
     # Determine branch prefix

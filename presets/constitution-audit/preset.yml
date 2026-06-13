@@ -13,6 +13,12 @@ requires:
   speckit_version: ">=0.6.0"
 
 provides:
+  scripts:
+    - name: "constitution-audit.sh"
+      file: "scripts/bash/constitution-audit.sh"
+      executable: true
+      description: "list constitution principles + validate audit files (substring-checks quotes against the constitution body, killing fabricated quotes)"
+
   templates:
     - type: "command"
       name: "speckit.plan"

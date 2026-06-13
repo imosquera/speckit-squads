@@ -1,5 +1,5 @@
 ---
-description: "Execute /speckit-plan, but require the Constitution Check section of plan.md to contain a direct quoted sentence from each constitution principle"
+description: "Execute /speckit-plan, but require the Constitution Check section of plan.md to pass deterministic substring-quote validation against the constitution"
 ---
 
 ## User Input
@@ -12,33 +12,49 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Behavior
 
-Execute the canonical stock `/speckit-plan` flow with **one mandatory change** to the Constitution Check section of the generated `plan.md`.
+Execute the canonical stock `/speckit-plan` flow with **one mandatory gate** on the Constitution Check section of the generated `plan.md`.
 
 ### Mandatory Quoted Constitution Check
 
-When `.specify/memory/constitution.md` exists, the Constitution Check section of `plan.md` MUST contain, for **every** numbered principle in the constitution:
+When `.specify/memory/constitution.md` exists:
 
-- The principle name / number as a sub-heading or bullet (e.g. `- **Principle III: Test-First Development**`).
-- **A direct quoted sentence from the constitution body for that principle.** If you cannot quote it, you have not loaded it — stop, re-read `.specify/memory/constitution.md`, and try again. Paraphrases, summaries, and "follows the constitution" boilerplate are not acceptable.
-- A verdict, exactly one of: `PASS`, `VIOLATES`, or `N/A`.
-- If `VIOLATES`: a written justification naming the specific plan decisions that breach the principle, and the proposed mitigation or explicit waiver to be re-checked at `/speckit-implement` time.
-- If `N/A`: a one-line justification for why the principle does not apply to this feature.
+1. **List the principles** the Constitution Check must cover:
 
-The blanket sentence "No violations" is forbidden — it does not prove the constitution was loaded. Quote-or-it-didn't-happen.
+   ```sh
+   .specify/presets/constitution-audit/scripts/bash/constitution-audit.sh list
+   ```
+
+2. **Write the Constitution Check section of `plan.md`** so that, for every principle listed above:
+   - The principle heading is referenced.
+   - The section contains **a direct quoted span (>= 4 words) taken verbatim from that principle's body in the constitution** (double quotes, backticks, or a `>` blockquote).
+   - The section contains a verdict line with exactly one of: `PASS`, `VIOLATES`, or `N/A`.
+   - `VIOLATES` entries include a written justification and proposed mitigation (re-checked at `/speckit-implement` time).
+   - `N/A` entries include a one-line justification.
+
+   The blanket sentence "No violations" is forbidden — it cannot survive validation.
+
+3. **Validate `plan.md`** deterministically:
+
+   ```sh
+   .specify/presets/constitution-audit/scripts/bash/constitution-audit.sh validate <feature-directory>/plan.md
+   ```
+
+   If this exits non-zero, the Constitution Check is incomplete or contains fabricated quotes. Fix the flagged entries and re-run validation. **Do not finish the command until this exits zero.**
 
 When `.specify/memory/constitution.md` does **not** exist, the Constitution Check section may state "No constitution defined" and the stock flow continues unchanged.
 
 ### Stock Flow
 
-Everything else in the canonical stock `/speckit-plan` flow runs unchanged (Technical Context, Project Structure, Phase 0/1 artefacts as configured, etc.).
+Everything else in the canonical stock `/speckit-plan` flow (Technical Context, Project Structure, Phase 0/1 artefacts as configured) runs unchanged.
 
 ## Failure Policy
 
-- If `plan.md` is written without a quoted entry for every principle in the constitution, return an error and mark the command as incomplete. The downstream `/speckit-implement` (especially when paired with the `constitution-audit` preset's implement override) will refuse to start.
-- Do not silently downgrade this step to optional behaviour.
+- A non-zero exit from `constitution-audit.sh validate` is a hard stop. The command is incomplete; downstream `/speckit-implement` will refuse to start.
+- The script enforces the quote-substring check; the LLM cannot work around it by paraphrasing or inventing plausible-sounding quotes.
 
 ## Completion Report
 
 On success, include:
-- Whether the Constitution Check was quoted (and the count of principles covered)
+- Whether the Constitution Check was validated (path to `plan.md`)
+- Confirmation that `constitution-audit.sh validate` exited zero
 - The normal stock `/speckit-plan` completion summary

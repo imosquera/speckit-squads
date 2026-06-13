@@ -1,5 +1,5 @@
 ---
-description: "Execute /speckit-implement, but block code-writing until a quoted, principle-by-principle constitution audit has been produced"
+description: "Execute /speckit-implement, but block code-writing until a quoted constitution audit has been written and validated by a deterministic script"
 ---
 
 ## User Input
@@ -12,37 +12,49 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Behavior
 
-Execute the canonical stock `/speckit-implement` flow with **one mandatory change** to the prerequisite phase: the constitution read is no longer "IF EXISTS, read it" — it is "REQUIRED IF EXISTS, audit it in writing."
+Execute the canonical stock `/speckit-implement` flow with **one mandatory gate** before any task execution.
 
 ### Mandatory Constitution Audit (runs BEFORE any task execution)
 
 When `.specify/memory/constitution.md` exists:
 
-1. Read `.specify/memory/constitution.md` in full. Do not skim, do not summarise — load every numbered principle into context.
-2. Resolve the feature directory (`.specify/feature.json.feature_directory`, falling back to the canonical lookup the stock flow uses).
-3. Write `<feature-directory>/constitution-audit.md` containing, for **every** numbered principle in the constitution:
-   - The principle name / number (e.g. `Principle III: Test-First Development`).
-   - **A direct quoted sentence from the constitution body for that principle.** If you cannot quote it, you have not loaded it — stop, re-read the constitution, and try again. Paraphrases are not acceptable.
-   - A verdict, exactly one of: `PASS`, `VIOLATES`, or `N/A`.
-   - If `VIOLATES`: a written justification naming the specific tasks / files / decisions that breach the principle, and the proposed mitigation or explicit waiver.
-   - If `N/A`: a one-line justification for why the principle does not apply to this feature.
-4. Implementation MUST NOT begin until `constitution-audit.md` exists and every principle in the constitution is represented with either `PASS` or a justified `VIOLATES` / `N/A` entry. A `VIOLATES` entry is not a blocker by itself — it is an acknowledged, documented exception — but a missing or unquoted principle IS a blocker.
+1. **List the principles** the audit must cover:
+
+   ```sh
+   .specify/presets/constitution-audit/scripts/bash/constitution-audit.sh list
+   ```
+
+   Each printed line is one principle heading you MUST cover in the audit.
+
+2. **Write the audit** to `<feature-directory>/constitution-audit.md` (feature directory comes from `.specify/feature.json.feature_directory`). For every principle listed above, write a section containing:
+   - The principle heading text (so the validator can locate the section).
+   - **A direct quoted span (>= 4 words) taken verbatim from that principle's body in the constitution.** Use double quotes, backticks, or a `>` blockquote. Paraphrases will fail validation.
+   - A verdict line containing exactly one of: `PASS`, `VIOLATES`, or `N/A`.
+   - If `VIOLATES`: a written justification naming the breaching tasks / files / decisions and the proposed mitigation or explicit waiver.
+   - If `N/A`: a one-line justification for why the principle does not apply.
+
+3. **Validate the audit** deterministically:
+
+   ```sh
+   .specify/presets/constitution-audit/scripts/bash/constitution-audit.sh validate <feature-directory>/constitution-audit.md
+   ```
+
+   If this exits non-zero, the audit is incomplete or contains fabricated quotes. Fix the flagged entries and re-run validation. **Do not proceed to implementation until this command exits zero.**
 
 When `.specify/memory/constitution.md` does **not** exist, skip the audit and continue with the stock flow.
 
 ### Stock Flow
 
-After the audit gate passes, execute the canonical stock `/speckit-implement` flow unchanged (prerequisite checks, task execution, normal hook handling, completion report).
+After the validator exits zero, execute the canonical stock `/speckit-implement` flow unchanged.
 
 ## Failure Policy
 
-- If the constitution exists but you cannot produce a complete quoted audit, return an error and mark the command as incomplete. Do not start implementing tasks.
-- If `constitution-audit.md` is written without a quoted sentence for every principle, treat it as missing — re-run the audit step.
-- Do not silently downgrade this step to optional behaviour.
+- A non-zero exit from `constitution-audit.sh validate` is a hard stop. Do not start implementing tasks.
+- The script enforces the quote-substring check; the LLM cannot work around it by paraphrasing or inventing plausible-sounding quotes.
 
 ## Completion Report
 
 On success, include:
-- Whether a constitution audit was performed (and the path to `constitution-audit.md` if so)
-- Count of principles audited and the breakdown (PASS / VIOLATES / N/A)
+- Whether a constitution audit was performed (path to `constitution-audit.md` if so)
+- Confirmation that `constitution-audit.sh validate` exited zero
 - The normal stock `/speckit-implement` completion summary

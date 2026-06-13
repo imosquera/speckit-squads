@@ -18,6 +18,7 @@ presets/      # Spec Kit presets (template + command overrides)
   spec-minimal/                 composable wrapper for /speckit-specify and /speckit-plan, with UI preview support
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
+  constitution-audit/           Plan + implement overrides requiring a quoted, principle-by-principle constitution audit
 ```
 
 Each item is a self-contained directory with its own `extension.yml` or `preset.yml` manifest, conforming to Spec Kit's schema:

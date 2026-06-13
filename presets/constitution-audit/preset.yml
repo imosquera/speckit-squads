@@ -1,0 +1,33 @@
+schema_version: "1.0"
+
+preset:
+  id: "constitution-audit"
+  name: "Constitution Audit Enforcement"
+  version: "1.0.0"
+  description: "Forces /speckit-plan and /speckit-implement to load the constitution in full and produce a quoted, principle-by-principle audit before code is written. Prevents the vibes-based 'no violations' shortcut."
+  author: "speckit-squads"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  templates:
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Plan command that requires quoted constitution references in the Constitution Check section"
+      replaces: "speckit.plan"
+    - type: "command"
+      name: "speckit.implement"
+      file: "commands/speckit.implement.md"
+      description: "Implement command that requires a quoted constitution audit file before code is written"
+      replaces: "speckit.implement"
+
+tags:
+  - "constitution"
+  - "governance"
+  - "plan"
+  - "implement"
+  - "audit"

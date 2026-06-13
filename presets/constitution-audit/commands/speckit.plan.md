@@ -21,7 +21,7 @@ When `.specify/memory/constitution.md` exists:
 1. **List the principles** the Constitution Check must cover:
 
    ```sh
-   .specify/presets/constitution-audit/scripts/bash/constitution-audit.sh list
+   python3 .specify/presets/constitution-audit/scripts/python/constitution_audit.py list
    ```
 
 2. **Write the Constitution Check section of `plan.md`** so that, for every principle listed above:
@@ -36,7 +36,7 @@ When `.specify/memory/constitution.md` exists:
 3. **Validate `plan.md`** deterministically:
 
    ```sh
-   .specify/presets/constitution-audit/scripts/bash/constitution-audit.sh validate <feature-directory>/plan.md
+   python3 .specify/presets/constitution-audit/scripts/python/constitution_audit.py validate <feature-directory>/plan.md
    ```
 
    If this exits non-zero, the Constitution Check is incomplete or contains fabricated quotes. Fix the flagged entries and re-run validation. **Do not finish the command until this exits zero.**
@@ -49,12 +49,12 @@ Everything else in the canonical stock `/speckit-plan` flow (Technical Context, 
 
 ## Failure Policy
 
-- A non-zero exit from `constitution-audit.sh validate` is a hard stop. The command is incomplete; downstream `/speckit-implement` will refuse to start.
+- A non-zero exit from `constitution_audit.py validate` is a hard stop. The command is incomplete; downstream `/speckit-implement` will refuse to start.
 - The script enforces the quote-substring check; the LLM cannot work around it by paraphrasing or inventing plausible-sounding quotes.
 
 ## Completion Report
 
 On success, include:
 - Whether the Constitution Check was validated (path to `plan.md`)
-- Confirmation that `constitution-audit.sh validate` exited zero
+- Confirmation that `constitution_audit.py validate` exited zero
 - The normal stock `/speckit-plan` completion summary

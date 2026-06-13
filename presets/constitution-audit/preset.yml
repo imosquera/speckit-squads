@@ -14,10 +14,10 @@ requires:
 
 provides:
   scripts:
-    - name: "constitution-audit.sh"
-      file: "scripts/bash/constitution-audit.sh"
+    - name: "constitution_audit.py"
+      file: "scripts/python/constitution_audit.py"
       executable: true
-      description: "list constitution principles + validate audit files (substring-checks quotes against the constitution body, killing fabricated quotes)"
+      description: "list constitution principles + validate audit files (substring-checks quotes against the constitution body, killing fabricated quotes). Stdlib-only Python 3."
 
   templates:
     - type: "command"

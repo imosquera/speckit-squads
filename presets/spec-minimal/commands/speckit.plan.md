@@ -1,10 +1,10 @@
 ---
-description: "Composable wrapper for /speckit-plan that strictly enforces a minimal documentation tree: spec.md, plan.md, tasks.md, requirements.md."
+description: "Composable wrapper for /speckit-plan that strictly enforces a four-file documentation tree (spec.md, plan.md, tasks.md, requirements.md) via filesystem blockers, not post-hoc cleanup."
 ---
 
 ## Wrapper Layer
 
-This preset wraps the stock `/speckit-plan` command. Keep the stock flow for prerequisites, artifact loading, planning decisions, validation, and hooks. The **Documentation Rule** below is a hard constraint and overrides any conflicting stock instruction.
+This preset wraps the stock `/speckit-plan` command. The deterministic enforcement is delegated to two scripts so the rule is mechanical, not prompt-dependent.
 
 ### Documentation Rule (MANDATORY — NO EXCEPTIONS)
 
@@ -15,28 +15,27 @@ The feature directory MUST contain ONLY these four files at the top level:
 - `tasks.md`
 - `requirements.md`
 
-You MUST NOT create any of the following, under any circumstances:
+`research.md`, `data-model.md`, `quickstart.md`, and `contracts/` MUST NOT be created. There is no escape hatch. Content that would have lived in those files MUST be inlined as a section of `plan.md` or `requirements.md`.
 
-- `research.md`
-- `data-model.md`
-- `quickstart.md`
-- `contracts/` (directory or any file inside it)
-- any other `.md` file or subdirectory beyond the four listed above
+### Enforcement (deterministic, not prompt-dependent)
 
-This rule is **enforced**, not advisory. There is no "unless truly needed" escape hatch. If the stock `/speckit-plan` template instructs you to write any forbidden file, ignore that instruction. If the feature genuinely requires content that would have lived in a forbidden file (e.g. an entity model, a contract sketch, research notes), inline it as a section inside `plan.md` or `requirements.md` — never as a separate file.
+Run the pre-flight blocker BEFORE the stock plan flow executes:
 
-In the **Project Structure → Documentation (this feature)** subsection of `plan.md`, list exactly these four files and nothing else.
+```bash
+.specify/presets/spec-minimal/scripts/bash/block-forbidden-artifacts.sh "$SPECIFY_FEATURE_DIRECTORY"
+```
 
-### Enforcement Check (run before reporting success)
+This pre-creates `research.md`, `data-model.md`, `quickstart.md` as empty directories and `contracts/` as a read-only directory, so any stock-flow attempt to write those names fails immediately with `EISDIR` or `EACCES`. Forbidden files are physically uncreatable for the duration of the run.
 
-Before the command reports completion, verify the feature directory:
+In the **Project Structure → Documentation (this feature)** subsection of `plan.md`, list exactly the four allowed files and nothing else.
 
-1. List the contents of the feature directory.
-2. If any file or directory other than `spec.md`, `plan.md`, `tasks.md`, `requirements.md` exists at the top level, DELETE it (or fold its content into `plan.md` / `requirements.md` first if it contains useful material).
-3. Specifically check for and remove: `research.md`, `data-model.md`, `quickstart.md`, `contracts/`.
-4. Only report success once the directory listing matches the allowed set exactly.
+Run the post-flight verifier AFTER the stock plan flow completes, before reporting success:
 
-If you cannot satisfy this constraint, fail loudly with an explicit error rather than silently producing extra files.
+```bash
+.specify/presets/spec-minimal/scripts/bash/verify-minimal-tree.sh "$SPECIFY_FEATURE_DIRECTORY"
+```
+
+This fails the run (non-zero exit) if any forbidden artifact ended up on disk, and cleans up the empty sentinel directories on success. If it exits non-zero, surface the error verbatim to the user — do not retry, do not silently delete, do not report success.
 
 ### Core Flow
 

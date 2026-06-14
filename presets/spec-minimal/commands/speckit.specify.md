@@ -8,12 +8,13 @@ This preset wraps the stock `/speckit-specify` command. Keep the stock workflow 
 
 ### Output Rules
 
-These rules override any conflicting stock instruction for spec rendering:
+After the stock command writes `spec.md`, run the deterministic section stripper:
 
-1. Drop the `## Assumptions` section entirely.
-2. Drop the `### Key Entities` section entirely.
-3. Drop the `## Success Criteria` section entirely.
-4. Keep all other mandatory sections, including User Scenarios, Edge Cases, Functional Requirements, Functional Programming Constraints, and Platform Constraints.
+```bash
+.specify/presets/spec-minimal/scripts/bash/strip-spec-sections.sh "$SPECIFY_FEATURE_DIRECTORY/spec.md"
+```
+
+It removes `## Assumptions`, `### Key Entities`, and `## Success Criteria` (idempotently — safe to run repeatedly). Keep all other mandatory sections intact, including User Scenarios, Edge Cases, Functional Requirements, Functional Programming Constraints, and Platform Constraints.
 
 ### UI Preview Layer
 

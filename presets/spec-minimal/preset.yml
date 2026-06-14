@@ -4,7 +4,7 @@ preset:
   id: "spec-minimal"
   name: "Spec Minimal"
   version: "1.0.0"
-  description: "Wraps /speckit-specify and /speckit-plan to trim generated artifacts without replacing the stock command flow. Specify still drops Assumptions, Key Entities, and Success Criteria and adds a GitHub-safe inline HTML preview for UI-touching features. Plan still trims the documentation tree and avoids data-model.md, quickstart.md, and contracts/ unless truly needed."
+  description: "Wraps /speckit-specify and /speckit-plan to enforce a strictly minimal artifact set. Specify drops Assumptions, Key Entities, and Success Criteria and adds a GitHub-safe inline HTML preview for UI-touching features. Plan hard-enforces that the feature directory contains ONLY spec.md, plan.md, tasks.md, and requirements.md — research.md, data-model.md, quickstart.md, and contracts/ are forbidden."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"
   license: "MIT"
@@ -23,7 +23,7 @@ provides:
     - type: "command"
       name: "speckit.plan"
       file: "commands/speckit.plan.md"
-      description: "Composable wrapper for /speckit-plan that trims the documentation tree produced by the stock command."
+      description: "Composable wrapper for /speckit-plan that strictly enforces a four-file documentation tree (spec.md, plan.md, tasks.md, requirements.md)."
       strategy: "wrap"
 
 tags:

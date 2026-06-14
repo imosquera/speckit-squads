@@ -7,7 +7,9 @@ Wraps `/speckit-specify` and `/speckit-plan` to trim the generated artifacts wit
 | Command | Default artifacts | Under `spec-minimal` |
 |---|---|---|
 | `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria**, plus an inline HTML preview for UI-touching features |
-| `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `plan.md` (+ `research.md` only if decisions were made) |
+| `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | **only** `spec.md`, `plan.md`, `tasks.md`, `requirements.md` — everything else is forbidden and stripped |
+
+The plan wrapper is **strict**: it actively removes `research.md`, `data-model.md`, `quickstart.md`, and `contracts/` if the stock flow produces them. Any content that would have lived in those files must be inlined as a section of `plan.md` or `requirements.md`.
 
 ## Install
 
@@ -21,6 +23,6 @@ The `spec-minimal` preset can be stacked with implement-focused presets (for exa
 
 ## When NOT to use
 
-- Features that introduce real new entities (use the default preset; `data-model.md` is genuinely useful).
-- Public-facing APIs across service boundaries (use the default preset; `contracts/` is the source of truth).
+- Features that introduce real new entities and need a standalone `data-model.md` (this preset forbids it).
+- Public-facing APIs across service boundaries that need a `contracts/` source of truth (forbidden here).
 - First feature in a new project (the full artifact set helps establish norms).

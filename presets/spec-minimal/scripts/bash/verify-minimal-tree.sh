@@ -25,8 +25,8 @@ if [[ ! -d "$FEATURE_DIR" ]]; then
     exit 2
 fi
 
-ALLOWED=(spec.md plan.md tasks.md requirements.md)
-SENTINELS=(research.md data-model.md quickstart.md contracts)
+ALLOWED=(spec.md plan.md tasks.md requirements.md quickstart.md)
+SENTINELS=(research.md data-model.md contracts)
 
 is_allowed() {
     for a in "${ALLOWED[@]}"; do [[ "$1" == "$a" ]] && return 0; done

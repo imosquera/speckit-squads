@@ -4,7 +4,7 @@
 # write-blocked entries so the stock /speckit-plan flow CANNOT create them.
 #
 # Strategy:
-#   * research.md, data-model.md, quickstart.md  -> created as empty 0-byte
+#   * research.md, data-model.md  -> created as empty 0-byte
 #     directories. Any attempt to open(...O_WRONLY|O_CREAT) one of these
 #     names errors out with EISDIR, so the stock flow's file-write step
 #     fails fast instead of silently producing a forbidden artifact.
@@ -28,7 +28,7 @@ if [[ ! -d "$FEATURE_DIR" ]]; then
     exit 2
 fi
 
-FILE_BLOCKS=(research.md data-model.md quickstart.md)
+FILE_BLOCKS=(research.md data-model.md)
 DIR_BLOCKS=(contracts)
 
 for name in "${FILE_BLOCKS[@]}"; do

@@ -4,7 +4,7 @@ preset:
   id: "spec-minimal"
   name: "Spec Minimal"
   version: "1.0.0"
-  description: "Wraps /speckit-specify and /speckit-plan to enforce a strictly minimal artifact set. Specify drops Assumptions, Key Entities, and Success Criteria and adds a GitHub-safe inline HTML preview for UI-touching features. Plan hard-enforces that the feature directory contains ONLY spec.md, plan.md, tasks.md, and requirements.md — research.md, data-model.md, quickstart.md, and contracts/ are forbidden."
+  description: "Wraps /speckit-specify and /speckit-plan to enforce a strictly minimal artifact set. Specify drops Assumptions, Key Entities, and Success Criteria and adds a GitHub-safe inline HTML preview for UI-touching features. Plan hard-enforces the feature directory to spec.md, plan.md, tasks.md, requirements.md, and optionally quickstart.md — research.md, data-model.md, and contracts/ are forbidden via filesystem blockers."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"
   license: "MIT"

@@ -8,14 +8,15 @@ This preset wraps the stock `/speckit-plan` command. The deterministic enforceme
 
 ### Documentation Rule (MANDATORY — NO EXCEPTIONS)
 
-The feature directory MUST contain ONLY these four files at the top level:
+The feature directory MUST contain ONLY these files at the top level:
 
 - `spec.md`
 - `plan.md`
 - `tasks.md`
 - `requirements.md`
+- `quickstart.md` (optional but allowed)
 
-`research.md`, `data-model.md`, `quickstart.md`, and `contracts/` MUST NOT be created. There is no escape hatch. Content that would have lived in those files MUST be inlined as a section of `plan.md` or `requirements.md`.
+`research.md`, `data-model.md`, and `contracts/` MUST NOT be created. There is no escape hatch. Content that would have lived in those files MUST be inlined as a section of `plan.md` or `requirements.md`.
 
 ### Enforcement (deterministic, not prompt-dependent)
 
@@ -25,9 +26,9 @@ Run the pre-flight blocker BEFORE the stock plan flow executes:
 .specify/presets/spec-minimal/scripts/bash/block-forbidden-artifacts.sh "$SPECIFY_FEATURE_DIRECTORY"
 ```
 
-This pre-creates `research.md`, `data-model.md`, `quickstart.md` as empty directories and `contracts/` as a read-only directory, so any stock-flow attempt to write those names fails immediately with `EISDIR` or `EACCES`. Forbidden files are physically uncreatable for the duration of the run.
+This pre-creates `research.md` and `data-model.md` as empty directories and `contracts/` as a read-only directory, so any stock-flow attempt to write those names fails immediately with `EISDIR` or `EACCES`. Forbidden files are physically uncreatable for the duration of the run.
 
-In the **Project Structure → Documentation (this feature)** subsection of `plan.md`, list exactly the four allowed files and nothing else.
+In the **Project Structure → Documentation (this feature)** subsection of `plan.md`, list exactly the allowed files and nothing else.
 
 Run the post-flight verifier AFTER the stock plan flow completes, before reporting success:
 

@@ -27,10 +27,10 @@ Also check for project conventions:
 
 ## Step 1b: Optional — ponytail skill
 
-If the `ponytail` skill (from the `DietrichGebert/ponytail` marketplace) is available locally — i.e. it appears in the host's available-skills list — invoke it via the Skill tool **before** Step 2 and fold its output into the three-pass review (treat its findings as additional input to whichever review pass they fit best).
+If the `ponytail:ponytail-review` skill (from the `DietrichGebert/ponytail` marketplace) is available locally — i.e. it appears in the host's available-skills list — invoke it via the Skill tool with `skill: "ponytail:ponytail-review"` **before** Step 2 and fold its output into the three-pass review (treat its findings as additional input to whichever review pass they fit best).
 
 Detection rules:
-- Only invoke `ponytail` if it is explicitly listed as an available/user-invocable skill in this session. Do **not** guess the name or attempt to install it.
+- Only invoke `ponytail:ponytail-review` if it is explicitly listed as an available/user-invocable skill in this session. Do **not** guess the name or attempt to install it.
 - If the skill is not available, skip this step silently and proceed to Step 2. Do not warn the user, and do not block the review.
 - If the user has installed the marketplace and wants ponytail enabled but it isn't showing up, point them at the marketplace: `DietrichGebert/ponytail`.
 

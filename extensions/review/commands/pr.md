@@ -25,6 +25,15 @@ Also check for project conventions:
 - Read `CLAUDE.md` if it exists
 - Read `CONTRIBUTING.md` if it exists
 
+## Step 1b: Optional — ponytail skill
+
+If the `ponytail` skill (from the `DietrichGebert/ponytail` marketplace) is available locally — i.e. it appears in the host's available-skills list — invoke it via the Skill tool **before** Step 2 and fold its output into the three-pass review (treat its findings as additional input to whichever review pass they fit best).
+
+Detection rules:
+- Only invoke `ponytail` if it is explicitly listed as an available/user-invocable skill in this session. Do **not** guess the name or attempt to install it.
+- If the skill is not available, skip this step silently and proceed to Step 2. Do not warn the user, and do not block the review.
+- If the user has installed the marketplace and wants ponytail enabled but it isn't showing up, point them at the marketplace: `DietrichGebert/ponytail`.
+
 ## Step 2: Three sequential reviews
 
 Work through each review fully before moving to the next. Use `gh pr diff` or `git diff` to read changed files.

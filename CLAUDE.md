@@ -36,7 +36,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
-- `git` — feature branches, worktree+clean, PR, auto-commit hooks across all phases
+- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), clean, PR, auto-commit hooks across all phases
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 **Presets**
@@ -48,6 +48,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
+- `constitution-audit` — overrides `/speckit-plan` and `/speckit-implement` to require a quoted, principle-by-principle audit of `.specify/memory/constitution.md` before code is written
 
 ## When you add a new extension or preset
 

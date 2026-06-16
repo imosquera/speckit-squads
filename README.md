@@ -7,7 +7,7 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
-  git/             Feature-branch workflow, worktree+clean, PR, auto-commit hooks
+  git/             Feature-branch + worktree + linked GitHub issue, clean, PR, auto-commit hooks
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 presets/      # Spec Kit presets (template + command overrides)
@@ -19,6 +19,7 @@ presets/      # Spec Kit presets (template + command overrides)
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
+  constitution-audit/           Plan + implement overrides requiring a quoted, principle-by-principle constitution audit
 ```
 
 Each item is a self-contained directory with its own `extension.yml` or `preset.yml` manifest, conforming to Spec Kit's schema:

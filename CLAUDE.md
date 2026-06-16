@@ -47,6 +47,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 - `spec-minimal` — composable wrapper for `/speckit-specify` (drops Assumptions + Key Entities + Success Criteria, adds UI preview for UI-touching specs, and syncs the issue) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
+- `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
 - `constitution-audit` — overrides `/speckit-plan` and `/speckit-implement` to require a quoted, principle-by-principle audit of `.specify/memory/constitution.md` before code is written
 
 ## When you add a new extension or preset

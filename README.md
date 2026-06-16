@@ -18,6 +18,7 @@ presets/      # Spec Kit presets (template + command overrides)
   spec-minimal/                 composable wrapper for /speckit-specify and /speckit-plan, with UI preview support
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
+  implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
   constitution-audit/           Plan + implement overrides requiring a quoted, principle-by-principle constitution audit
 ```
 
@@ -46,6 +47,7 @@ specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
+specify preset add --dev "$SQUADS/presets/implement-prelude-skills"
 ```
 
 Or use the bundled script from inside the checkout:

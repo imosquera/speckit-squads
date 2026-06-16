@@ -1,5 +1,5 @@
 ---
-description: Perform a comprehensive 3-pass code review of a pull request. Use this command whenever the user asks to review a PR, do a code review, check a pull request, or says "/speckit-review-pr". Also trigger when the user says things like "review my changes", "look at this PR", "give me feedback on this PR", or "what do you think of this PR". If a PR number is provided use it; otherwise default to the PR for the current branch.
+description: Perform a comprehensive 4-pass code review of a pull request. Use this command whenever the user asks to review a PR, do a code review, check a pull request, or says "/speckit-review-pr". Also trigger when the user says things like "review my changes", "look at this PR", "give me feedback on this PR", or "what do you think of this PR". If a PR number is provided use it; otherwise default to the PR for the current branch.
 ---
 
 # PR Review
@@ -25,16 +25,7 @@ Also check for project conventions:
 - Read `CLAUDE.md` if it exists
 - Read `CONTRIBUTING.md` if it exists
 
-## Step 1b: Optional — ponytail skill
-
-If the `ponytail:ponytail-review` skill (from the `DietrichGebert/ponytail` marketplace) is available locally — i.e. it appears in the host's available-skills list — invoke it via the Skill tool with `skill: "ponytail:ponytail-review"` **before** Step 2 and fold its output into the three-pass review (treat its findings as additional input to whichever review pass they fit best).
-
-Detection rules:
-- Only invoke `ponytail:ponytail-review` if it is explicitly listed as an available/user-invocable skill in this session. Do **not** guess the name or attempt to install it.
-- If the skill is not available, skip this step silently and proceed to Step 2. Do not warn the user, and do not block the review.
-- If the user has installed the marketplace and wants ponytail enabled but it isn't showing up, point them at the marketplace: `DietrichGebert/ponytail`.
-
-## Step 2: Three sequential reviews
+## Step 2: Four sequential reviews
 
 Work through each review fully before moving to the next. Use `gh pr diff` or `git diff` to read changed files.
 
@@ -69,9 +60,19 @@ Examine:
 - Security concerns (injection, auth gaps, sensitive data exposure, input validation)
 - Resource cleanup (connections, file handles, goroutines, etc.)
 
+### Review 4 — Simplicity
+Focus: over-engineering, reinvented standard-library behavior, speculative abstractions, dead flexibility, unnecessary indirection, and code that can be made smaller without losing clarity.
+
+If the `ponytail:ponytail-review` skill (from the `DietrichGebert/ponytail` marketplace) is available locally — i.e. it appears in the host's available-skills list — invoke it via the Skill tool with `skill: "ponytail:ponytail-review"` against the current PR diff. Treat its findings as first-class review findings and include them under the `Simplicity` section in the final report.
+
+Detection rules:
+- Only invoke `ponytail:ponytail-review` if it is explicitly listed as an available/user-invocable skill in this session. Do **not** guess the name or attempt to install it.
+- If the skill is not available, perform this pass manually using the same focus areas. Do not warn the user, and do not block the review.
+- If the user has installed the marketplace and wants ponytail enabled but it isn't showing up, point them at the marketplace: `DietrichGebert/ponytail`.
+
 ## Step 3: Synthesize
 
-Combine findings from all three reviews into a single report using the format below. Be specific — every issue should include a `file:line` reference where possible. Omit sections that have nothing to report.
+Combine findings from all four reviews into a single report using the format below. Be specific — every issue should include a `file:line` reference where possible. Omit sections that have nothing to report.
 
 ---
 
@@ -111,6 +112,9 @@ Combine findings from all three reviews into a single report using the format be
 ### Testing & Security
 [Review 3 findings with file:line references]
 
+### Simplicity
+[Review 4 findings with file:line references]
+
 ## Recommendation
 **[Approve | Approve with conditions | Request changes]**
 [One paragraph explaining the reasoning]
@@ -118,7 +122,7 @@ Combine findings from all three reviews into a single report using the format be
 
 ## Notes
 
-- Use `TodoWrite` (or the host's task-tracking tool) to track your progress through the three review phases.
+- Use `TodoWrite` (or the host's task-tracking tool) to track your progress through the four review phases.
 - Prioritise impact over completeness — a short list of real issues beats a long list of nitpicks.
 - If the PR is large, focus each review pass on the files most relevant to that pass's concern rather than reading every file in every pass.
 - Reference `CLAUDE.md` patterns when flagging deviations from project conventions.

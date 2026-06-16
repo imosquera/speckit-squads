@@ -83,7 +83,9 @@ if [ -f "$TASKS_FILE" ]; then
         else
             echo "[archive] refusing to archive: $TASKS_FILE has unchecked tasks (use --force to override):" >&2
             grep -nE '^- \[ \]' "$TASKS_FILE" >&2
-            exit 1
+            # Exit 2 signals "unchecked tasks" specifically, so the command layer
+            # can distinguish this from other failures and prompt the user.
+            exit 2
         fi
     fi
 fi

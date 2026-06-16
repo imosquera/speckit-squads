@@ -4,7 +4,7 @@ extension:
   id: "review"
   name: "Review Extension"
   version: "1.2.0"
-  description: "Code review extension combining a GitHub PR-oriented 3-pass review (architecture, implementation, testing/security) with specialized post-implementation agents for code quality, comments, tests, error handling, type design, and simplification. The PR review will additionally invoke the `ponytail` skill (DietrichGebert/ponytail marketplace) when it is available locally. Use /speckit-review for local-changes review across all agents, or /speckit-review-pr for a synthesized review of a GitHub PR."
+  description: "Code review extension combining a GitHub PR-oriented 4-pass review (architecture, implementation, testing/security, simplicity) with specialized post-implementation agents for code quality, comments, tests, error handling, type design, and simplification. The PR review will additionally invoke the `ponytail` skill (DietrichGebert/ponytail marketplace) when it is available locally. Use /speckit-review for local-changes review across all agents, or /speckit-review-pr for a synthesized review of a GitHub PR."
   author: "beadbits"
   repository: "local"
   license: "MIT (upstream agents) and same-as-project (pr command)"
@@ -60,7 +60,7 @@ provides:
       description: "Code simplification suggestions — clarity, unnecessary complexity, redundant abstractions"
     - name: "speckit.review.pr"
       file: "commands/pr.md"
-      description: "Three-pass PR code review (architecture, implementation, testing/security) against a GitHub PR via gh"
+      description: "Four-pass PR code review (architecture, implementation, testing/security, simplicity) against a GitHub PR via gh"
 
 hooks:
   after_implement:

@@ -51,13 +51,12 @@ outline.
    Then proceed in the current cwd. Skip steps 4–6.
 
 4. If `WT` is non-null but the directory does NOT exist on disk:
-   ERROR with:
-   "Worktree directory '<WT>' is recorded in .specify/feature.json but
-   does not exist on disk. Recreate it with:
-       git worktree add '<WT>' <feature-branch>
-   then re-invoke /speckit-implement."
-   Do NOT proceed. (The feature branch can be read from
-   feature.json.feature_directory's NNN- prefix or from `git branch --list`.)
+   The recorded path is machine-local (e.g. created in another clone or by
+   another author) and is meaningless here. Emit a single-sentence warning:
+   "Recorded worktree_path '<WT>' does not exist on disk (likely a path from
+   another clone). Proceeding in the current cwd; Principle VII isolation is
+   not enforced for this invocation."
+   Then proceed in the current cwd. Skip steps 5–6.
 
 5. If `WT` is non-null, exists on disk, and matches the current cwd
    (resolved to absolute path), proceed silently — no cd needed.
@@ -209,13 +208,15 @@ for `/speckit-implement`. The substantive operational behaviour it adds beyond t
 
 1. Reading `worktree_path` from `.specify/feature.json` at the cwd.
 2. `cd`-ing into that path before any filesystem write performed by the implement outline.
-3. Erroring out (rather than silently proceeding) when the recorded worktree directory
-   has been deleted from disk without `git worktree remove`.
+3. Falling back to the current cwd (with a warning) when the recorded worktree directory
+   does not exist on disk — because `worktree_path` is a machine-local absolute path
+   committed to `.specify/feature.json`, a fresh clone would otherwise abort on a path
+   it can never have.
 
 This override SUPERSEDES the in-skill worktree-resolution block previously added in
-commit fee6cf3, which auto-created worktrees from the branch name. The contract in
-`specs/022-worktree-isolation-resume/contracts/cd-block.md` is stricter — a missing
-worktree directory is a HARD ERROR, not an auto-recovery trigger.
+commit fee6cf3, which auto-created worktrees from the branch name. A missing worktree
+directory degrades to the current cwd rather than erroring, so implementation stays
+portable across clones.
 
 The cd-block at `### 0.` is byte-identical across all four feature-scoped command
 overrides (`/speckit-clarify`, `/speckit-plan`, `/speckit-tasks`, `/speckit-implement`)

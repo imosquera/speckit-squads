@@ -1,5 +1,5 @@
 ---
-description: "Execute /speckit-implement, but block code-writing until a quoted constitution audit has been written and validated by a deterministic script"
+description: "Execute /speckit-implement, then block completion until a quoted constitution audit of the written code has been produced and validated by a deterministic script"
 ---
 
 ## User Input
@@ -12,11 +12,15 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Behavior
 
-Execute the canonical stock `/speckit-implement` flow with **one mandatory gate** before any task execution.
+Execute the canonical stock `/speckit-implement` flow first, then run **one mandatory audit gate** before reporting completion.
 
-### Mandatory Constitution Audit (runs BEFORE any task execution)
+### Stock Flow
 
-When `.specify/memory/constitution.md` exists:
+Execute the canonical stock `/speckit-implement` flow unchanged.
+
+### Mandatory Constitution Audit (runs AFTER all task execution)
+
+After the stock flow finishes, when `.specify/memory/constitution.md` exists:
 
 1. **List the principles** the audit must cover:
 
@@ -26,7 +30,7 @@ When `.specify/memory/constitution.md` exists:
 
    Each printed line is one principle heading you MUST cover in the audit.
 
-2. **Write the audit** to `<feature-directory>/constitution-audit.md` (feature directory comes from `.specify/feature.json.feature_directory`). For every principle listed above, write a section containing:
+2. **Write the audit** to `<feature-directory>/constitution-audit.md` (feature directory comes from `.specify/feature.json.feature_directory`). Audit the code that was **actually written** during this run. For every principle listed above, write a section containing:
    - The principle heading text (so the validator can locate the section).
    - **A direct quoted span (>= 4 words) taken verbatim from that principle's body in the constitution.** Use double quotes, backticks, or a `>` blockquote. Paraphrases will fail validation.
    - A verdict line containing exactly one of: `PASS`, `VIOLATES`, or `N/A`.
@@ -39,22 +43,20 @@ When `.specify/memory/constitution.md` exists:
    python3 .specify/presets/constitution-audit/scripts/python/constitution_audit.py validate <feature-directory>/constitution-audit.md
    ```
 
-   If this exits non-zero, the audit is incomplete or contains fabricated quotes. Fix the flagged entries and re-run validation. **Do not proceed to implementation until this command exits zero.**
+   If this exits non-zero, the audit is incomplete or contains fabricated quotes. Fix the flagged entries and re-run validation. **Do not report completion until this command exits zero.**
 
-When `.specify/memory/constitution.md` does **not** exist, skip the audit and continue with the stock flow.
-
-### Stock Flow
-
-After the validator exits zero, execute the canonical stock `/speckit-implement` flow unchanged.
+When `.specify/memory/constitution.md` does **not** exist, skip the audit.
 
 ## Failure Policy
 
-- A non-zero exit from `constitution_audit.py validate` is a hard stop. Do not start implementing tasks.
+- A non-zero exit from `constitution_audit.py validate` is a hard stop on reporting completion. The implementation has run, but the audit must pass before the task is considered done.
+- If the audit surfaces `VIOLATES` verdicts against the code just written, fix the breaching code (or record an explicit waiver in the audit) before reporting completion.
 - The script enforces the quote-substring check; the LLM cannot work around it by paraphrasing or inventing plausible-sounding quotes.
 
 ## Completion Report
 
 On success, include:
+- The normal stock `/speckit-implement` completion summary
 - Whether a constitution audit was performed (path to `constitution-audit.md` if so)
 - Confirmation that `constitution_audit.py validate` exited zero
-- The normal stock `/speckit-implement` completion summary
+- Any `VIOLATES` verdicts and how they were resolved (fix or waiver)

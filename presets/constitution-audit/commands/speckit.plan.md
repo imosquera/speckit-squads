@@ -14,7 +14,18 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 Execute the canonical stock `/speckit-plan` flow with **one mandatory gate** on the Constitution Check section of the generated `plan.md`.
 
+### Core Flow
+
+Run the core plan flow first so that `plan.md` exists before the Constitution
+Check gate is applied. This `{CORE_TEMPLATE}` seam is also the chaining point that
+lets other presets (e.g. spec-minimal) wrap this command: when composed, the
+placeholder expands to the next inner wrapper and ultimately the stock flow.
+
+{CORE_TEMPLATE}
+
 ### Mandatory Quoted Constitution Check
+
+After the core flow has produced `plan.md`, apply the Constitution Check gate.
 
 When `.specify/memory/constitution.md` exists:
 
@@ -42,10 +53,6 @@ When `.specify/memory/constitution.md` exists:
    If this exits non-zero, the Constitution Check is incomplete or contains fabricated quotes. Fix the flagged entries and re-run validation. **Do not finish the command until this exits zero.**
 
 When `.specify/memory/constitution.md` does **not** exist, the Constitution Check section may state "No constitution defined" and the stock flow continues unchanged.
-
-### Stock Flow
-
-Everything else in the canonical stock `/speckit-plan` flow (Technical Context, Project Structure, Phase 0/1 artefacts as configured) runs unchanged.
 
 ## Failure Policy
 

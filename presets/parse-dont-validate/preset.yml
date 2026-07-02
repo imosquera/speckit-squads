@@ -21,6 +21,16 @@ provides:
 
   templates:
     - type: "command"
+      name: "speckit.constitution"
+      file: "commands/speckit.constitution.md"
+      description: "Constitution command that always injects a canonical 'Parse, Don't Validate' governance section"
+      replaces: "speckit.constitution"
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Plan command that requires a 'Parse Boundaries' design section (trust boundaries + branded domain types + parsers). Chainable: exposes a {CORE_TEMPLATE} seam so other presets can wrap it."
+      strategy: "wrap"
+    - type: "command"
       name: "speckit.implement"
       file: "commands/speckit.implement.md"
       description: "Implement command that applies the parse-don't-validate discipline while writing TypeScript and gates completion on a deterministic anti-pattern scan"

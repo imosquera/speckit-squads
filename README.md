@@ -20,7 +20,7 @@ presets/      # Spec Kit presets (template + command overrides)
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
   constitution-audit/           Plan + implement overrides requiring a quoted, principle-by-principle constitution audit
-  parse-dont-validate/          implement override enforcing "Parse, don't validate" in TypeScript, with a deterministic anti-pattern scan gate
+  parse-dont-validate/          constitution + plan + implement overrides enforcing "Parse, don't validate" in TypeScript, with a deterministic anti-pattern scan gate
 ```
 
 Each item is a self-contained directory with its own `extension.yml` or `preset.yml` manifest, conforming to Spec Kit's schema:

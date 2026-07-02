@@ -49,6 +49,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
 - `constitution-audit` — overrides `/speckit-plan` and `/speckit-implement` to require a quoted, principle-by-principle audit of `.specify/memory/constitution.md` before code is written
+- `parse-dont-validate` — `/speckit-implement` override enforcing Alexis King's "Parse, don't validate" in TypeScript: untrusted input enters as `unknown`, parsers at the boundary return branded domain types via a discriminated Result, and a deterministic scanner gates completion by flagging `any`, un-typed `JSON.parse`, boolean validators, and stray brand casts
 
 ## When you add a new extension or preset
 

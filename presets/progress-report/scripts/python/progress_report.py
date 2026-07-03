@@ -44,6 +44,7 @@ Common options (all verbs):
   --branch B      default: current git branch (`git rev-parse --abbrev-ref HEAD`)
   --title  T      human label   (default: preserved, else derived from branch)
   --spec   S      feature slug   (default: preserved, else derived from branch)
+  --issue  U      GitHub issue or PR URL (e.g. https://github.com/owner/repo/issues/42)
   --dashboard D   dashboard repo (default: $AGENT_OS_DASHBOARD or ~/Code/agent-os)
   --note   N      trailing one-line note
 
@@ -101,6 +102,7 @@ def blank_state(branch):
         "branch": branch,
         "title": "",
         "spec": "",
+        "issue": "",
         "note": "",
         "phases": {
             "specify":   {"status": "pending", "summary": "", "description": "", "items": []},
@@ -137,6 +139,7 @@ def _from_yaml_dict(raw, branch):
     st["branch"] = str(raw.get("branch", branch) or branch)
     st["title"] = str(raw.get("title", "") or "")
     st["spec"] = str(raw.get("spec", "") or "")
+    st["issue"] = str(raw.get("issue", "") or "")
     st["note"] = str(raw.get("note", "") or "")
     phases_raw = raw.get("phases") or {}
     if isinstance(phases_raw, dict):
@@ -181,11 +184,11 @@ def _manual_parse(text, branch):
         line = raw.strip()
 
         # top-level scalar keys
-        mt = re.match(r"^(branch|title|spec|updated|note):\s*(.*)$", line)
+        mt = re.match(r"^(branch|title|spec|issue|updated|note):\s*(.*)$", line)
         if indent == 0 and mt:
             close_item()
             k, v = mt.group(1), _unquote(mt.group(2))
-            if k in ("branch", "title", "spec", "note"):
+            if k in ("branch", "title", "spec", "issue", "note"):
                 st[k] = v or st.get(k, "")
             cur_phase, mode = None, None
             continue
@@ -315,6 +318,8 @@ def render(st):
     out.append(f"title: {st['title'] or humanize(st['branch'])}")
     if st.get("spec"):
         out.append(f"spec: {st['spec']}")
+    if st.get("issue"):
+        out.append(f"issue: {st['issue']}")
     out.append(f"updated: {now_stamp()}")
     note = st.get("note", "")
     out.append(f"note: {_q(note) if note else '\"\"'}")
@@ -368,6 +373,8 @@ def apply_verb(st, args):
         st["title"] = args.title
     if args.spec:
         st["spec"] = args.spec
+    if args.issue:
+        st["issue"] = args.issue
     if not st["title"]:
         st["title"] = humanize(st["branch"])
     if not st.get("spec"):
@@ -433,6 +440,7 @@ def build_parser():
     p.add_argument("--branch")
     p.add_argument("--title")
     p.add_argument("--spec")
+    p.add_argument("--issue")
     p.add_argument("--dashboard")
     return p
 

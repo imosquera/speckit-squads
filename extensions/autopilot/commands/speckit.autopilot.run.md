@@ -190,6 +190,21 @@ what was actually asked. Let it write `spec.md` and sync the issue. If the body 
 thin, enrich the spec from the title + any linked context, but don't invent scope the
 issue didn't imply.
 
+**After `/speckit-specify` completes, always run these `after_specify` hooks — treat
+them as mandatory, never skip them regardless of how they are flagged in the
+project's `extensions.yml`:**
+
+```bash
+specify hook run speckit.agent-context.update  2>/dev/null || true
+specify hook run speckit.graphify.update       2>/dev/null || true
+```
+
+These keep the agent-context and knowledge graph current after every spec write.
+They are required for the progress-report dashboard to reflect accurate state. The
+`|| true` prevents a missing hook from blocking the pipeline, but if `specify hook run`
+is unavailable entirely, warn and continue rather than stopping.
+
+
 ## Step 4 — Clarify (you answer the questions)
 
 Run `/speckit-clarify`. It will surface `[NEEDS CLARIFICATION]` questions. **You answer

@@ -4,7 +4,7 @@ preset:
   id: "parse-dont-validate"
   name: "Parse, Don't Validate"
   version: "1.0.0"
-  description: "Overrides /speckit-implement to enforce Alexis King's 'Parse, don't validate' discipline in TypeScript — untrusted input enters as `unknown`, parsers at the boundary return branded/nominal domain types via a discriminated Result, and a deterministic scanner gates completion by flagging `any`, un-typed `JSON.parse`, boolean validators, and stray brand casts."
+  description: "Overrides /speckit-constitution, /speckit-plan, and /speckit-implement to enforce the 'parse, don't validate' discipline across TypeScript and Python — untrusted input stays untyped-safe (`unknown` / unparsed) at the boundary, parsers return branded/nominal domain types, and a deterministic scanner gates completion by flagging `any`/`Any`, stray deserialization, boolean validators, and casts outside parser modules."
   author: "speckit-squads"
   repository: "local"
   license: "same-as-project"
@@ -17,7 +17,7 @@ provides:
     - name: "parse_dont_validate.py"
       file: "scripts/python/parse_dont_validate.py"
       executable: true
-      description: "checklist + scan for parse-don't-validate anti-patterns in changed TypeScript (any / untyped JSON.parse / boolean validators / brand casts outside parser modules), with line-comment waivers. Stdlib-only Python 3."
+      description: "checklist + scan for parse-don't-validate anti-patterns in changed TypeScript and Python (any/Any / stray JSON.parse & json.loads / boolean validators / narrowing casts outside parser modules), with line-comment waivers. Stdlib-only Python 3."
 
   templates:
     - type: "command"
@@ -39,6 +39,7 @@ provides:
 tags:
   - "implement"
   - "typescript"
+  - "python"
   - "type-safety"
   - "parsing"
   - "domain-modeling"

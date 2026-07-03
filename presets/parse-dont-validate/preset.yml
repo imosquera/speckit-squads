@@ -17,7 +17,7 @@ provides:
     - name: "parse_dont_validate.py"
       file: "scripts/python/parse_dont_validate.py"
       executable: true
-      description: "checklist + scan for parse-don't-validate anti-patterns in changed TypeScript and Python (any/Any / stray JSON.parse & json.loads / boolean validators / narrowing casts outside parser modules), with line-comment waivers. Stdlib-only Python 3."
+      description: "checklist + scan for parse-don't-validate anti-patterns in changed TypeScript and Python (any/Any / stray JSON.parse & json.loads / boolean validators / narrowing casts outside parser modules), with line-comment waivers. Python is analysed via the stdlib `ast` module; TypeScript via line regex (no stdlib TS parser). Stdlib-only Python 3."
 
   templates:
     - type: "command"

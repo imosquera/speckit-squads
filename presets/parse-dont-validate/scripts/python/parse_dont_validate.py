@@ -10,8 +10,16 @@ proof forward. This script gives the preset teeth: an implementer can't claim
 "no validators left" while an `is_valid_user` / `isValidUser` still sits in the
 diff.
 
-Language-aware: understands TypeScript (`.ts/.tsx/.mts/.cts`) and Python
-(`.py/.pyi`). Stdlib-only. Python 3.8+.
+Language-aware:
+  * Python (`.py/.pyi`) is analysed with the stdlib `ast` module — a real
+    parse tree, so matches inside strings/comments never false-positive and
+    multi-line signatures are understood. Files that don't parse fall back to a
+    best-effort line scan.
+  * TypeScript (`.ts/.tsx/.mts/.cts`) is analysed with line-based regex.
+    Python's standard library has no TypeScript parser, and this script is
+    stdlib-only (no node/tsc dependency), so a real TS AST isn't available here.
+
+Stdlib-only. Python 3.8+.
 
 Subcommands
 -----------
@@ -39,12 +47,13 @@ prevent.
 
 from __future__ import annotations
 
+import ast
 import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, List
+from typing import Callable, List, Optional
 
 # --- discipline items (language-general) ------------------------------------
 
@@ -75,31 +84,7 @@ PARSER_FILE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# --- TypeScript patterns ----------------------------------------------------
-
-TS_ANY_RE = re.compile(r"\bas\s+any\b|:\s*any\b")
-TS_JSON_PARSE_RE = re.compile(r"\bJSON\.parse\s*\(")
-TS_UNKNOWN_RE = re.compile(r":\s*unknown\b")
-TS_VALIDATOR_RE = re.compile(
-    r"\b(?:function\s+|const\s+|let\s+)?"
-    r"(is[A-Z]\w*|validate\w*|checkValid\w*)\b"
-    r"[^=;{]*(:\s*boolean\b|=>\s*boolean\b)"
-)
-TS_BRAND_CAST_RE = re.compile(r"\bas\s+([A-Z]\w+)\b")
-TS_BRAND_CAST_IGNORE = {"const", "String", "Number", "Boolean", "Array",
-                        "Object", "Record", "Readonly", "Partial", "Promise",
-                        "Error", "unknown"}
-
-# --- Python patterns --------------------------------------------------------
-
-PY_ANY_RE = re.compile(r"(?::|->|\[|,|\()\s*Any\b|\bAny\s*[\]\),]")
-PY_DESERIALIZE_RE = re.compile(
-    r"\b(json\.loads?|pickle\.loads?|yaml\.safe_load|yaml\.load|marshal\.loads)\s*\("
-)
-PY_VALIDATOR_RE = re.compile(
-    r"\bdef\s+(is_valid\w*|validate\w*|is_\w+)\s*\([^)]*\)\s*->\s*bool\b"
-)
-PY_CAST_RE = re.compile(r"\b(?:typing\.)?cast\s*\(")
+VALIDATOR_NAME_RE = re.compile(r"^(is_[A-Za-z]\w*|validate\w*|check_valid\w*)$")
 
 TS_EXTENSIONS = {".ts", ".tsx", ".mts", ".cts"}
 PY_EXTENSIONS = {".py", ".pyi"}
@@ -124,7 +109,128 @@ def _waivers_for_line(lines: List[str], idx: int) -> set:
     return waived
 
 
-def _scan_typescript(line: str, is_parser: bool, add: Callable[[str], None]) -> None:
+# --- Python: AST-based analysis --------------------------------------------
+
+class _PyVisitor(ast.NodeVisitor):
+    """Collect parse-don't-validate findings from a Python AST."""
+
+    def __init__(self, path: str, lines: List[str], is_parser: bool):
+        self.path = path
+        self.lines = lines
+        self.is_parser = is_parser
+        self.findings: List[Finding] = []
+
+    def _add(self, rule: str, lineno: int) -> None:
+        if rule in _waivers_for_line(self.lines, lineno - 1):
+            return
+        text = self.lines[lineno - 1].strip() if 0 <= lineno - 1 < len(self.lines) else ""
+        self.findings.append(Finding(rule, self.path, lineno, text))
+
+    def _flag_any(self, annotation: Optional[ast.AST]) -> None:
+        # PDV001: `Any` anywhere inside a type annotation subtree.
+        if annotation is None:
+            return
+        for node in ast.walk(annotation):
+            if isinstance(node, ast.Name) and node.id == "Any":
+                self._add("PDV001", node.lineno)
+            elif isinstance(node, ast.Attribute) and node.attr == "Any":
+                self._add("PDV001", node.lineno)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self._flag_any(node.annotation)
+        self.generic_visit(node)
+
+    def visit_arg(self, node: ast.arg) -> None:
+        self._flag_any(node.annotation)
+        self.generic_visit(node)
+
+    def _visit_func(self, node) -> None:
+        self._flag_any(node.returns)
+        # PDV003: boolean validator at the boundary.
+        if (isinstance(node.returns, ast.Name) and node.returns.id == "bool"
+                and VALIDATOR_NAME_RE.match(node.name)):
+            self._add("PDV003", node.lineno)
+        self.generic_visit(node)
+
+    visit_FunctionDef = _visit_func
+    visit_AsyncFunctionDef = _visit_func
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        # PDV002: raw deserialization outside a parser module.
+        if not self.is_parser and isinstance(func, ast.Attribute) \
+                and isinstance(func.value, ast.Name):
+            mod, fn = func.value.id, func.attr
+            if ((mod in {"json", "pickle", "marshal"} and fn in {"load", "loads"})
+                    or (mod == "yaml" and fn in {"load", "safe_load"})):
+                self._add("PDV002", node.lineno)
+        # PDV004: narrowing cast outside a parser module.
+        if not self.is_parser:
+            is_cast = ((isinstance(func, ast.Name) and func.id == "cast")
+                       or (isinstance(func, ast.Attribute) and func.attr == "cast"))
+            if is_cast:
+                self._add("PDV004", node.lineno)
+        self.generic_visit(node)
+
+
+def _scan_python_ast(path: Path, content: str, lines: List[str],
+                     is_parser: bool) -> Optional[List[Finding]]:
+    try:
+        tree = ast.parse(content, filename=str(path))
+    except SyntaxError:
+        return None  # signal: fall back to the line scanner
+    visitor = _PyVisitor(str(path), lines, is_parser)
+    visitor.visit(tree)
+    # De-dupe (same Any can be reached via multiple annotation positions).
+    seen, unique = set(), []
+    for f in visitor.findings:
+        key = (f.rule, f.line)
+        if key not in seen:
+            seen.add(key)
+            unique.append(f)
+    return unique
+
+
+# Regex fallback for Python files that fail to parse (partial/py2 sources).
+PY_ANY_RE = re.compile(r"(?::|->|\[|,|\()\s*Any\b|\bAny\s*[\]\),]")
+PY_DESERIALIZE_RE = re.compile(
+    r"\b(json\.loads?|pickle\.loads?|yaml\.safe_load|yaml\.load|marshal\.loads)\s*\("
+)
+PY_VALIDATOR_RE = re.compile(
+    r"\bdef\s+(is_valid\w*|validate\w*|is_\w+)\s*\([^)]*\)\s*->\s*bool\b"
+)
+PY_CAST_RE = re.compile(r"\b(?:typing\.)?cast\s*\(")
+
+
+def _scan_python_lines(line: str, is_parser: bool, add: Callable[[str], None]) -> None:
+    stripped = line.lstrip()
+    if not stripped.startswith(("import ", "from ")) and PY_ANY_RE.search(line):
+        add("PDV001")
+    if not is_parser and PY_DESERIALIZE_RE.search(line):
+        add("PDV002")
+    if PY_VALIDATOR_RE.search(line):
+        add("PDV003")
+    if not is_parser and PY_CAST_RE.search(line):
+        add("PDV004")
+
+
+# --- TypeScript: line-based regex analysis ----------------------------------
+
+TS_ANY_RE = re.compile(r"\bas\s+any\b|:\s*any\b")
+TS_JSON_PARSE_RE = re.compile(r"\bJSON\.parse\s*\(")
+TS_UNKNOWN_RE = re.compile(r":\s*unknown\b")
+TS_VALIDATOR_RE = re.compile(
+    r"\b(?:function\s+|const\s+|let\s+)?"
+    r"(is[A-Z]\w*|validate\w*|checkValid\w*)\b"
+    r"[^=;{]*(:\s*boolean\b|=>\s*boolean\b)"
+)
+TS_BRAND_CAST_RE = re.compile(r"\bas\s+([A-Z]\w+)\b")
+TS_BRAND_CAST_IGNORE = {"const", "String", "Number", "Boolean", "Array",
+                        "Object", "Record", "Readonly", "Partial", "Promise",
+                        "Error", "unknown"}
+
+
+def _scan_typescript_lines(line: str, is_parser: bool, add: Callable[[str], None]) -> None:
     if TS_ANY_RE.search(line):
         add("PDV001")
     if TS_JSON_PARSE_RE.search(line) and not TS_UNKNOWN_RE.search(line):
@@ -138,29 +244,9 @@ def _scan_typescript(line: str, is_parser: bool, add: Callable[[str], None]) -> 
                 break
 
 
-def _scan_python(line: str, is_parser: bool, add: Callable[[str], None]) -> None:
-    stripped = line.lstrip()
-    is_import = stripped.startswith(("import ", "from "))
-    if not is_import and PY_ANY_RE.search(line):
-        add("PDV001")
-    if not is_parser and PY_DESERIALIZE_RE.search(line):
-        add("PDV002")
-    if PY_VALIDATOR_RE.search(line):
-        add("PDV003")
-    if not is_parser and PY_CAST_RE.search(line):
-        add("PDV004")
-
-
-def scan_file(path: Path) -> List[Finding]:
-    try:
-        content = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    scanner = _scan_python if path.suffix in PY_EXTENSIONS else _scan_typescript
-    lines = content.splitlines()
-    is_parser = bool(PARSER_FILE_RE.search(path.name))
+def _scan_lines(path: Path, lines: List[str], is_parser: bool,
+                scanner: Callable[[str, bool, Callable[[str], None]], None]) -> List[Finding]:
     findings: List[Finding] = []
-
     for i, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith(("//", "*", "#")):
@@ -172,8 +258,24 @@ def scan_file(path: Path) -> List[Finding]:
                 findings.append(Finding(rule, str(path), _i + 1, _stripped))
 
         scanner(line, is_parser, add)
-
     return findings
+
+
+def scan_file(path: Path) -> List[Finding]:
+    try:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    lines = content.splitlines()
+    is_parser = bool(PARSER_FILE_RE.search(path.name))
+
+    if path.suffix in PY_EXTENSIONS:
+        ast_findings = _scan_python_ast(path, content, lines, is_parser)
+        if ast_findings is not None:
+            return ast_findings
+        return _scan_lines(path, lines, is_parser, _scan_python_lines)
+
+    return _scan_lines(path, lines, is_parser, _scan_typescript_lines)
 
 
 def _changed_files() -> List[Path]:

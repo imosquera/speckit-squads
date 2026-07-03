@@ -2,17 +2,18 @@
 """Maintain one dashboard branch-status card per git branch as a feature moves
 through the SpecKit cycle (specify -> plan -> tasks -> implement -> review).
 
-The card is a markdown file with a YAML frontmatter block the agent-os Astro
-dashboard renders as a live "Active branches" card. This script is the single
-deterministic writer: it rewrites the WHOLE file on every phase transition (never
-patches in place), always bumps `updated`, and enforces the status rules so the
-model never has to hand-author fiddly YAML.
+The card is a pure YAML file (branches/<slug>.yaml) the agent-os dashboard renders
+as a live "Active branches" card. This script is the single deterministic writer:
+it rewrites the WHOLE file on every phase transition (never patches in place),
+always bumps `updated`, and enforces the status rules so the model never has to
+hand-author fiddly YAML.
 
 Each phase carries: status + summary (one line, always shown) + description (a
 paragraph shown in the expanded panel) + items (the work list — user stories in
 `specify`, tasks in `tasks`/`implement`). `review` also carries substeps (the
-review-extension passes). Items and descriptions are preserved across rewrites,
-so setting specify's user stories once keeps them through later phases.
+review-extension passes) nested directly under phases.review.substeps. Items and
+descriptions are preserved across rewrites, so setting specify's user stories once
+keeps them through later phases.
 
 Usage (verbs):
   progress_report.py enter <phase> [--summary S] [--description D] [--items-json J]
@@ -76,8 +77,6 @@ def current_branch():
 
 
 def slugify(branch):
-    # "/" -> "-" per the dashboard contract, plus a light sanitize of anything
-    # else that would be awkward in a filename; collapse repeats.
     s = branch.replace("/", "-")
     s = re.sub(r"[^A-Za-z0-9._-]+", "-", s)
     return re.sub(r"-{2,}", "-", s).strip("-") or "branch"
@@ -104,28 +103,68 @@ def blank_state(branch):
         "spec": "",
         "note": "",
         "phases": {
-            p: {"status": "pending", "summary": "", "description": "", "items": []}
-            for p in PHASES
+            "specify":   {"status": "pending", "summary": "", "description": "", "items": []},
+            "plan":      {"status": "pending", "summary": "", "description": "", "items": []},
+            "tasks":     {"status": "pending", "summary": "", "items": []},
+            "implement": {"status": "pending", "summary": "", "items": []},
+            "review":    {
+                "status": "pending", "summary": "",
+                "substeps": {s: "pending" for s in SUBSTEPS},
+            },
         },
-        "substeps": {s: "pending" for s in SUBSTEPS},
     }
 
 
 # ------------------------------------------------------------- read/parse ----
 def parse_card(text, branch):
-    """Tolerant, indent-aware reader for our own block-style output. Recovers
+    """Tolerant, indent-aware reader for our own block-style YAML output. Recovers
     statuses/summaries/descriptions/items/substeps + meta so a rewrite preserves
-    earlier phases. Any parse failure degrades to a blank state — the current verb
-    still sets correct statuses; only prior detail is lost."""
-    st = blank_state(branch)
-    m = re.search(r"^---\s*\n(.*?)\n---\s*(.*)$", text, re.S)
-    if not m:
-        return st
-    front, body = m.group(1), m.group(2)
-    st["note"] = body.strip().splitlines()[0].strip() if body.strip() else ""
+    earlier phases. Any parse failure degrades to a blank state."""
+    # Try yaml first (PyYAML); fall back to manual line reader.
+    try:
+        import yaml  # type: ignore
+        raw = yaml.safe_load(text)
+        return _from_yaml_dict(raw, branch)
+    except Exception:
+        pass
+    return _manual_parse(text, branch)
 
+
+def _from_yaml_dict(raw, branch):
+    if not isinstance(raw, dict):
+        return blank_state(branch)
+    st = blank_state(branch)
+    st["branch"] = str(raw.get("branch", branch) or branch)
+    st["title"] = str(raw.get("title", "") or "")
+    st["spec"] = str(raw.get("spec", "") or "")
+    st["note"] = str(raw.get("note", "") or "")
+    phases_raw = raw.get("phases") or {}
+    if isinstance(phases_raw, dict):
+        for p in PHASES:
+            pr = phases_raw.get(p)
+            if not isinstance(pr, dict):
+                continue
+            ph = st["phases"][p]
+            ph["status"] = _valid(str(pr.get("status", "pending")))
+            ph["summary"] = str(pr.get("summary", "") or "")
+            if "description" in pr:
+                ph["description"] = str(pr.get("description", "") or "")
+            items_raw = pr.get("items")
+            if isinstance(items_raw, list):
+                ph["items"] = [_norm_item(x) for x in items_raw if isinstance(x, dict)]
+            if p == "review":
+                ss_raw = pr.get("substeps")
+                if isinstance(ss_raw, dict):
+                    for s in SUBSTEPS:
+                        ph["substeps"][s] = _valid(str(ss_raw.get(s, "pending")))
+    return st
+
+
+def _manual_parse(text, branch):
+    """Line-by-line fallback for environments without PyYAML."""
+    st = blank_state(branch)
     cur_phase = None
-    mode = None          # None | "items" | "substeps"
+    mode = None       # None | "items" | "substeps"
     cur_item = None
 
     def close_item():
@@ -135,19 +174,19 @@ def parse_card(text, branch):
                 st["phases"][cur_phase]["items"].append(cur_item)
         cur_item = None
 
-    for raw in front.splitlines():
+    for raw in text.splitlines():
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
         indent = len(raw) - len(raw.lstrip())
         line = raw.strip()
 
         # top-level scalar keys
-        mt = re.match(r"^(branch|title|spec|updated):\s*(.*)$", line)
+        mt = re.match(r"^(branch|title|spec|updated|note):\s*(.*)$", line)
         if indent == 0 and mt:
             close_item()
             k, v = mt.group(1), _unquote(mt.group(2))
-            if k in ("branch", "title", "spec"):
-                st[k] = v or st[k]
+            if k in ("branch", "title", "spec", "note"):
+                st[k] = v or st.get(k, "")
             cur_phase, mode = None, None
             continue
         if indent == 0 and line.startswith("phases:"):
@@ -155,7 +194,7 @@ def parse_card(text, branch):
             cur_phase, mode = None, None
             continue
 
-        # phase header at indent 2, e.g. "specify:"
+        # phase header at indent 2
         mp = re.match(r"^([a-z]+):\s*$", line)
         if indent == 2 and mp and mp.group(1) in PHASES:
             close_item()
@@ -193,18 +232,18 @@ def parse_card(text, branch):
         if mode == "substeps" and cur_phase == "review":
             mss = re.match(r"^([a-z]+):\s*(\w+)", line)
             if mss and mss.group(1) in SUBSTEPS:
-                st["substeps"][mss.group(1)] = _valid(mss.group(2))
+                st["phases"]["review"]["substeps"][mss.group(1)] = _valid(mss.group(2))
             continue
 
         # item rows
         if mode == "items":
-            mnew = re.match(r"^-\s+(\w+):\s*(.*)$", line)  # "- id: .." / "- title: .."
+            mnew = re.match(r"^-\s+(\w+):\s*(.*)$", line)
             if mnew:
                 close_item()
                 cur_item = {}
                 _set_item(cur_item, mnew.group(1), mnew.group(2))
                 continue
-            mkv = re.match(r"^(\w+):\s*(.*)$", line)        # continuation attr
+            mkv = re.match(r"^(\w+):\s*(.*)$", line)
             if mkv and cur_item is not None:
                 _set_item(cur_item, mkv.group(1), mkv.group(2))
             continue
@@ -240,7 +279,6 @@ def _q(s):
 
 
 def _norm_item(raw):
-    """Coerce a user-supplied item dict into our canonical shape."""
     it = {}
     if raw.get("id"):
         it["id"] = str(raw["id"]).strip()
@@ -256,7 +294,7 @@ def render_items(items):
     for it in items:
         first = True
 
-        def emit(k, v, quote):
+        def emit(k, v, quote, _first=None):
             nonlocal first
             prefix = "      - " if first else "        "
             lines.append(f"{prefix}{k}: {_q(v) if quote else v}")
@@ -272,33 +310,33 @@ def render_items(items):
 
 
 def render(st):
-    out = ["---"]
+    out = []
     out.append(f"branch: {st['branch']}")
     out.append(f"title: {st['title'] or humanize(st['branch'])}")
-    if st["spec"]:
+    if st.get("spec"):
         out.append(f"spec: {st['spec']}")
     out.append(f"updated: {now_stamp()}")
+    note = st.get("note", "")
+    out.append(f"note: {_q(note) if note else '\"\"'}")
+    out.append("")
     out.append("phases:")
     for p in PHASES:
         ph = st["phases"][p]
         out.append(f"  {p}:")
         out.append(f"    status: {ph['status']}")
-        if ph.get("summary"):
-            out.append(f"    summary: {_q(ph['summary'])}")
-        if ph.get("description"):
-            out.append(f"    description: {_q(ph['description'])}")
+        summary = ph.get("summary", "")
+        out.append(f"    summary: {_q(summary) if summary else '\"\"'}")
+        if "description" in ph:
+            desc = ph.get("description", "")
+            out.append(f"    description: {_q(desc) if desc else '\"\"'}")
         if ph.get("items"):
             out.extend(render_items(ph["items"]))
         if p == "review":
             out.append("    substeps:")
+            substeps = ph.get("substeps", {})
             for s in SUBSTEPS:
-                out.append(f"      {s}: {st['substeps'][s]}")
-    out.append("---")
-    out.append("")
-    if st["note"]:
-        out.append(st["note"].strip())
-        out.append("")
-    return "\n".join(out)
+                out.append(f"      {s}: {substeps.get(s, 'pending')}")
+    return "\n".join(out) + "\n"
 
 
 def atomic_write(path, text):
@@ -310,8 +348,6 @@ def atomic_write(path, text):
 
 # ----------------------------------------------------------------- verbs ----
 def _apply_detail(st, phase, args):
-    """Set the optional summary/description/items on `phase` from args, leaving
-    any not supplied untouched (so a rewrite preserves them)."""
     if args.summary:
         st["phases"][phase]["summary"] = args.summary
     if args.description:
@@ -334,7 +370,7 @@ def apply_verb(st, args):
         st["spec"] = args.spec
     if not st["title"]:
         st["title"] = humanize(st["branch"])
-    if not st["spec"]:
+    if not st.get("spec"):
         st["spec"] = slugify(st["branch"].split("/")[-1])
 
     verb = args.verb
@@ -368,7 +404,7 @@ def apply_verb(st, args):
             k, v = pair.split("=", 1)
             if k not in SUBSTEPS:
                 sys.exit(f"error: unknown substep '{k}' (want: {', '.join(SUBSTEPS)})")
-            st["substeps"][k] = _valid(v)
+            st["phases"]["review"]["substeps"][k] = _valid(v)
         if st["phases"]["review"]["status"] not in ("done", "blocked"):
             st["phases"]["review"]["status"] = "active"
             for i in range(PHASES.index("review")):
@@ -377,7 +413,7 @@ def apply_verb(st, args):
         for p in PHASES:
             st["phases"][p]["status"] = "done"
         for s in SUBSTEPS:
-            st["substeps"][s] = "done"
+            st["phases"]["review"]["substeps"][s] = "done"
 
     if args.note:
         st["note"] = args.note
@@ -416,21 +452,34 @@ def main():
         print(f"progress_report: no dashboard at {branches} — skipping (not an error)")
         return
 
-    path = os.path.join(branches, slugify(args.branch) + ".md")
-    if os.path.exists(path):
+    slug = slugify(args.branch)
+    # Support reading an existing .md card from a prior format; always write .yaml.
+    yaml_path = os.path.join(branches, slug + ".yaml")
+    md_path = os.path.join(branches, slug + ".md")
+
+    src_path = yaml_path if os.path.exists(yaml_path) else (
+        md_path if os.path.exists(md_path) else None
+    )
+    if src_path:
         try:
-            with open(path) as f:
+            with open(src_path) as f:
                 st = parse_card(f.read(), args.branch)
         except Exception as e:
-            print(f"progress_report: could not parse {path} ({e}); starting fresh")
+            print(f"progress_report: could not parse {src_path} ({e}); starting fresh")
             st = blank_state(args.branch)
         st["branch"] = args.branch
+        # Migrate: remove old .md file after first successful read
+        if src_path == md_path and src_path != yaml_path:
+            try:
+                os.remove(md_path)
+            except OSError:
+                pass
     else:
         st = blank_state(args.branch)
 
     st = apply_verb(st, args)
-    atomic_write(path, render(st))
-    print(f"progress_report: {args.verb} -> {path}")
+    atomic_write(yaml_path, render(st))
+    print(f"progress_report: {args.verb} -> {yaml_path}")
 
 
 if __name__ == "__main__":

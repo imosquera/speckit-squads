@@ -20,6 +20,7 @@ presets/      # Spec Kit presets (template + command overrides)
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
   constitution-audit/           Plan + implement overrides requiring a quoted, principle-by-principle constitution audit
+  parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python ast + TS Compiler API)
 ```
 
 Each item is a self-contained directory with its own `extension.yml` or `preset.yml` manifest, conforming to Spec Kit's schema:
@@ -48,6 +49,7 @@ specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 specify preset add --dev "$SQUADS/presets/implement-prelude-skills"
+specify preset add --dev "$SQUADS/presets/parse-dont-validate"
 ```
 
 Or use the bundled script from inside the checkout:

@@ -28,6 +28,18 @@ Each item is a self-contained directory with its own `extension.yml` or `preset.
 - Extensions: <https://github.com/github/spec-kit/blob/main/extensions/EXTENSION-DEVELOPMENT-GUIDE.md>
 - Presets: <https://github.com/github/spec-kit/blob/main/presets/README.md>
 
+## Prerequisite: the Spec Kit CLI
+
+Everything here installs through Spec Kit's `specify` CLI. Install it once with `uv`, pinned to a release tag:
+
+```bash
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@vX.Y.Z
+# e.g. the current release:
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v0.12.4
+```
+
+This puts `specify` on your PATH (`~/.local/bin`). Check the [latest release](https://github.com/github/spec-kit/releases/latest) for the newest `vX.Y.Z`, and re-run the same command to upgrade. Verify with `specify --version`.
+
 ## Install into a project
 
 Set `SQUADS` to wherever you checked out this repo, then run the commands from any Spec Kit project:

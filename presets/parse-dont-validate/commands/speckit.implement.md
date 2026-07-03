@@ -69,8 +69,11 @@ TypeScript/Python changed during this run:
    python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py checklist
    ```
 
-2. **Scan the changed files** (no paths → the script inspects the working-tree
-   diff; pass explicit paths/dirs to narrow):
+2. **Scan the changed files** (no paths → the script inspects the git change
+   set: working-tree changes **plus** work already committed on the current
+   branch, so the gate still fires even if a post-implement hook has committed
+   the implementation. Pass explicit paths/dirs to narrow, or `--base <ref>` to
+   pin the branch base):
 
    ```sh
    python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py scan

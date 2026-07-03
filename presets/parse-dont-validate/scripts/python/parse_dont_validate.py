@@ -25,11 +25,15 @@ Subcommands
   checklist
       Print the discipline items an implementation audit must cover.
 
-  scan [paths ...]
+  scan [--base <ref>] [paths ...]
       Scan TypeScript/Python sources for parse-don't-validate anti-patterns.
-      With no paths, scans files changed in the working tree (git). Exits
-      non-zero when un-waived findings exist (1) or when the scan itself could
-      not run (3).
+      With explicit paths, scans exactly those. With no paths, scans the git
+      change set: the working tree PLUS work already committed on the current
+      branch (diffed against `--base`, or an auto-detected base ref —
+      origin/HEAD, then origin/main/master, then main/master). Including
+      committed work means the gate still fires after a post-implement hook has
+      staged and committed the changes. Exits non-zero when un-waived findings
+      exist (1) or when the scan itself could not run (3).
 
 Waivers
 -------
@@ -251,19 +255,40 @@ def _scan_typescript(paths: List[Path]) -> List[Finding]:
 
 # --- driver -----------------------------------------------------------------
 
-def _changed_files() -> List[Path]:
-    cmds = [
-        ["git", "diff", "--name-only", "--diff-filter=d", "HEAD"],
-        ["git", "diff", "--name-only", "--diff-filter=d"],
-        ["git", "ls-files", "--others", "--exclude-standard"],
-    ]
+def _git(args: List[str]) -> List[str]:
+    try:
+        out = subprocess.run(["git", *args], capture_output=True, text=True,
+                             check=False)
+    except OSError:
+        return []
+    return out.stdout.splitlines() if out.returncode == 0 else []
+
+
+def _detect_base() -> Optional[str]:
+    """A base ref to diff the current branch against for committed feature work."""
+    head = _git(["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+    for ref in (head + ["origin/main", "origin/master", "main", "master"]):
+        if _git(["rev-parse", "--verify", "--quiet", ref]):
+            return ref
+    return None
+
+
+def _changed_files(base: Optional[str]) -> List[Path]:
+    # Working-tree state (before any auto-commit hook runs).
     names: List[str] = []
-    for cmd in cmds:
-        try:
-            out = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            names.extend(out.stdout.splitlines())
-        except OSError:
-            pass
+    names += _git(["diff", "--name-only", "--diff-filter=d", "HEAD"])
+    names += _git(["diff", "--name-only", "--diff-filter=d"])
+    names += _git(["ls-files", "--others", "--exclude-standard"])
+
+    # Committed work on this branch — so the gate still sees the implementation
+    # even after a post-implement hook has staged + committed it. Diff against
+    # the merge-base with the branch's base ref.
+    base = base or _detect_base()
+    if base:
+        mb = _git(["merge-base", base, "HEAD"])
+        if mb:
+            names += _git(["diff", "--name-only", "--diff-filter=d", mb[0], "HEAD"])
+
     seen, paths = set(), []
     for n in names:
         if n and n not in seen:
@@ -294,8 +319,19 @@ def cmd_checklist() -> int:
     return 0
 
 
-def cmd_scan(paths: List[str]) -> int:
-    targets = sorted(set(_expand(paths) if paths else _changed_files()))
+def cmd_scan(argv: List[str]) -> int:
+    base: Optional[str] = None
+    paths: List[str] = []
+    it = iter(argv)
+    for arg in it:
+        if arg == "--base":
+            base = next(it, None)
+        elif arg.startswith("--base="):
+            base = arg.split("=", 1)[1]
+        else:
+            paths.append(arg)
+
+    targets = sorted(set(_expand(paths) if paths else _changed_files(base)))
     if not targets:
         print("parse-dont-validate: no TypeScript/Python files to scan.")
         return 0

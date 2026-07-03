@@ -43,10 +43,26 @@ if (!ts) {
   process.exit(3);
 }
 
+// Casts to these types are ordinary structural narrowing (built-ins, DOM/BOM,
+// standard-library globals), NOT domain-brand forging — PDV004 ignores them.
+// A cast to a project brand like `Email`/`UserId` is not in this set and still
+// flags outside a parser module.
 const IGNORE = new Set([
+  // language / utility types
   'String', 'Number', 'Boolean', 'Array', 'Object', 'Record', 'Readonly',
-  'Partial', 'Promise', 'Error',
+  'Partial', 'Required', 'Pick', 'Omit', 'Promise', 'Error', 'Function',
+  'Date', 'RegExp', 'Map', 'Set', 'WeakMap', 'WeakSet', 'Symbol', 'BigInt',
+  'ArrayBuffer', 'DataView', 'Uint8Array', 'Int8Array', 'Uint16Array',
+  'Uint32Array', 'Float32Array', 'Float64Array',
+  // DOM / BOM / web-platform globals
+  'Node', 'Element', 'Event', 'EventTarget', 'Document', 'Window', 'Text',
+  'Blob', 'File', 'FormData', 'URL', 'URLSearchParams', 'Headers', 'Request',
+  'Response', 'FileList', 'DataTransfer', 'MouseEvent', 'KeyboardEvent',
+  'PointerEvent', 'FocusEvent', 'InputEvent', 'DragEvent', 'TouchEvent',
+  'CustomEvent', 'ErrorEvent', 'MessageEvent', 'Storage', 'Location',
 ]);
+// Whole families of platform types that are always structural narrowing.
+const IGNORE_PREFIX = /^(HTML|SVG|CSS|WebGL|Audio|Video|Media|Canvas|RTCP?|IDB)/;
 const VALIDATOR = /^(is[A-Z]\w*|validate\w*|checkValid\w*)$/;
 
 function scanFile(file, findings) {
@@ -107,9 +123,11 @@ function scanFile(file, findings) {
         typeNode = node.type;
       }
       if (typeNode && ts.isTypeReferenceNode(typeNode) &&
-          ts.isIdentifier(typeNode.typeName) &&
-          !IGNORE.has(typeNode.typeName.text)) {
-        add('PDV004', node);
+          ts.isIdentifier(typeNode.typeName)) {
+        const name = typeNode.typeName.text;
+        if (!IGNORE.has(name) && !IGNORE_PREFIX.test(name)) {
+          add('PDV004', node);
+        }
       }
     }
 

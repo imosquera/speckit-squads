@@ -10,16 +10,15 @@ proof forward. This script gives the preset teeth: an implementer can't claim
 "no validators left" while an `is_valid_user` / `isValidUser` still sits in the
 diff.
 
-Language-aware:
-  * Python (`.py/.pyi`) is analysed with the stdlib `ast` module — a real
-    parse tree, so matches inside strings/comments never false-positive and
-    multi-line signatures are understood. Files that don't parse fall back to a
-    best-effort line scan.
-  * TypeScript (`.ts/.tsx/.mts/.cts`) is analysed with line-based regex.
-    Python's standard library has no TypeScript parser, and this script is
-    stdlib-only (no node/tsc dependency), so a real TS AST isn't available here.
+Everything is analysed as a real AST — no regex heuristics:
+  * Python (`.py/.pyi`) via the stdlib `ast` module.
+  * TypeScript (`.ts/.tsx/.mts/.cts`) by shelling out to Node and the project's
+    TypeScript Compiler API (`scripts/node/pdv_ts_scan.cjs`). This requires
+    `node` on PATH and `typescript` installed in the project. There is NO regex
+    fallback: if either is missing, or a source file cannot be parsed, the scan
+    fails loudly rather than silently under-reporting.
 
-Stdlib-only. Python 3.8+.
+Stdlib-only Python 3.8+ (the Node helper carries the TypeScript dependency).
 
 Subcommands
 -----------
@@ -29,7 +28,8 @@ Subcommands
   scan [paths ...]
       Scan TypeScript/Python sources for parse-don't-validate anti-patterns.
       With no paths, scans files changed in the working tree (git). Exits
-      non-zero when un-waived findings exist.
+      non-zero when un-waived findings exist (1) or when the scan itself could
+      not run (3).
 
 Waivers
 -------
@@ -48,12 +48,14 @@ prevent.
 from __future__ import annotations
 
 import ast
+import json
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Dict, List, Optional
 
 # --- discipline items (language-general) ------------------------------------
 
@@ -90,6 +92,12 @@ TS_EXTENSIONS = {".ts", ".tsx", ".mts", ".cts"}
 PY_EXTENSIONS = {".py", ".pyi"}
 EXTENSIONS = TS_EXTENSIONS | PY_EXTENSIONS
 
+NODE_HELPER = Path(__file__).resolve().parent.parent / "node" / "pdv_ts_scan.cjs"
+
+
+class ScanError(Exception):
+    """The scan could not be performed (missing tool, unparseable source)."""
+
 
 @dataclass
 class Finding:
@@ -97,6 +105,13 @@ class Finding:
     path: str
     line: int
     text: str
+
+
+def _read_lines(path: Path) -> List[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
 
 
 def _waivers_for_line(lines: List[str], idx: int) -> set:
@@ -109,32 +124,39 @@ def _waivers_for_line(lines: List[str], idx: int) -> set:
     return waived
 
 
+def _finalize(path: str, lines: List[str], raw: List[tuple]) -> List[Finding]:
+    """Apply waivers and attach source text to (rule, line) pairs."""
+    out: List[Finding] = []
+    seen = set()
+    for rule, line in raw:
+        key = (rule, line)
+        if key in seen:
+            continue
+        seen.add(key)
+        if rule in _waivers_for_line(lines, line - 1):
+            continue
+        text = lines[line - 1].strip() if 0 <= line - 1 < len(lines) else ""
+        out.append(Finding(rule, path, line, text))
+    return out
+
+
 # --- Python: AST-based analysis --------------------------------------------
 
 class _PyVisitor(ast.NodeVisitor):
-    """Collect parse-don't-validate findings from a Python AST."""
+    """Collect (rule, lineno) findings from a Python AST."""
 
-    def __init__(self, path: str, lines: List[str], is_parser: bool):
-        self.path = path
-        self.lines = lines
+    def __init__(self, is_parser: bool):
         self.is_parser = is_parser
-        self.findings: List[Finding] = []
-
-    def _add(self, rule: str, lineno: int) -> None:
-        if rule in _waivers_for_line(self.lines, lineno - 1):
-            return
-        text = self.lines[lineno - 1].strip() if 0 <= lineno - 1 < len(self.lines) else ""
-        self.findings.append(Finding(rule, self.path, lineno, text))
+        self.hits: List[tuple] = []
 
     def _flag_any(self, annotation: Optional[ast.AST]) -> None:
-        # PDV001: `Any` anywhere inside a type annotation subtree.
         if annotation is None:
             return
         for node in ast.walk(annotation):
             if isinstance(node, ast.Name) and node.id == "Any":
-                self._add("PDV001", node.lineno)
+                self.hits.append(("PDV001", node.lineno))
             elif isinstance(node, ast.Attribute) and node.attr == "Any":
-                self._add("PDV001", node.lineno)
+                self.hits.append(("PDV001", node.lineno))
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         self._flag_any(node.annotation)
@@ -146,10 +168,9 @@ class _PyVisitor(ast.NodeVisitor):
 
     def _visit_func(self, node) -> None:
         self._flag_any(node.returns)
-        # PDV003: boolean validator at the boundary.
         if (isinstance(node.returns, ast.Name) and node.returns.id == "bool"
                 and VALIDATOR_NAME_RE.match(node.name)):
-            self._add("PDV003", node.lineno)
+            self.hits.append(("PDV003", node.lineno))
         self.generic_visit(node)
 
     visit_FunctionDef = _visit_func
@@ -157,126 +178,78 @@ class _PyVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
-        # PDV002: raw deserialization outside a parser module.
         if not self.is_parser and isinstance(func, ast.Attribute) \
                 and isinstance(func.value, ast.Name):
             mod, fn = func.value.id, func.attr
             if ((mod in {"json", "pickle", "marshal"} and fn in {"load", "loads"})
                     or (mod == "yaml" and fn in {"load", "safe_load"})):
-                self._add("PDV002", node.lineno)
-        # PDV004: narrowing cast outside a parser module.
+                self.hits.append(("PDV002", node.lineno))
         if not self.is_parser:
             is_cast = ((isinstance(func, ast.Name) and func.id == "cast")
                        or (isinstance(func, ast.Attribute) and func.attr == "cast"))
             if is_cast:
-                self._add("PDV004", node.lineno)
+                self.hits.append(("PDV004", node.lineno))
         self.generic_visit(node)
 
 
-def _scan_python_ast(path: Path, content: str, lines: List[str],
-                     is_parser: bool) -> Optional[List[Finding]]:
-    try:
-        tree = ast.parse(content, filename=str(path))
-    except SyntaxError:
-        return None  # signal: fall back to the line scanner
-    visitor = _PyVisitor(str(path), lines, is_parser)
-    visitor.visit(tree)
-    # De-dupe (same Any can be reached via multiple annotation positions).
-    seen, unique = set(), []
-    for f in visitor.findings:
-        key = (f.rule, f.line)
-        if key not in seen:
-            seen.add(key)
-            unique.append(f)
-    return unique
-
-
-# Regex fallback for Python files that fail to parse (partial/py2 sources).
-PY_ANY_RE = re.compile(r"(?::|->|\[|,|\()\s*Any\b|\bAny\s*[\]\),]")
-PY_DESERIALIZE_RE = re.compile(
-    r"\b(json\.loads?|pickle\.loads?|yaml\.safe_load|yaml\.load|marshal\.loads)\s*\("
-)
-PY_VALIDATOR_RE = re.compile(
-    r"\bdef\s+(is_valid\w*|validate\w*|is_\w+)\s*\([^)]*\)\s*->\s*bool\b"
-)
-PY_CAST_RE = re.compile(r"\b(?:typing\.)?cast\s*\(")
-
-
-def _scan_python_lines(line: str, is_parser: bool, add: Callable[[str], None]) -> None:
-    stripped = line.lstrip()
-    if not stripped.startswith(("import ", "from ")) and PY_ANY_RE.search(line):
-        add("PDV001")
-    if not is_parser and PY_DESERIALIZE_RE.search(line):
-        add("PDV002")
-    if PY_VALIDATOR_RE.search(line):
-        add("PDV003")
-    if not is_parser and PY_CAST_RE.search(line):
-        add("PDV004")
-
-
-# --- TypeScript: line-based regex analysis ----------------------------------
-
-TS_ANY_RE = re.compile(r"\bas\s+any\b|:\s*any\b")
-TS_JSON_PARSE_RE = re.compile(r"\bJSON\.parse\s*\(")
-TS_UNKNOWN_RE = re.compile(r":\s*unknown\b")
-TS_VALIDATOR_RE = re.compile(
-    r"\b(?:function\s+|const\s+|let\s+)?"
-    r"(is[A-Z]\w*|validate\w*|checkValid\w*)\b"
-    r"[^=;{]*(:\s*boolean\b|=>\s*boolean\b)"
-)
-TS_BRAND_CAST_RE = re.compile(r"\bas\s+([A-Z]\w+)\b")
-TS_BRAND_CAST_IGNORE = {"const", "String", "Number", "Boolean", "Array",
-                        "Object", "Record", "Readonly", "Partial", "Promise",
-                        "Error", "unknown"}
-
-
-def _scan_typescript_lines(line: str, is_parser: bool, add: Callable[[str], None]) -> None:
-    if TS_ANY_RE.search(line):
-        add("PDV001")
-    if TS_JSON_PARSE_RE.search(line) and not TS_UNKNOWN_RE.search(line):
-        add("PDV002")
-    if TS_VALIDATOR_RE.search(line):
-        add("PDV003")
-    if not is_parser:
-        for m in TS_BRAND_CAST_RE.finditer(line):
-            if m.group(1) not in TS_BRAND_CAST_IGNORE:
-                add("PDV004")
-                break
-
-
-def _scan_lines(path: Path, lines: List[str], is_parser: bool,
-                scanner: Callable[[str, bool, Callable[[str], None]], None]) -> List[Finding]:
+def _scan_python(paths: List[Path]) -> List[Finding]:
     findings: List[Finding] = []
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith(("//", "*", "#")):
-            continue
-        waived = _waivers_for_line(lines, i)
-
-        def add(rule: str, _i=i, _stripped=stripped, _waived=waived):
-            if rule not in _waived:
-                findings.append(Finding(rule, str(path), _i + 1, _stripped))
-
-        scanner(line, is_parser, add)
+    for path in paths:
+        lines = _read_lines(path)
+        source = "\n".join(lines)
+        try:
+            tree = ast.parse(source, filename=str(path))
+        except SyntaxError as e:
+            raise ScanError(f"{path}:{e.lineno}: cannot parse Python source: {e.msg}")
+        is_parser = bool(PARSER_FILE_RE.search(path.name))
+        visitor = _PyVisitor(is_parser)
+        visitor.visit(tree)
+        findings.extend(_finalize(str(path), lines, visitor.hits))
     return findings
 
 
-def scan_file(path: Path) -> List[Finding]:
+# --- TypeScript: Node + TS Compiler API -------------------------------------
+
+def _scan_typescript(paths: List[Path]) -> List[Finding]:
+    node = shutil.which("node")
+    if node is None:
+        raise ScanError(
+            "cannot scan TypeScript — `node` was not found on PATH. Install "
+            "Node.js (and `typescript` in the project) to parse TS files.")
+    if not NODE_HELPER.is_file():
+        raise ScanError(f"TypeScript scanner helper missing: {NODE_HELPER}")
+
+    job = {"files": [
+        {"path": str(p), "isParser": bool(PARSER_FILE_RE.search(p.name))}
+        for p in paths
+    ]}
     try:
-        content = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    lines = content.splitlines()
-    is_parser = bool(PARSER_FILE_RE.search(path.name))
+        proc = subprocess.run(
+            [node, str(NODE_HELPER)],
+            input=json.dumps(job), capture_output=True, text=True, check=False)
+    except OSError as e:
+        raise ScanError(f"failed to launch Node scanner: {e}")
+    if proc.returncode != 0:
+        raise ScanError(proc.stderr.strip() or "TypeScript scanner failed")
+    try:
+        payload = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError as e:
+        raise ScanError(f"malformed TypeScript scanner output: {e}")
 
-    if path.suffix in PY_EXTENSIONS:
-        ast_findings = _scan_python_ast(path, content, lines, is_parser)
-        if ast_findings is not None:
-            return ast_findings
-        return _scan_lines(path, lines, is_parser, _scan_python_lines)
+    by_file: Dict[str, List[tuple]] = {}
+    for fd in payload.get("findings", []):
+        by_file.setdefault(fd["path"], []).append((fd["rule"], fd["line"]))
 
-    return _scan_lines(path, lines, is_parser, _scan_typescript_lines)
+    findings: List[Finding] = []
+    for path in paths:
+        raw = by_file.get(str(path), [])
+        if not raw:
+            continue
+        findings.extend(_finalize(str(path), _read_lines(path), raw))
+    return findings
 
+
+# --- driver -----------------------------------------------------------------
 
 def _changed_files() -> List[Path]:
     cmds = [
@@ -322,17 +295,24 @@ def cmd_checklist() -> int:
 
 
 def cmd_scan(paths: List[str]) -> int:
-    targets = _expand(paths) if paths else _changed_files()
+    targets = sorted(set(_expand(paths) if paths else _changed_files()))
     if not targets:
         print("parse-dont-validate: no TypeScript/Python files to scan.")
         return 0
 
-    findings: List[Finding] = []
-    for path in sorted(set(targets)):
-        findings.extend(scan_file(path))
+    py = [p for p in targets if p.suffix in PY_EXTENSIONS]
+    tsx = [p for p in targets if p.suffix in TS_EXTENSIONS]
+
+    try:
+        findings = _scan_python(py)
+        if tsx:
+            findings += _scan_typescript(tsx)
+    except ScanError as e:
+        print(f"parse-dont-validate: {e}", file=sys.stderr)
+        return 3
 
     if not findings:
-        print(f"parse-dont-validate: clean — scanned {len(set(targets))} file(s), "
+        print(f"parse-dont-validate: clean — scanned {len(targets)} file(s), "
               f"no anti-patterns.")
         return 0
 

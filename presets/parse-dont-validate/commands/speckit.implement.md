@@ -76,6 +76,12 @@ TypeScript/Python changed during this run:
    python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py scan
    ```
 
+   Both languages are analysed as real ASTs. Scanning **TypeScript** requires
+   `node` on PATH and `typescript` installed in the project (the Node helper
+   uses the TypeScript Compiler API). If the scanner exits `3` with a message
+   that `typescript` is missing, install it (`npm i -D typescript`) and re-run —
+   do not treat a missing parser as a pass.
+
 3. **Resolve every finding.** For each reported `PDVxxx`, either:
    - **Fix it** — replace the validator / `any` / `Any` / stray cast with a
      parser that returns a precise type (this is the default and preferred

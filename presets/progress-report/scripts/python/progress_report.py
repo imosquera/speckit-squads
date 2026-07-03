@@ -103,6 +103,7 @@ def blank_state(branch):
         "title": "",
         "spec": "",
         "issue": "",
+        "session": "",
         "note": "",
         "phases": {
             "specify":   {"status": "pending", "summary": "", "description": "", "items": []},
@@ -140,6 +141,7 @@ def _from_yaml_dict(raw, branch):
     st["title"] = str(raw.get("title", "") or "")
     st["spec"] = str(raw.get("spec", "") or "")
     st["issue"] = str(raw.get("issue", "") or "")
+    st["session"] = str(raw.get("session", "") or "")
     st["note"] = str(raw.get("note", "") or "")
     phases_raw = raw.get("phases") or {}
     if isinstance(phases_raw, dict):
@@ -184,11 +186,11 @@ def _manual_parse(text, branch):
         line = raw.strip()
 
         # top-level scalar keys
-        mt = re.match(r"^(branch|title|spec|issue|updated|note):\s*(.*)$", line)
+        mt = re.match(r"^(branch|title|spec|issue|session|updated|note):\s*(.*)$", line)
         if indent == 0 and mt:
             close_item()
             k, v = mt.group(1), _unquote(mt.group(2))
-            if k in ("branch", "title", "spec", "issue", "note"):
+            if k in ("branch", "title", "spec", "issue", "session", "note"):
                 st[k] = v or st.get(k, "")
             cur_phase, mode = None, None
             continue
@@ -320,6 +322,8 @@ def render(st):
         out.append(f"spec: {st['spec']}")
     if st.get("issue"):
         out.append(f"issue: {st['issue']}")
+    if st.get("session"):
+        out.append(f"session: {_q(st['session'])}")
     out.append(f"updated: {now_stamp()}")
     note = st.get("note", "")
     out.append(f"note: {_q(note) if note else '\"\"'}")
@@ -375,6 +379,8 @@ def apply_verb(st, args):
         st["spec"] = args.spec
     if args.issue:
         st["issue"] = args.issue
+    if args.session:
+        st["session"] = args.session
     if not st["title"]:
         st["title"] = humanize(st["branch"])
     if not st.get("spec"):
@@ -441,6 +447,7 @@ def build_parser():
     p.add_argument("--title")
     p.add_argument("--spec")
     p.add_argument("--issue")
+    p.add_argument("--session")
     p.add_argument("--dashboard")
     return p
 

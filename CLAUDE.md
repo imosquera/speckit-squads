@@ -24,7 +24,9 @@ Both require a `<project-dir>` argument — there is no implicit `$PWD` default,
 
 Every install uses `specify ... add --dev <repo-path>`, which keeps the project's `.specify/extensions/<id>/` and `.specify/presets/<id>/` pointed at this repo's source tree. Edits to command files, scripts, or templates here are picked up live — no reinstall step. `install.sh` therefore treats "already installed" as a no-op success.
 
-The one case where a registry refresh is required: changes to a manifest itself (`extension.yml` / `preset.yml`) — adding a new command, renaming the id, changing hooks. For that, run `./install.sh --force <project>`.
+The one case where a registry refresh is required: changes to a manifest itself (`extension.yml` / `preset.yml`) — adding a new command, renaming the id, or changing hooks. For that, run `./install.sh --force <project>`.
+
+Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify`. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (e.g. `progress-report` wraps cycle commands *and* needs `before_*` hooks), ship it as a preset + companion extension pair.
 
 `uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
 
@@ -36,7 +38,9 @@ The one case where a registry refresh is required: changes to a manifest itself 
 
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
+- `autopilot` — `/speckit-autopilot-run`: take the oldest eligible open issue (or a given issue number) from backlog to a reviewed **draft PR** by driving the whole pipeline unattended (specify → clarify auto-answered → plan → tasks → implement → review), binding the worktree to the existing issue and posting progress comments at every stage. Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
 - `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), clean, PR, auto-commit hooks across all phases
+- `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` on tasks/implement is clobbered whenever another preset **replaces** those bodies (e.g. `explicit-task-dependencies`, `constitution-audit`); a hook fires regardless. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 **Presets**
@@ -50,6 +54,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 - `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
 - `constitution-audit` — overrides `/speckit-plan` and `/speckit-implement` to require a quoted, principle-by-principle audit of `.specify/memory/constitution.md` before code is written
 - `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a Node helper on the TS Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules)
+- `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
 
 ## When you add a new extension or preset
 

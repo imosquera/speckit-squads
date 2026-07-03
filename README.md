@@ -7,7 +7,9 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
+  autopilot/       Oldest eligible issue → draft PR, driving the whole pipeline unattended (+ launchd scheduler)
   git/             Feature-branch + worktree + linked GitHub issue, clean, PR, auto-commit hooks
+  progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 presets/      # Spec Kit presets (template + command overrides)
@@ -21,6 +23,7 @@ presets/      # Spec Kit presets (template + command overrides)
   implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
   constitution-audit/           Plan + implement overrides requiring a quoted, principle-by-principle constitution audit
   parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python ast + TS Compiler API)
+  progress-report/           wraps the 5 cycle commands to keep a per-branch status card in ~/Code/agent-os current (pair with the progress extension for tasks/implement)
 ```
 
 Each item is a self-contained directory with its own `extension.yml` or `preset.yml` manifest, conforming to Spec Kit's schema:
@@ -49,7 +52,9 @@ export SQUADS=/path/to/your/speckit-squads   # adjust to your checkout
 
 # extensions
 specify extension add --dev "$SQUADS/extensions/archive"
+specify extension add --dev "$SQUADS/extensions/autopilot"
 specify extension add --dev "$SQUADS/extensions/git"
+specify extension add --dev "$SQUADS/extensions/progress"
 specify extension add --dev "$SQUADS/extensions/review"
 
 # presets
@@ -62,6 +67,7 @@ specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 specify preset add --dev "$SQUADS/presets/implement-prelude-skills"
 specify preset add --dev "$SQUADS/presets/parse-dont-validate"
+specify preset add --dev "$SQUADS/presets/progress-report"
 ```
 
 Or use the bundled script from inside the checkout:

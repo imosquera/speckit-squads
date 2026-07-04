@@ -34,6 +34,35 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 127
 fi
 
+# --- Backlog preflight: log what we're about to work on (or skip and exit) ---
+# Fetch open issues once so the log is descriptive before a full claude session
+# is launched. Exits early with code 0 if there's nothing actionable — no point
+# spinning up an agent to hear "backlog is clear."
+BLOCK_LABELS="blocked wontfix duplicate needs-discussion needs discussion on-hold on hold question epic"
+ISSUES_TMP="${TMPDIR:-/tmp}/speckit-autopilot-issues-$$.json"
+if command -v gh >/dev/null 2>&1 \
+   && gh issue list --state open --limit 200 \
+        --json number,title,labels,createdAt,body \
+        --jq 'sort_by(.createdAt)' > "$ISSUES_TMP" 2>/dev/null \
+   && [ -s "$ISSUES_TMP" ]; then
+
+  PREFLIGHT=$(python3 "$SCRIPT_DIR/preflight-issues.py" "$ISSUES_TMP" 2>/dev/null) || PREFLIGHT=""
+  rm -f "$ISSUES_TMP"
+
+  if [ -z "$PREFLIGHT" ]; then
+    echo "$(ts) preflight: could not evaluate issues — proceeding anyway"
+  else
+    echo "$(ts) preflight: $PREFLIGHT"
+    # If preflight says nothing is eligible, skip the claude session entirely.
+    case "$PREFLIGHT" in
+      SKIP:*) exit 0;;
+    esac
+  fi
+else
+  rm -f "$ISSUES_TMP" 2>/dev/null || true
+  echo "$(ts) preflight: gh unavailable or no issues fetched — proceeding anyway"
+fi
+
 echo "$(ts) === autopilot pass start :: $PROJECT ==="
 # The slash command drives the speckit-autopilot-run skill; the flag lets the
 # unattended session use git/gh/file tools without an interactive prompt.

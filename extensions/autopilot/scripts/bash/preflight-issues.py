@@ -15,6 +15,7 @@ BLOCK = {
     "blocked", "wontfix", "duplicate",
     "needs-discussion", "needs discussion",
     "on-hold", "on hold", "question", "epic",
+    "autopilot:claimed",
 }
 
 

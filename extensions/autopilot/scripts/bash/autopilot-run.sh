@@ -52,11 +52,25 @@ if command -v gh >/dev/null 2>&1 \
   if [ -z "$PREFLIGHT" ]; then
     echo "$(ts) preflight: could not evaluate issues — proceeding anyway"
   else
-    echo "$(ts) preflight: $PREFLIGHT"
     # If preflight says nothing is eligible, skip the claude session entirely.
     case "$PREFLIGHT" in
-      SKIP:*) exit 0;;
+      SKIP:*) echo "$(ts) preflight: $PREFLIGHT"; exit 0;;
     esac
+
+    # Claim the picked issue immediately — before anything else — so a concurrent
+    # autopilot tick sees the label and skips this issue.
+    CLAIMED_ISSUE=$(echo "$PREFLIGHT" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+    if [ -n "$CLAIMED_ISSUE" ] && command -v gh >/dev/null 2>&1; then
+      gh label create "autopilot:claimed" --color "0075ca" --description "Autopilot is actively working this issue" 2>/dev/null || true
+      if gh issue edit "$CLAIMED_ISSUE" --add-label "autopilot:claimed" 2>/dev/null; then
+        trap 'gh issue edit "$CLAIMED_ISSUE" --remove-label "autopilot:claimed" 2>/dev/null || true; rmdir "$lock" 2>/dev/null' EXIT
+        echo "$(ts) preflight: $PREFLIGHT — claimed #$CLAIMED_ISSUE"
+      else
+        echo "$(ts) preflight: $PREFLIGHT — claim failed, proceeding anyway"
+      fi
+    else
+      echo "$(ts) preflight: $PREFLIGHT"
+    fi
   fi
 else
   rm -f "$ISSUES_TMP" 2>/dev/null || true

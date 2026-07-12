@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """stale_tasks_guard.py — deterministic helper for the stale-tasks-guard extension.
 
-Compares spec.md/tasks.md staleness for the feature directory named in
-.specify/feature.json. A clean (committed, non-dirty) file's git commit time
+Compares spec.md/tasks.md staleness for the active feature directory, resolved
+with the same priority core Spec Kit uses (.specify/scripts/bash/common.sh
+get_feature_paths()): the SPECIFY_FEATURE_DIRECTORY env var first (an explicit
+override for the run), falling back to .specify/feature.json's
+"feature_directory" key. A clean (committed, non-dirty) file's git commit time
 is used instead of its filesystem mtime, since `git checkout`/clone resets
 mtimes for every file to checkout time regardless of true edit history —
 which would otherwise silently defeat the comparison in a fresh worktree.
@@ -11,11 +14,11 @@ reflects the real edit time.
 
 Exit codes:
   0   Not stale, or the guard does not apply (missing spec.md/tasks.md,
-      unresolvable feature.json). Implementation may proceed.
+      unresolvable feature directory). Implementation may proceed.
   1   Stale tasks detected: spec.md is newer than tasks.md.
 
 Anything printed to stderr on a 0 exit is advisory (e.g. "guard skipped —
-feature.json unresolvable") and must not be read as staleness.
+feature directory unresolvable") and must not be read as staleness.
 """
 
 from __future__ import annotations
@@ -54,6 +57,10 @@ def effective_mtime(path: str) -> float:
 
 
 def resolve_feature_dir() -> str | None:
+    env_dir = os.environ.get("SPECIFY_FEATURE_DIRECTORY")
+    if env_dir:
+        return env_dir if os.path.isabs(env_dir) else os.path.join(os.getcwd(), env_dir)
+
     try:
         with open(".specify/feature.json", encoding="utf-8") as f:
             return json.load(f)["feature_directory"]

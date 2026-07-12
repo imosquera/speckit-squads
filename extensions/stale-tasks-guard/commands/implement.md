@@ -28,17 +28,20 @@ of this section.
 
 2. **Check `STATUS`:**
    - `0` — not stale, or the guard didn't apply (missing `spec.md`/`tasks.md`, or an
-     unresolvable `.specify/feature.json` — either way the script printed why on stderr,
+     unresolvable feature directory — either way the script printed why on stderr,
      and this is **not** a staleness signal). Proceed to the implementation loop.
    - `1` — the script printed a `STALE TASKS DETECTED` banner with the delta and next
      steps. Halt immediately, print that banner, and do **not** invoke
      `/speckit-implement`'s body. No implementation code is written until the operator
      reconciles tasks (`/speckit-tasks`) or opts in with `--force`.
 
-The script compares each file's last-commit time (falling back to its filesystem mtime
-only when the file has uncommitted local changes), not raw mtime — a plain mtime
-comparison would be defeated by `git checkout`/clone resetting both files' mtimes to
-checkout time in a fresh worktree.
+The script resolves the feature directory the same way core Spec Kit does (`common.sh`'s
+`get_feature_paths()`): the `SPECIFY_FEATURE_DIRECTORY` env var first (an explicit
+override, e.g. a temporarily pinned feature), falling back to `.specify/feature.json`.
+It then compares each file's last-commit time (falling back to its filesystem mtime only
+when the file has uncommitted local changes), not raw mtime — a plain mtime comparison
+would be defeated by `git checkout`/clone resetting both files' mtimes to checkout time
+in a fresh worktree.
 
 ## Failure Policy
 
@@ -47,4 +50,4 @@ checkout time in a fresh worktree.
   correctly recalling the original invocation's arguments, since hook targets get no
   `$ARGUMENTS`. Treat it as a strong safeguard, not an unconditional guarantee.
 - A skip (exit `0` with an stderr note) is not stale tasks; the core command's existing
-  error paths for missing `spec.md`/`tasks.md`/`feature.json` are unchanged.
+  error paths for a missing `spec.md`/`tasks.md`/feature directory are unchanged.

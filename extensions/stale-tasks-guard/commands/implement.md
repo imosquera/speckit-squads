@@ -5,48 +5,46 @@ description: "Hook target fired at before_implement: halts /speckit-implement wh
 ## Stale-Tasks Guard (lifecycle hook — before_implement)
 
 The `before_implement` hook invoked this command before the `/speckit-implement` body
-runs, so this guard applies no matter which preset owns that body. Hook targets do not
-receive the triggering command's `$ARGUMENTS` — check the arguments the user actually
-typed on the `/speckit-implement` invocation still visible earlier in this conversation.
+runs, so this guard applies no matter which preset owns that body.
 
-If `--force` appears anywhere in those arguments, log
-`⚠️ Stale-tasks guard skipped (--force)` and skip the rest of this section.
+Hook targets do not receive the triggering command's `$ARGUMENTS`. This is a best-effort
+check, not a tool-enforced gate: look at the arguments the user actually typed on the
+`/speckit-implement` invocation still visible earlier in this conversation. If `--force`
+appears anywhere in them, log `⚠️ Stale-tasks guard skipped (--force)` and skip the rest
+of this section.
 
-1. **Resolve `FEATURE_DIR`** from `.specify/feature.json`:
+1. **Resolve the script path and run it:**
    ```bash
-   FEATURE_DIR=$(python3 -c "import json; print(json.load(open('.specify/feature.json'))['feature_directory'])")
+   ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   SCRIPT="$ROOT/.specify/extensions/stale-tasks-guard/scripts/python/stale_tasks_guard.py"
+   if [ -f "$SCRIPT" ]; then
+     python3 "$SCRIPT"
+     STATUS=$?
+   else
+     echo "stale-tasks-guard script not found — skipping guard" >&2
+     STATUS=0
+   fi
    ```
 
-2. **If `tasks.md` or `spec.md` is absent** from `FEATURE_DIR`, skip this guard entirely —
-   the implementation loop's existing missing-file handling covers both cases unchanged.
+2. **Check `STATUS`:**
+   - `0` — not stale, or the guard didn't apply (missing `spec.md`/`tasks.md`, or an
+     unresolvable `.specify/feature.json` — either way the script printed why on stderr,
+     and this is **not** a staleness signal). Proceed to the implementation loop.
+   - `1` — the script printed a `STALE TASKS DETECTED` banner with the delta and next
+     steps. Halt immediately, print that banner, and do **not** invoke
+     `/speckit-implement`'s body. No implementation code is written until the operator
+     reconciles tasks (`/speckit-tasks`) or opts in with `--force`.
 
-3. **Compare mtimes** (`$FEATURE_DIR` is the shell variable set in step 1 and expands via
-   the double-quoted `-c` string):
-   ```bash
-   python3 -c "
-   import os, sys
-   spec  = os.path.getmtime('$FEATURE_DIR/spec.md')
-   tasks = os.path.getmtime('$FEATURE_DIR/tasks.md')
-   if spec > tasks:
-       delta = int((spec - tasks) / 60)
-       print('⚠️  STALE TASKS DETECTED')
-       print(f'   spec.md  was modified {delta}m after tasks.md was last generated.')
-       print('   Run /speckit-tasks to reconcile, then re-run /speckit-implement.')
-       print('   To bypass: /speckit-implement --force')
-       sys.exit(1)
-   "
-   ```
-   Equal mtimes are treated as current (the standard pipeline order — spec, then tasks —
-   is a silent no-op).
-
-4. **Check the exit code.** If the command exited non-zero, halt immediately with the
-   printed warning and do **not** invoke `/speckit-implement`'s body. No implementation
-   code is written until the operator reconciles tasks (`/speckit-tasks`) or opts in with
-   `--force`.
+The script compares each file's last-commit time (falling back to its filesystem mtime
+only when the file has uncommitted local changes), not raw mtime — a plain mtime
+comparison would be defeated by `git checkout`/clone resetting both files' mtimes to
+checkout time in a fresh worktree.
 
 ## Failure Policy
 
-- A non-zero exit from the mtime check is a hard stop before the implementation loop
-  starts — this hook must prevent the `/speckit-implement` body from running at all.
-- Missing `spec.md` or `tasks.md` skips the guard; the core command's existing error
-  paths for those cases are unchanged.
+- Exit `1` from the script is a hard stop before the implementation loop starts for this
+  hook invocation — but the `--force` check above depends on the orchestrating agent
+  correctly recalling the original invocation's arguments, since hook targets get no
+  `$ARGUMENTS`. Treat it as a strong safeguard, not an unconditional guarantee.
+- A skip (exit `0` with an stderr note) is not stale tasks; the core command's existing
+  error paths for missing `spec.md`/`tasks.md`/`feature.json` are unchanged.

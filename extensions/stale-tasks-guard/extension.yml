@@ -14,12 +14,20 @@ requires:
   tools:
     - name: python3
       required: true
+    - name: git
+      required: false
 
 provides:
+  scripts:
+    - name: "stale_tasks_guard.py"
+      file: "scripts/python/stale_tasks_guard.py"
+      executable: true
+      description: "Deterministic mtime/commit-time comparison of spec.md vs tasks.md. Exit 0 = not stale or guard skipped (unresolvable feature.json, missing files); exit 1 = stale, prints the STALE TASKS banner. Stdlib-only Python 3; uses git commit time instead of raw mtime for clean files so a fresh worktree checkout doesn't defeat the comparison."
+
   commands:
     - name: "speckit.stale-tasks-guard.implement"
       file: "commands/implement.md"
-      description: "Hook target for before_implement: compares spec.md/tasks.md mtimes and halts the run when tasks.md predates spec.md, unless --force was passed on the /speckit-implement invocation."
+      description: "Hook target for before_implement: runs stale_tasks_guard.py and halts the run on exit 1, unless --force was passed on the /speckit-implement invocation."
 
 hooks:
   before_implement:

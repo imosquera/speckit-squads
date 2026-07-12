@@ -57,6 +57,7 @@ specify extension add --dev "$SQUADS/extensions/autopilot"
 specify extension add --dev "$SQUADS/extensions/git"
 specify extension add --dev "$SQUADS/extensions/progress"
 specify extension add --dev "$SQUADS/extensions/review"
+specify extension add --dev "$SQUADS/extensions/stale-tasks-guard"
 
 # presets
 specify preset add --dev "$SQUADS/presets/claude-ask-questions"

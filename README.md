@@ -11,6 +11,7 @@ extensions/   # Spec Kit extensions (commands + hooks)
   git/             Feature-branch + worktree + linked GitHub issue, clean, PR, auto-commit hooks
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
+  stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)
 
 presets/      # Spec Kit presets (template + command overrides)
   claude-ask-questions/         Interactive clarify/checklist for Claude

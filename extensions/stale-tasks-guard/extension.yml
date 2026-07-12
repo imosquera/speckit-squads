@@ -1,0 +1,35 @@
+schema_version: "1.0"
+
+extension:
+  id: "stale-tasks-guard"
+  name: "Stale-Tasks Guard"
+  version: "1.0.0"
+  description: "Halts /speckit-implement when spec.md was modified more recently than tasks.md — the signal that a late /speckit-clarify or /speckit-specify edit invalidated the task plan. Shipped as an extension (before_implement hook) rather than a preset wrap/replace so it fires regardless of which preset owns the /speckit-implement command body (e.g. constitution-audit, explicit-task-dependencies)."
+  author: "speckit-squads"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+  tools:
+    - name: python3
+      required: true
+
+provides:
+  commands:
+    - name: "speckit.stale-tasks-guard.implement"
+      file: "commands/implement.md"
+      description: "Hook target for before_implement: compares spec.md/tasks.md mtimes and halts the run when tasks.md predates spec.md, unless --force was passed on the /speckit-implement invocation."
+
+hooks:
+  before_implement:
+    command: "speckit.stale-tasks-guard.implement"
+    optional: false
+    description: "Detect a stale tasks.md (spec.md modified after tasks.md was generated) and halt /speckit-implement before the implementation loop starts, unless --force is present."
+    condition: null
+
+tags:
+  - "implement"
+  - "guard"
+  - "hooks"
+  - "tasks"

@@ -59,6 +59,19 @@ import subprocess
 import sys
 from datetime import datetime
 
+LOG_PATH = os.path.expanduser("~/Library/Logs/speckit-autopilot.log")
+
+
+def log(msg: str) -> None:
+    """Append a timestamped line to the autopilot log, silently skipping on any error."""
+    try:
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOG_PATH, "a") as f:
+            f.write(f"{ts} {msg}\n")
+    except Exception:
+        pass
+
 PHASES = ["specify", "plan", "tasks", "implement", "review"]
 SUBSTEPS = ["code", "comments", "tests", "errors", "types", "simplify", "pr"]
 STATUSES = {"done", "active", "pending", "blocked"}
@@ -461,10 +474,14 @@ def main():
         sys.exit(f"error: '{args.verb}' needs a phase name")
 
     args.branch = args.branch or current_branch()
+    log(f"[{args.branch}] {args.verb} {' '.join(args.rest)}")
+
     dashboard = resolve_dashboard(args.dashboard)
     branches = os.path.join(dashboard, "branches")
     if not os.path.isdir(branches):
-        print(f"progress_report: no dashboard at {branches} — skipping (not an error)")
+        msg = f"no dashboard at {branches} — skipping"
+        print(f"progress_report: {msg} (not an error)")
+        log(f"[{args.branch}] SKIP {msg}")
         return
 
     slug = slugify(args.branch)
@@ -480,7 +497,9 @@ def main():
             with open(src_path) as f:
                 st = parse_card(f.read(), args.branch)
         except Exception as e:
-            print(f"progress_report: could not parse {src_path} ({e}); starting fresh")
+            msg = f"could not parse {src_path} ({e}); starting fresh"
+            print(f"progress_report: {msg}")
+            log(f"[{args.branch}] ERROR {msg}")
             st = blank_state(args.branch)
         st["branch"] = args.branch
         # Migrate: remove old .md file after first successful read
@@ -494,6 +513,16 @@ def main():
 
     st = apply_verb(st, args)
     atomic_write(yaml_path, render(st))
+
+    # Build a compact status summary for the log: phase statuses + active substeps.
+    phase_statuses = " | ".join(
+        f"{p}:{st['phases'][p]['status']}" for p in PHASES
+    )
+    review_ss = st["phases"]["review"].get("substeps", {})
+    active_ss = [s for s in SUBSTEPS if review_ss.get(s) == "active"]
+    ss_part = f" substeps:{','.join(active_ss)}" if active_ss else ""
+    log(f"[{args.branch}] OK {args.verb} {' '.join(args.rest)} — {phase_statuses}{ss_part}")
+
     print(f"progress_report: {args.verb} -> {yaml_path}")
 
 

@@ -82,31 +82,28 @@ step after writing code is worse than one that never starts.
 parked, not already claimed by another autopilot run. Compute it deterministically,
 then show your pick before proceeding.
 
-**Fetch to a file — never pipe `gh` into a stdin-heredoc script.** The tempting
-one-liner `gh issue list --json … | python3 - <<'PY' … json.load(sys.stdin) … PY`
-**always fails** with `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`.
+**Fetch to a file, via the shared script — never pipe `gh` into a stdin-heredoc
+script.** The tempting one-liner
+`gh issue list --json … | python3 - <<'PY' … json.load(sys.stdin) … PY` **always
+fails** with `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`.
 `python3 -` reads its *program* from stdin, and the heredoc `<<'PY'` binds stdin to
 the heredoc text — that redirect wins over the pipe, so `gh`'s JSON never reaches
 Python and `json.load(sys.stdin)` reads an empty stream. You cannot route both the
-script *and* the data through one stdin. Land the data in a file first, then let the
-heredoc script read the **file** (stdin stays free for the program):
+script *and* the data through one stdin. `fetch-open-issues.sh` sidesteps this by
+landing the data in a file first (sorted oldest-first, `body` included for the
+empty-body check below), so every reader — this skill or `preflight-issues.py`
+directly — takes a **file path**, never stdin:
 
 ```bash
-# Sort inside gh (--jq) so the file is already oldest-first. Include `body` — the
-# empty-body eligibility check below needs it. Fail loud on a bad fetch rather than
-# leaving an empty file for the parser to choke on.
-gh issue list --state open --limit 200 \
-  --json number,title,labels,createdAt,assignees,body \
-  --jq 'sort_by(.createdAt)' > /tmp/autopilot_issues.json \
-  || { echo "gh issue list failed — run 'gh auth status' and confirm a GitHub remote"; exit 1; }
-[ -s /tmp/autopilot_issues.json ] || { echo "gh returned no data — treat as a failure, not an empty backlog"; exit 1; }
+FETCH_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/fetch-open-issues.sh"
+bash "$FETCH_SCRIPT" /tmp/autopilot_issues.json
 ```
 
 **Run the shared eligibility script for BOTH paths — never restate the rules
 inline.** `preflight-issues.py` is the single source of truth for what counts as
-eligible (block labels — including `autopilot:claimed` — empty body, and
-in-progress liveness). An inline reimplementation of this list has drifted from
-the script before (the explicit-issue path once omitted `autopilot:claimed`,
+eligible (block labels — including `autopilot:claimed` — empty body, and an
+existing branch/worktree/PR). An inline reimplementation of this list has drifted
+from the script before (the explicit-issue path once omitted `autopilot:claimed`,
 which is exactly how two runs collided on the same issue — see issue #19). Always
 `exec` the script instead:
 
@@ -172,24 +169,28 @@ issue and number the branch to it. Here the issue already exists, so you must by
 that and bind to issue `#N` instead — otherwise you get a duplicate issue and
 mismatched numbering.
 
-0. **Re-check liveness right before creating anything.** Step 1's check happened
-   moments ago; re-run it once more to shrink the race window as close to zero as
-   the claim label allows:
+0. **Re-check for a competing branch/worktree/PR right before creating anything.**
+   Step 1's check happened moments ago; re-run it once more to shrink the race
+   window as close to zero as the claim label allows. Use `--worktree-check`, NOT
+   a full re-run of Step 1's eligibility script against the issue list — by now
+   you've already added `autopilot:claimed` to `#N` yourself, so re-running the
+   label-aware check would see your own claim and incorrectly report a collision
+   with yourself on every single run. `--worktree-check` only looks at
+   branches/worktrees/PRs, never labels, so it can't trip on your own claim:
    ```bash
-   gh issue list --state open --limit 200 --json number,title,labels,createdAt,body \
-     --jq 'sort_by(.createdAt)' > /tmp/autopilot_issues_recheck.json
-   python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues_recheck.json "$N"
+   python3 "$PREFLIGHT_SCRIPT" --worktree-check "$N"
    ```
-   If this now reports `SKIP:` (e.g. a sibling run's "picked this up" comment landed
-   in between, or a branch/worktree for `#N` now exists), **do not resume the other
-   run's branch or worktree — stop and report it as a collision**, same as a Step 1
-   SKIP. There is no automatic resume path in this skill: an existing branch or
-   worktree for `#N` is always treated as another run's in-progress work, never as
-   something to pick back up, because a live sibling and a crashed leftover look
-   identical at a glance (this ambiguity — an empty just-created worktree mistaken
-   for an abandoned one — is exactly how two runs collided on issue #150; see
-   issue #19). If a human wants to actually resume a dead worktree, that's a
-   deliberate manual action outside this skill, not something to infer here.
+   If this reports `LIVE:` (a branch, worktree, or PR for `#N` now exists — e.g. a
+   sibling run created one in the interim), **do not resume it — stop and report it
+   as a collision**, same as a Step 1 SKIP, and remove your own claim first (see the
+   cleanup snippet above). There is no automatic resume path in this skill: an
+   existing branch or worktree for `#N` is always treated as another run's
+   in-progress work, never as something to pick back up, because a live sibling and
+   a crashed leftover look identical at a glance (this ambiguity — an empty
+   just-created worktree mistaken for an abandoned one — is exactly how two runs
+   collided on issue #150; see issue #19). If a human wants to actually resume a
+   dead worktree, that's a deliberate manual action outside this skill, not
+   something to infer here. Only `CLEAR` means proceed.
 1. Derive a slug from the issue title (kebab-case, trimmed) and the branch name
    `NNN-slug`, zero-padded to the repo's convention (e.g. `082-signup-thankyou`).
 2. Create the branch + worktree **without** creating an issue by forcing the branch

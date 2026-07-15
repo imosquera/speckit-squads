@@ -55,9 +55,7 @@ fi
 PICKED_ISSUE=""
 ISSUES_TMP="${TMPDIR:-/tmp}/speckit-autopilot-issues-$$.json"
 if command -v gh >/dev/null 2>&1 \
-   && gh issue list --state open --limit 200 \
-        --json number,title,labels,createdAt,body \
-        --jq 'sort_by(.createdAt)' > "$ISSUES_TMP" 2>/dev/null \
+   && bash "$SCRIPT_DIR/fetch-open-issues.sh" "$ISSUES_TMP" >/dev/null 2>&1 \
    && [ -s "$ISSUES_TMP" ]; then
 
   PREFLIGHT=$(python3 "$SCRIPT_DIR/preflight-issues.py" "$ISSUES_TMP" 2>/dev/null) || PREFLIGHT=""
@@ -76,6 +74,21 @@ if command -v gh >/dev/null 2>&1 \
 else
   rm -f "$ISSUES_TMP" 2>/dev/null || true
   echo "$(ts) preflight: gh unavailable or no issues fetched — proceeding anyway"
+fi
+
+# Belt-and-suspenders cleanup: the skill body is what CLAIMS $PICKED_ISSUE (see
+# NOTE above), and is responsible for un-claiming it on every exit path it
+# controls. But an LLM session can still die ungracefully (kill, OOM, crash)
+# before running its own cleanup instructions — unlike a bash trap, "the model
+# was told to clean up" is not a hard guarantee. This trap is a process-level
+# safety net for exactly that case: it fires on ANY exit of this wrapper
+# process, well after Step 1's claim would have happened, so it can never be
+# mistaken by the running skill for a pre-existing competing claim the way the
+# old early-claim-before-launch code was. Removing a label that was never
+# applied (skill never reached Step 1, or already cleaned up itself) is a
+# harmless no-op.
+if [ -n "$PICKED_ISSUE" ]; then
+  trap 'gh issue edit "$PICKED_ISSUE" --remove-label "autopilot:claimed" 2>/dev/null || true; rmdir "$lock" 2>/dev/null' EXIT
 fi
 
 echo "$(ts) === autopilot pass start :: $PROJECT ==="

@@ -48,18 +48,26 @@ the enforcer as the final step:
 
 The enforcer is self-healing: if a forbidden artifact is on disk it folds the
 content into `plan.md` under an `## Inlined from <name>` heading (inside an
-idempotent sentinel block) and then deletes the artifact. Unknown top-level
-entries only produce a `warning:` on stderr — they never fail the run, so
-stacking with other presets is safe.
+idempotent sentinel block) and then deletes the artifact. It always writes
+`plan.md` before removing anything, so content cannot be lost. If `plan.md` is
+missing it creates it. Unknown top-level entries only produce a `warning:` on
+stderr — they never fail the run, so stacking with other presets is safe.
 
 Handle the exit code as follows:
 
 - **`0`** — the tree is clean. If the enforcer reported that it folded and
-  removed any artifacts, tell the user exactly which ones were inlined into
-  `plan.md` and removed, then report success.
-- **`1`** — healing was required but impossible (for example `plan.md` is
-  missing, in which case nothing was removed). Surface the error verbatim, fix
-  the underlying problem, and re-run the enforcer. Do not report success.
+  removed any artifacts (or created `plan.md`), tell the user exactly what was
+  inlined, created, and removed, then report success.
+- **`1`** — read the stderr, which always says which of two cases it is:
+  - `HEALING IMPOSSIBLE` — nothing was written to `plan.md` and nothing was
+    removed. Surface the error verbatim, fix the underlying problem (an
+    unbalanced sentinel in `plan.md`, an unreadable path, an unwritable
+    directory), and re-run the enforcer.
+  - `PARTIALLY HEALED` — the content IS already safely inlined in `plan.md`,
+    but a forbidden artifact could not be removed. Surface the error verbatim,
+    remove the named artifact (nothing is lost by doing so), and re-run.
+
+  In both cases, do not report success.
 - **`2`** — bad usage: the invocation above is wrong. Fix the call and re-run.
 
 Only report success once the enforcer exits `0`.

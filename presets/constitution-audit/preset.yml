@@ -23,7 +23,7 @@ provides:
     - type: "command"
       name: "speckit.plan"
       file: "commands/speckit.plan.md"
-      description: "Plan command that requires quoted constitution references in the Constitution Check section. Chainable: exposes a {CORE_TEMPLATE} seam so other presets (e.g. spec-minimal) can wrap it."
+      description: "Plan command that requires quoted constitution references in the Constitution Check section. Chainable: exposes a core-flow seam so other presets (e.g. spec-minimal) can wrap it."
       strategy: "wrap"
     - type: "command"
       name: "speckit.implement"

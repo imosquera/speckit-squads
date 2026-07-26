@@ -66,6 +66,8 @@ therefore **not** picked up live — re-run `./install.sh --force <project>` to 
 
 `install.sh` and `uninstall.sh` auto-discover every `extensions/*/extension.yml`, so new commands are included automatically once their manifest exists.
 
+**Migrating from `spec-minimal` 1.x:** 2.0.0 is breaking — `spec-minimal` now only strips spec sections and holds the plan tree. The UI preview moved to the separate `spec-ui-preview` preset, and issue sync moved into the `git` extension. Install both to keep the 1.x behavior.
+
 ## Authoring
 
 Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. Because installs are copies rather than symlinks, re-run `./install.sh --force <project>` (or the matching `specify ... add --dev`) in any consuming project after *any* change — command text and scripts included, not just manifests.

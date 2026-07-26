@@ -56,9 +56,41 @@ cd "$PROJECT_DIR"
 
 shopt -s nullglob
 
-# install_one <kind> <name> <source-dir>
+# /speckit-implement composition order — see "Composition order" in README.md.
+#
+# Five presets layer onto speckit.implement. The resolver sorts layers by
+# (priority, preset-id) ascending; the LOWEST number is the OUTERMOST layer.
+# A `replace` layer is the composition base and everything below it is
+# discarded, so `explicit-task-dependencies` (the wave-DAG executor, which
+# must stay `replace`) has to sit innermost or it would swallow the others.
+# The `wrap` presets are ordered so their pre-seam steps run outside-in and
+# their post-seam steps run inside-out.
+#
+#   5   worktree-isolation          cd into the worktree before anything reads files
+#   8   graphify-on-implement       outermost post-seam step, so the refresh runs last
+#   10  constitution-audit          default; post-seam audit of the code just written
+#   10  implement-prelude-skills    default; innermost pre-seam step
+#   50  explicit-task-dependencies  innermost, `replace` executor base
+#
+#   => worktree cd -> prelude skills -> implement -> constitution audit -> graphify refresh
+#
+# Only presets whose position is load-bearing are listed here; every other
+# preset falls through to the CLI default (10). Auto-discovery is unchanged —
+# this is an override map, not a roster.
+preset_priority() {
+  case "$1" in
+    worktree-isolation)         echo 5  ;;
+    graphify-on-implement)      echo 8  ;;
+    explicit-task-dependencies) echo 50 ;;
+    *)                          echo "" ;;
+  esac
+}
+
+# install_one <kind> <name> <source-dir> [extra specify-add flags...]
 install_one() {
   local kind="$1" name="$2" src="$3"
+  shift 3
+  local add_flags=("$@")
   local out rc
 
   reinstall_one() {
@@ -76,7 +108,7 @@ install_one() {
     fi
 
     set +o pipefail
-    add_out="$(yes | specify "$kind" add --dev "$src" 2>&1)"
+    add_out="$(yes | specify "$kind" add --dev "$src" ${add_flags[@]+"${add_flags[@]}"} 2>&1)"
     add_rc=$?
     set -o pipefail
 
@@ -94,7 +126,7 @@ install_one() {
   # the pipeline's exit code even when `specify` itself succeeded. Disable
   # pipefail just for this call so we read `specify`'s real status.
   set +o pipefail
-  out="$(yes | specify "$kind" add --dev "$src" 2>&1)"
+  out="$(yes | specify "$kind" add --dev "$src" ${add_flags[@]+"${add_flags[@]}"} 2>&1)"
   rc=$?
   set -o pipefail
 
@@ -133,7 +165,17 @@ for preset_dir in "$REPO_DIR"/presets/*/; do
   [[ -f "$preset_dir/preset.yml" ]] || continue
   name="$(basename "$preset_dir")"
   echo "==> preset: $name"
-  install_one preset "$name" "$preset_dir" || EXIT=1
+  priority="$(preset_priority "$name")"
+  if [[ -n "$priority" ]]; then
+    install_one preset "$name" "$preset_dir" --priority "$priority" || EXIT=1
+    # --priority only takes effect on a fresh add, so an already-installed
+    # preset would keep whatever priority it was first registered with.
+    # set-priority is idempotent and reconciles it either way.
+    specify preset set-priority "$name" "$priority" >/dev/null 2>&1 \
+      || echo "  warning: could not set priority $priority" >&2
+  else
+    install_one preset "$name" "$preset_dir" || EXIT=1
+  fi
 done
 
 echo

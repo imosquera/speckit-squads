@@ -1,31 +1,47 @@
 ---
-description: "Execute /speckit-implement normally, then always run graphify update as the final step"
+description: "Composable wrapper for /speckit-implement that always runs a mandatory graphify refresh once implementation has completed."
 ---
 
-## User Input
+## Wrapper Layer
 
-```text
-$ARGUMENTS
-```
+This preset wraps the stock `/speckit-implement` command (and any inner wrapper,
+such as the implement-prelude-skills layer, that the core-flow seam below expands
+to). It adds one mandatory post-implementation step: a knowledge-graph refresh.
 
-You **MUST** consider the user input before proceeding (if not empty).
+Run the core flow first, unchanged — all prerequisite checks, checklist gating,
+task execution behavior, and extension hook handling stay exactly as the inner
+layers define them. Then run the graph refresh below.
 
-## Behavior
+### Core Flow
 
-1. Execute the canonical stock `/speckit-implement` flow unchanged (including all prerequisite checks, task execution behavior, and normal hook handling).
-2. After implementation succeeds, run one final graph refresh step:
-   - Resolve worktree root to graph (prefer `.specify/feature.json.worktree_path`; otherwise use current repository root).
-   - Execute `graphify update <resolved-worktree-path>`.
-3. This graph refresh is mandatory and must run as the last implementation step.
+{CORE_TEMPLATE}
 
-## Failure Policy
+### Graph Refresh (MANDATORY — LAST STEP)
 
-- If `graphify` CLI is unavailable, unauthenticated, or the update command fails, return an error and mark the overall command as incomplete.
-- Do not silently skip or downgrade this step to optional behavior.
+After the entire core flow above has completed — every task executed and marked
+`[X]`, every post-execution hook dispatched — and before reporting success, run
+the graph refresh as the final step:
 
-## Completion Report
+1. Resolve the worktree root to graph:
+   - Prefer the `worktree_path` value in `.specify/feature.json`.
+   - If that file or key is missing, or the path does not exist, use the current
+     repository root.
+2. Execute `graphify update <resolved-worktree-path>`.
 
-On success, include:
-- Path used for graph refresh
-- Confirmation that `graphify update` was executed as the final step
+This step is mandatory. It is not conditional on what the core flow did, and it
+must not be reordered ahead of implementation.
+
+### Failure Policy
+
+- If the `graphify` CLI is unavailable, unauthenticated, or the update command
+  exits non-zero, return an error and mark the overall command as incomplete.
+- Do not silently skip this step or downgrade it to optional behavior.
+
+### Completion Report
+
+Only report success once `graphify update` has succeeded. In addition to whatever
+the core flow reports, include:
+
+- The path used for the graph refresh
+- Confirmation that `graphify update` ran as the final step
 - Readiness for follow-up commands

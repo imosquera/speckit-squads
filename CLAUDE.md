@@ -59,7 +59,9 @@ Plain `./install.sh <project>` treats "already installed" as a no-op success, so
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
-- `constitution-audit` — overrides `/speckit-plan` and `/speckit-implement` to require a quoted, principle-by-principle audit of `.specify/memory/constitution.md` before code is written
+- `constitution-audit` — overrides `/speckit-plan` (before planning) and `/speckit-implement` (after implementation, auditing the code just written) to require a quoted, principle-by-principle audit of `.specify/memory/constitution.md`
+
+**`/speckit-implement` composition:** `explicit-task-dependencies`, `graphify-on-implement`, `worktree-isolation`, `implement-prelude-skills`, and `constitution-audit` all layer onto `speckit.implement` and compose into **one** command — they are not independently active. `explicit-task-dependencies` is the `replace` executor base and must stay innermost; the other four are `wrap`. Order comes from install priority (lowest number = outermost), which `install.sh` pins: `worktree-isolation` 5, `graphify-on-implement` 8, `constitution-audit` / `implement-prelude-skills` default 10, `explicit-task-dependencies` 50. Net sequence: worktree cd → prelude skills → implement → constitution audit → graphify refresh. Read the **Composition order** section of `README.md` before changing any implement preset's strategy or priority.
 
 `spec-minimal` 2.0.0 is a breaking split: UI preview → `spec-ui-preview`, issue sync → the `git` extension. See the migration note in `README.md`.
 

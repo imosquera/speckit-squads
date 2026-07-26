@@ -4,7 +4,7 @@ preset:
   id: "graphify-on-implement"
   name: "Graphify Finalize on Implement"
   version: "1.0.0"
-  description: "Overrides /speckit-implement so a graphify refresh is always executed as the final step after implementation completes."
+  description: "Wraps /speckit-implement so a graphify refresh is always executed as the final step after implementation completes."
   author: "beadbits"
   repository: "local"
   license: "same-as-project"
@@ -17,8 +17,8 @@ provides:
     - type: "command"
       name: "speckit.implement"
       file: "commands/speckit.implement.md"
-      description: "Implement command with mandatory final graphify update"
-      replaces: "speckit.implement"
+      strategy: "wrap"
+      description: "Wrapper layer adding a mandatory final graphify update after implementation"
 
 tags:
   - "implement"

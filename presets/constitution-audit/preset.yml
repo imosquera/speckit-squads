@@ -28,8 +28,8 @@ provides:
     - type: "command"
       name: "speckit.implement"
       file: "commands/speckit.implement.md"
-      description: "Implement command that requires a quoted constitution audit file before code is written"
-      replaces: "speckit.implement"
+      description: "Implement command that requires a quoted, validated constitution audit of the code it produced. Chainable: exposes a core-flow seam so other implement presets compose beneath it."
+      strategy: "wrap"
 
 tags:
   - "constitution"

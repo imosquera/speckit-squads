@@ -2,25 +2,22 @@
 description: "Execute /speckit-implement, then block completion until a quoted constitution audit of the written code has been produced and validated by a deterministic script"
 ---
 
-## User Input
-
-```text
-$ARGUMENTS
-```
-
-You **MUST** consider the user input before proceeding (if not empty).
-
 ## Behavior
 
-Execute the canonical stock `/speckit-implement` flow first, then run **one mandatory audit gate** before reporting completion.
+Execute the core implement flow with **one mandatory audit gate** on the code it produces.
 
-### Stock Flow
+### Core Flow
 
-Execute the canonical stock `/speckit-implement` flow unchanged.
+Run the core implement flow first so that the code the audit covers actually
+exists. The core-flow seam below is also the chaining point that lets other
+presets wrap this command: when composed, that seam expands to the next inner
+wrapper and ultimately the stock flow.
+
+{CORE_TEMPLATE}
 
 ### Mandatory Constitution Audit (runs AFTER all task execution)
 
-After the stock flow finishes, when `.specify/memory/constitution.md` exists:
+After the core flow finishes, when `.specify/memory/constitution.md` exists:
 
 1. **List the principles** the audit must cover:
 
@@ -56,7 +53,7 @@ When `.specify/memory/constitution.md` does **not** exist, skip the audit.
 ## Completion Report
 
 On success, include:
-- The normal stock `/speckit-implement` completion summary
+- The normal completion summary from the core flow
 - Whether a constitution audit was performed (path to `constitution-audit.md` if so)
 - Confirmation that `constitution_audit.py validate` exited zero
 - Any `VIOLATES` verdicts and how they were resolved (fix or waiver)

@@ -18,19 +18,26 @@ provides:
       name: "tasks-template"
       file: "templates/tasks-template.md"
       description: "Tasks template with explicit dependency declarations and Execution Wave DAG"
-      replaces: "tasks-template"
 
     - type: "command"
       name: "speckit.tasks"
       file: "commands/speckit.tasks.md"
       description: "Tasks command with dependency suffix and Wave DAG generation instructions"
-      replaces: "speckit.tasks"
 
+    # This preset stays "replace" while the sibling /speckit-implement presets
+    # (constitution-audit, graphify-on-implement, implement-prelude-skills,
+    # worktree-isolation) are "wrap": those add steps around the execution loop,
+    # whereas this one *substitutes* the loop — wave-DAG subagent fan-out instead
+    # of the stock serial walk. Wrapping it would run every task twice.
+    #
+    # Because a replace layer is the composition base and only layers above it
+    # compose, this preset must be installed innermost (highest priority number).
+    # install.sh pins it to 50 — see the composition-order section in README.md.
     - type: "command"
       name: "speckit.implement"
       file: "commands/speckit.implement.md"
       description: "Implement command that walks the Execution Wave DAG and dispatches each wave's [P] tasks to subagents in parallel"
-      replaces: "speckit.implement"
+      strategy: "replace"
 
 tags:
   - "dependencies"

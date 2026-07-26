@@ -7,7 +7,7 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
-  git/             Feature-branch + worktree + linked GitHub issue, clean, PR, auto-commit hooks
+  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR, auto-commit hooks
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 presets/      # Spec Kit presets (template + command overrides)
@@ -15,7 +15,8 @@ presets/      # Spec Kit presets (template + command overrides)
   explicit-task-dependencies/   tasks-template with explicit dependency edges
   graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
-  spec-minimal/                 composable wrapper for /speckit-specify and /speckit-plan, with UI preview support
+  spec-minimal/                 Artifact minimalism: strips spec sections, keeps the feature tree to spec/plan/tasks
+  spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
@@ -45,9 +46,11 @@ specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
 specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
+specify preset add --dev "$SQUADS/presets/spec-ui-preview"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 specify preset add --dev "$SQUADS/presets/implement-prelude-skills"
+specify preset add --dev "$SQUADS/presets/constitution-audit"
 ```
 
 Or use the bundled script from inside the checkout:
@@ -57,10 +60,12 @@ Or use the bundled script from inside the checkout:
 ./install.sh --force /path/to/your/spec-kit-project   # reinstall everything
 ```
 
-`--dev` keeps each install pointed at this source tree, so edits here are picked up without re-adding.
+`--dev` records this checkout as the install source, but it does **not** symlink: `specify` copies the
+directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are
+therefore **not** picked up live — re-run `./install.sh --force <project>` to refresh a consumer.
 
 `install.sh` and `uninstall.sh` auto-discover every `extensions/*/extension.yml`, so new commands are included automatically once their manifest exists.
 
 ## Authoring
 
-Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. After non-trivial changes, re-run the matching `specify ... add --dev` in any consuming project to refresh registered commands.
+Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. Because installs are copies rather than symlinks, re-run `./install.sh --force <project>` (or the matching `specify ... add --dev`) in any consuming project after *any* change — command text and scripts included, not just manifests.

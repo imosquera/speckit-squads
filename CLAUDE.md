@@ -22,9 +22,19 @@ Both require a `<project-dir>` argument — there is no implicit `$PWD` default,
 ./uninstall.sh /path/to/spec-kit-project
 ```
 
-Every install uses `specify ... add --dev <repo-path>`, which keeps the project's `.specify/extensions/<id>/` and `.specify/presets/<id>/` pointed at this repo's source tree. Edits to command files, scripts, or templates here are picked up live — no reinstall step. `install.sh` therefore treats "already installed" as a no-op success.
+Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this repo as the install source; it does not symlink.** Verified in the installed specify-cli:
 
-The one case where a registry refresh is required: changes to a manifest itself (`extension.yml` / `preset.yml`) — adding a new command, renaming the id, changing hooks. For that, run `./install.sh --force <project>`.
+- `PresetManager.install_from_directory()` (`specify_cli/presets/__init__.py`) ends in `shutil.copytree(source_dir, dest_dir)` — there are no symlink calls anywhere in the preset module.
+- `ExtensionManager.install_from_directory()` (`specify_cli/extensions/__init__.py`) likewise does `shutil.copytree(source_dir, dest_dir, ignore=ignore_fn)`. The only `os.symlink` in that module is for rendered *agent skill* files in dev mode, not for the extension tree itself.
+- On disk, both `.specify/presets/<id>/` and `.specify/extensions/<id>/` in a consumer (checked: `~/Code/adkit`) are plain directories timestamped at last install, not symlinks.
+
+**Consequence: edits made in this repo are NOT picked up live.** Any change — command markdown, scripts, templates, or the manifest — requires a refresh in the consumer:
+
+```bash
+./install.sh --force /path/to/spec-kit-project
+```
+
+Plain `./install.sh <project>` treats "already installed" as a no-op success, so it will **not** propagate edits. Use `--force` whenever you have changed anything here.
 
 `uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
 
@@ -36,7 +46,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
-- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), clean, PR, auto-commit hooks across all phases
+- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 
 **Presets**
@@ -44,7 +54,8 @@ The one case where a registry refresh is required: changes to a manifest itself 
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
 - `graphify-on-implement` — `/speckit-implement` override that always runs `graphify update` as the final mandatory step
 - `functional-constitution` — `/speckit-constitution` override that always injects and normalizes a mandatory functional-programming governance section
-- `spec-minimal` — composable wrapper for `/speckit-specify` (drops Assumptions + Key Entities + Success Criteria, adds UI preview for UI-touching specs, and syncs the issue) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
+- `spec-minimal` — one job: artifact minimalism. Wraps `/speckit-specify` to strip `## Assumptions`, `### Key Entities`, and `## Success Criteria` from `spec.md`; wraps `/speckit-plan` to hold the feature tree to `spec.md`, `plan.md`, `tasks.md`, and optional `quickstart.md` (`research.md`, `data-model.md`, `contracts/` are forbidden). Enforced by a mandatory prompt rule plus the self-healing `scripts/bash/enforce-minimal-tree.sh`, which folds any forbidden artifact into `plan.md` under a sentinel block and deletes it; unknown top-level entries only warn, so stacking is safe
+- `spec-ui-preview` — adds a GitHub-safe inline HTML UI preview to UI-touching specs (split out of `spec-minimal`)
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
@@ -55,7 +66,7 @@ The one case where a registry refresh is required: changes to a manifest itself 
 1. Drop the new directory under `extensions/<id>/` or `presets/<id>/` with a valid manifest. The install/uninstall scripts will pick it up automatically — do **not** edit them.
 2. Update the **Currently shipped** list above with one bullet: `` `<id>` — one-line description ``.
 3. Update the matching list in `README.md` so the user-facing doc stays in sync.
-4. If a consumer project should pick it up, run `./install.sh <project>` from there.
+4. If a consumer project should pick it up, run `./install.sh --force <project>` from there.
 
 ## When you remove an extension or preset
 

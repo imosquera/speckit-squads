@@ -17,9 +17,9 @@ Execute the canonical stock `/speckit-plan` flow with **one mandatory gate** on 
 ### Core Flow
 
 Run the core plan flow first so that `plan.md` exists before the Constitution
-Check gate is applied. This `{CORE_TEMPLATE}` seam is also the chaining point that
-lets other presets (e.g. spec-minimal) wrap this command: when composed, the
-placeholder expands to the next inner wrapper and ultimately the stock flow.
+Check gate is applied. The core-flow seam below is also the chaining point that
+lets other presets (e.g. spec-minimal) wrap this command: when composed, that
+seam expands to the next inner wrapper and ultimately the stock flow.
 
 {CORE_TEMPLATE}
 

@@ -9,6 +9,7 @@ This extension provides Git operations as an optional, self-contained module. It
 - **Feature branch creation** with sequential (`001-feature-name`) or timestamp (`20260319-143022-feature-name`) numbering
 - **Worktree creation and cleanup** for feature isolation
 - **PR creation** for completed feature branches
+- **GitHub issue sync** — the tracking issue's body is rendered from `spec.md` after every `/speckit-specify`
 - **Auto-commit** after core commands (configurable per-command with custom messages)
 
 ## Commands
@@ -18,30 +19,34 @@ This extension provides Git operations as an optional, self-contained module. It
 | `speckit.git.feature` | Create a feature branch with sequential or timestamp numbering |
 | `speckit.git.worktree` | Create a worktree under the `${PROJ}.worktrees` collector directory |
 | `speckit.git.clean` | Clean up the current feature worktree, branch, issue, and uncommitted changes |
+| `speckit.git.issue` | Create or update the feature's GitHub issue, rendering its body from `spec.md` |
 | `speckit.git.commit` | Auto-commit changes (configurable per-command enable/disable and messages) |
 | `speckit.git.pr` | Open a GitHub PR for the current feature branch |
 
 ## Hooks
 
-| Event | Command | Optional | Description |
-|-------|---------|----------|-------------|
-| `before_specify` | `speckit.git.feature` | No | Create feature branch before specification |
-| `before_clarify` | `speckit.git.commit` | Yes | Commit outstanding changes before clarification |
-| `before_plan` | `speckit.git.commit` | Yes | Commit outstanding changes before planning |
-| `before_tasks` | `speckit.git.commit` | Yes | Commit outstanding changes before task generation |
-| `before_implement` | `speckit.git.commit` | Yes | Commit outstanding changes before implementation |
-| `before_checklist` | `speckit.git.commit` | Yes | Commit outstanding changes before checklist |
-| `before_analyze` | `speckit.git.commit` | Yes | Commit outstanding changes before analysis |
-| `before_taskstoissues` | `speckit.git.commit` | Yes | Commit outstanding changes before issue sync |
-| `after_constitution` | `speckit.git.commit` | Yes | Auto-commit after constitution update |
-| `after_specify` | `speckit.git.commit` | Yes | Auto-commit after specification |
-| `after_clarify` | `speckit.git.commit` | Yes | Auto-commit after clarification |
-| `after_plan` | `speckit.git.commit` | Yes | Auto-commit after planning |
-| `after_tasks` | `speckit.git.commit` | Yes | Auto-commit after task generation |
-| `after_implement` | `speckit.git.commit` | Yes | Auto-commit after implementation |
-| `after_checklist` | `speckit.git.commit` | Yes | Auto-commit after checklist |
-| `after_analyze` | `speckit.git.commit` | Yes | Auto-commit after analysis |
-| `after_taskstoissues` | `speckit.git.commit` | Yes | Auto-commit after issue sync |
+| Event | Command | Priority | Optional | Description |
+|-------|---------|----------|----------|-------------|
+| `before_specify` | `speckit.git.feature` | — | No | Create feature branch before specification |
+| `before_clarify` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before clarification |
+| `before_plan` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before planning |
+| `before_tasks` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before task generation |
+| `before_implement` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before implementation |
+| `before_checklist` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before checklist |
+| `before_analyze` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before analysis |
+| `before_taskstoissues` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before issue sync |
+| `after_constitution` | `speckit.git.commit` | 10 | Yes | Auto-commit after constitution update |
+| `after_specify` | `speckit.git.issue` | 5 | No | Create or update the feature's GitHub issue from the rendered spec |
+| `after_specify` | `speckit.git.commit` | 10 | Yes | Auto-commit after specification |
+| `after_clarify` | `speckit.git.commit` | 10 | Yes | Auto-commit after clarification |
+| `after_plan` | `speckit.git.commit` | 10 | Yes | Auto-commit after planning |
+| `after_tasks` | `speckit.git.commit` | 10 | Yes | Auto-commit after task generation |
+| `after_implement` | `speckit.git.commit` | 10 | Yes | Auto-commit after implementation |
+| `after_checklist` | `speckit.git.commit` | 10 | Yes | Auto-commit after checklist |
+| `after_analyze` | `speckit.git.commit` | 10 | Yes | Auto-commit after analysis |
+| `after_taskstoissues` | `speckit.git.commit` | 10 | Yes | Auto-commit after issue sync |
+
+`after_specify` runs two commands, lowest priority first: `speckit.git.issue` syncs the tracking issue (and may write `source_issue` into `.specify/feature.json`), then `speckit.git.commit` picks up that change along with the new spec. Issue sync is non-optional — if `gh` is missing, unauthenticated, or fails, the hook errors rather than skipping.
 
 ## Configuration
 

@@ -13,14 +13,14 @@ presets that touch these commands (`spec-minimal`, `parse-dont-validate`,
 
 ### Companion `progress` extension (install both)
 
-A `wrap` loses to a `replaces`: when another preset **replaces** the `/speckit-tasks`
-or `/speckit-implement` body (e.g. `explicit-task-dependencies`, `parse-dont-validate`),
-this preset's wrap on those two phases is clobbered and they stop updating the card.
-Presets can't declare lifecycle hooks to work around it — only extensions can — so the
-sibling **`progress` extension** supplies `before_tasks` / `before_implement` hooks that
-mark those two phases active regardless of who owns the command body. The extension
-ships no writer of its own; its commands resolve *this preset's* `progress_report.py`
-and no-op if it's absent. Install the two together for full, clobber-immune coverage;
+This preset's `wrap` on `/speckit-tasks` and `/speckit-implement` is clobbered
+whenever another installed preset **replaces** those command bodies (e.g.
+`explicit-task-dependencies`, `parse-dont-validate`) — see [wrap vs replace](../../README.md#preset-composition-wrap-vs-replace)
+in the repo README. The sibling **`progress` extension** covers exactly that
+gap: its `before_tasks` / `before_implement` lifecycle hooks mark those two
+phases active regardless of who owns the command body. It ships no writer of
+its own — its commands resolve *this preset's* `progress_report.py` and no-op
+if it's absent. Install the two together for full, clobber-immune coverage;
 the preset alone still covers specify/plan/review and any project without a
 replace-strategy preset.
 

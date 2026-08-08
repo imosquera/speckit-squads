@@ -20,9 +20,6 @@ well enough that hand-rolling it would be wasted effort.
 ### Core Flow
 
 Run the core plan flow first so that `plan.md` exists before research begins.
-This `{CORE_TEMPLATE}` seam is also the chaining point that lets other presets
-wrap this command: when composed, the placeholder expands to the next inner
-wrapper and ultimately the stock flow.
 
 {CORE_TEMPLATE}
 

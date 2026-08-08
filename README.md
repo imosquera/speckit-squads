@@ -87,3 +87,7 @@ Or use the bundled script from inside the checkout:
 ## Authoring
 
 Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. After non-trivial changes, re-run the matching `specify ... add --dev` in any consuming project to refresh registered commands.
+
+### Preset composition: `wrap` vs `replace`
+
+A preset's command template uses `strategy: "wrap"` (composes with other presets on the same command, via a `{CORE_TEMPLATE}` seam that expands to the next inner wrapper) or `strategy: "replace"` / `replaces:` (fully owns the command body). **A `wrap` loses to a `replace`**: if two presets target the same command and one of them replaces it, that preset's body wins outright and any other preset's `wrap` on that command is dropped — it never runs. Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensions can. So a preset that needs to survive being clobbered by a `replace`-strategy sibling ships a companion extension with lifecycle hooks as a fallback path (see `progress` next to `progress-report`, and `stale-tasks-guard`, which is a standalone extension for exactly this reason).

@@ -49,7 +49,8 @@ Note on capabilities (verified empirically): **only extensions can declare `hook
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
 - `graphify-on-implement` — `/speckit-implement` override that always runs `graphify update` as the final mandatory step
 - `functional-constitution` — `/speckit-constitution` override that always injects and normalizes a mandatory functional-programming governance section
-- `spec-minimal` — composable wrapper for `/speckit-specify` (drops Assumptions + Key Entities + Success Criteria, adds UI preview for UI-touching specs, and syncs the issue) and `/speckit-plan` (skips `data-model.md`, `quickstart.md`, `contracts/`)
+- `spec-minimal` — composable wrapper for `/speckit-specify` (drops Assumptions + Key Entities + Success Criteria, adds UI preview for UI-touching specs, and syncs the issue) and `/speckit-plan` (allows only `spec.md`, `plan.md`, `tasks.md`, `requirements.md`, optionally `quickstart.md` and `research.md`; forbids `data-model.md`, `contracts/`)
+- `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins

@@ -7,9 +7,9 @@ Wraps `/speckit-specify` and `/speckit-plan` to trim the generated artifacts wit
 | Command | Default artifacts | Under `spec-minimal` |
 |---|---|---|
 | `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria**, plus an inline HTML preview for UI-touching features |
-| `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `spec.md`, `plan.md`, `tasks.md`, `requirements.md`, optionally `quickstart.md` — `research.md`, `data-model.md`, and `contracts/` are forbidden |
+| `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `spec.md`, `plan.md`, `tasks.md`, `requirements.md`, optionally `quickstart.md` and `research.md` — `data-model.md` and `contracts/` are forbidden |
 
-The plan wrapper is **strict**: a pre-flight script pre-occupies `research.md`, `data-model.md`, and `contracts/` with empty / read-only directories so the stock flow physically cannot write them (`EISDIR` / `EACCES`). A post-flight verifier fails the run if anything forbidden ended up on disk. Any content that would have lived in those files must be inlined as a section of `plan.md` or `requirements.md`.
+The plan wrapper is **strict**: a mandatory prompt rule forbids the agent from ever creating `data-model.md` or `contracts/`, and a read-only post-flight verifier fails the run if either ended up on disk anyway. Nothing is ever pre-created. Any content that would have lived in those files must be inlined as a section of `plan.md` or `requirements.md`. `research.md` is allowed but still optional — e.g. the `library-research` preset writes to it.
 
 ## Install
 

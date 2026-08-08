@@ -19,6 +19,7 @@ presets/      # Spec Kit presets (template + command overrides)
   graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
   spec-minimal/                 composable wrapper for /speckit-specify and /speckit-plan, with UI preview support
+  library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
@@ -65,6 +66,7 @@ specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
 specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
+specify preset add --dev "$SQUADS/presets/library-research"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 specify preset add --dev "$SQUADS/presets/implement-prelude-skills"

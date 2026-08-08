@@ -23,15 +23,17 @@ The feature directory MUST contain ONLY these files at the top level:
 - `tasks.md`
 - `requirements.md`
 - `quickstart.md` (optional but allowed)
+- `research.md` (optional but allowed — e.g. written by the `library-research`
+  preset; nothing pre-creates it)
 
-`research.md`, `data-model.md`, and `contracts/` **MUST NOT be created** — not as
-files, not as directories, not in any form. There is no escape hatch. Any content
-that the stock flow would have written into one of those paths MUST instead be
-inlined as a section of `plan.md` or `requirements.md`.
+`data-model.md` and `contracts/` **MUST NOT be created** — not as files, not as
+directories, not in any form. There is no escape hatch. Any content that the
+stock flow would have written into one of those paths MUST instead be inlined
+as a section of `plan.md` or `requirements.md`.
 
-When you reach any step of the core flow that would create `research.md`,
-`data-model.md`, or `contracts/`, do not create the path. Fold its content into
-`plan.md` or `requirements.md` and continue.
+When you reach any step of the core flow that would create `data-model.md` or
+`contracts/`, do not create the path. Fold its content into `plan.md` or
+`requirements.md` and continue.
 
 In the **Project Structure → Documentation (this feature)** subsection of
 `plan.md`, list exactly the allowed files and nothing else.
@@ -50,7 +52,7 @@ the read-only verifier as the final step:
 ```
 
 This script creates nothing and deletes nothing. It exits non-zero if any
-forbidden artifact (`research.md`, `data-model.md`, `contracts/`) or any other
-unexpected entry ended up on disk. If it exits non-zero, surface the error
+forbidden artifact (`data-model.md`, `contracts/`) or any other unexpected
+entry ended up on disk. If it exits non-zero, surface the error
 verbatim to the user and stop — do not retry, do not silently delete, do not
 report success. Only report success once this verifier exits zero.

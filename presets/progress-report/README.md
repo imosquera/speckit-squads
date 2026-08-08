@@ -8,13 +8,13 @@ site renders it in the "Active branches" panel.
 It works by **wrapping** the five cycle commands (`strategy: wrap`), so the card
 updates whether **autopilot or a human** drives the cycle — both invoke the same
 `/speckit-*` commands. Because it wraps (not replaces), it composes with the other
-presets that touch these commands (`spec-minimal`, `constitution-audit`,
+presets that touch these commands (`spec-minimal`, `parse-dont-validate`,
 `graphify-on-implement`, …).
 
 ### Companion `progress` extension (install both)
 
 A `wrap` loses to a `replaces`: when another preset **replaces** the `/speckit-tasks`
-or `/speckit-implement` body (e.g. `explicit-task-dependencies`, `constitution-audit`),
+or `/speckit-implement` body (e.g. `explicit-task-dependencies`, `parse-dont-validate`),
 this preset's wrap on those two phases is clobbered and they stop updating the card.
 Presets can't declare lifecycle hooks to work around it — only extensions can — so the
 sibling **`progress` extension** supplies `before_tasks` / `before_implement` hooks that

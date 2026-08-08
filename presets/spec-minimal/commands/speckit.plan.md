@@ -4,9 +4,9 @@ description: "Composable /speckit-plan wrapper enforcing a minimal doc tree"
 
 ## Wrapper Layer
 
-This preset wraps the stock `/speckit-plan` command (and any inner wrapper, such
-as the constitution-audit Constitution Check gate, that the core flow expands
-to). It enforces a strictly minimal artifact tree.
+This preset wraps the stock `/speckit-plan` command (and any inner wrapper that
+the core flow expands to, e.g. from another chained `speckit.plan` preset). It
+enforces a strictly minimal artifact tree.
 
 Enforcement has exactly two parts: a mandatory prompt rule that forbids the agent
 from ever creating the forbidden paths, and a read-only post-flight verifier that

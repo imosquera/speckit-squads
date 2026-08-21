@@ -1,5 +1,6 @@
 ---
 description: "Enforce a mandatory Parse, Don't Validate constitution section"
+strategy: "wrap"
 ---
 
 ## User Input
@@ -10,24 +11,44 @@ $ARGUMENTS
 
 You MUST consider the user input before proceeding.
 
-## Intent
+## Wrapper Layer
 
-Run the normal `/speckit-constitution` workflow, then enforce a canonical
-Parse, Don't Validate section in `.specify/memory/constitution.md`.
+This preset wraps `/speckit-constitution` (and any inner wrapper the core-flow
+seam expands to). It adds exactly one thing: it enforces a canonical
+**Parse, Don't Validate** section in `.specify/memory/constitution.md`
+after the core flow has written it. It does not otherwise change the workflow.
 
-## Enforcement Rules
+Other presets may stack the same way and inject their own governance sections.
+Never assume this preset owns the whole document.
 
-After generating or updating the constitution, you MUST ensure this section
-exists exactly once.
+### Core Flow
 
-- If a section with the same heading already exists, replace that entire section
-  body with the canonical text below.
-- If the section does not exist, insert it immediately after the first numbered
-  principle section header (for example after `### I. ...`) while preserving all
-  other constitution content.
+{CORE_TEMPLATE}
+
+## Enforcement Rules (MANDATORY — after the core flow)
+
+Once the entire core flow above has completed and the constitution has been
+written, ensure the canonical section below exists **exactly once**.
+
+- **Match on the section title, not on its number.** A section counts as
+  already present if its heading ends with `Parse, Don't Validate (MANDATORY)`,
+  whatever roman numeral it currently carries. Replace that entire section body
+  with the canonical text below, keeping its existing number.
+- If no such section exists, insert it as a new numbered principle section,
+  after the last existing numbered principle section, preserving all other
+  constitution content.
+- **Renumber all numbered principle sections sequentially** (`### I.`,
+  `### II.`, `### III.`, …) in document order after inserting. Another preset
+  stacked on this command injects its own section the same way, so the numeral
+  in the canonical text below is a placeholder — the final numbering is
+  whatever sequential position the section lands in. Never emit two sections
+  with the same numeral.
 - Do not weaken, paraphrase, or omit any of the constraints.
+- Do not remove or reword a governance section injected by another preset.
 
-## Canonical Section (MUST be present verbatim)
+## Canonical Section (body MUST be present verbatim)
+
+The roman numeral below is a placeholder; the body is what must appear verbatim.
 
 ### I. Parse, Don't Validate (MANDATORY)
 
@@ -63,4 +84,6 @@ applies to every TypeScript and Python surface in the codebase.
 
 ## Output
 
-Write the finalized constitution to `.specify/memory/constitution.md`.
+The core flow writes `.specify/memory/constitution.md`. This layer edits that
+file in place to enforce the section above, leaving every other section — including
+governance sections injected by other stacked presets — untouched.

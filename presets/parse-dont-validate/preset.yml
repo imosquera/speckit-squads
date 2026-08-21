@@ -26,9 +26,9 @@ provides:
   templates:
     - type: "command"
       name: "speckit.constitution"
+      strategy: "wrap"
       file: "commands/speckit.constitution.md"
       description: "Constitution command that always injects a canonical 'Parse, Don't Validate' governance section"
-      strategy: "replace"
 
     - type: "command"
       name: "speckit.plan"

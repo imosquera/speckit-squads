@@ -28,6 +28,11 @@ _find_project_root() {
 REPO_ROOT=$(_find_project_root "$SCRIPT_DIR") || REPO_ROOT="$(pwd)"
 cd "$REPO_ROOT"
 
+# spec_kit_resolve_feature lives here; it derives branch/num/worktree/spec-dir
+# from git and reads only `source_issue` out of .specify/feature.json.
+# shellcheck source=./git-common.sh
+[ -f "$SCRIPT_DIR/git-common.sh" ] && source "$SCRIPT_DIR/git-common.sh"
+
 if ! command -v git >/dev/null 2>&1; then
     echo "[specify] Error: git not found" >&2
     exit 1
@@ -47,17 +52,19 @@ if [ "$CURRENT_BRANCH" = "$BASE_BRANCH" ]; then
     exit 1
 fi
 
-# Locate feature directory and source_issue
-_feature_json="$REPO_ROOT/.specify/feature.json"
+# Locate feature directory and source_issue. The directory is derived from the
+# branch (never read from a file that could name the previous feature); only
+# source_issue comes out of .specify/feature.json.
 _feature_dir=""
 _source_issue=""
-if [ -f "$_feature_json" ]; then
-    _feature_dir=$(grep -E '"feature_directory"[[:space:]]*:' "$_feature_json" \
-        | head -1 \
-        | sed -E 's/.*"feature_directory"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
-    _source_issue=$(grep -E '"source_issue"[[:space:]]*:' "$_feature_json" 2>/dev/null \
-        | head -1 \
-        | sed -E 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/')
+if type spec_kit_resolve_feature >/dev/null 2>&1 && spec_kit_resolve_feature "$REPO_ROOT"; then
+    _feature_dir="$FEATURE_DIRECTORY"
+    _source_issue="$FEATURE_SOURCE_ISSUE"
+else
+    _feature_dir="specs/${CURRENT_BRANCH##*/}"
+    [ -d "$REPO_ROOT/$_feature_dir" ] || _feature_dir=""
+    _source_issue=$(sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
+        "$REPO_ROOT/.specify/feature.json" 2>/dev/null | head -1)
 fi
 
 # Build PR title from the spec.md H1 if available, otherwise from branch name

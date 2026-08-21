@@ -48,7 +48,7 @@ When a Functional Requirement is directly expressed by a visible element in the 
 
 ### Issue Sync Layer
 
-Create or update the corresponding GitHub issue for the spec. If `.specify/feature.json` already has a numeric `source_issue`, update that issue. Otherwise create a new issue and persist the returned issue number back into `.specify/feature.json` as `source_issue`.
+Create or update the corresponding GitHub issue for the spec. If `.specify/feature.json` already has a numeric `source_issue`, update that issue. Otherwise create a new issue and persist the returned issue number back into `.specify/feature.json` as `source_issue` — that key is the file's entire contents; never add branch/path fields to it (issue #33).
 
 Include at minimum:
 

@@ -36,6 +36,20 @@ that doesn't exist. Prose outside code fences is ignored. Run it standalone any 
 
 `uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
 
+## Feature identity: `.specify/feature.json`
+
+The file is **gitignored per-worktree state and carries exactly one key**, `source_issue`
+— the only part of a feature's identity that cannot be derived from git. Branch, feature
+number, worktree path, and spec directory are resolved at read time by
+`spec_kit_resolve_feature()` in `extensions/git/scripts/bash/git-common.sh`.
+
+Never reintroduce `branch_name`, `feature_num`, `worktree_path`, or `feature_directory`
+into that file, and never read a feature's paths out of it. Because the file used to be
+tracked, every new worktree inherited the *previous* feature's copy from the base branch,
+which pointed `/speckit-git-pr` at the wrong issue and `/speckit-git-clean` at the wrong
+worktree (issue #33). `/speckit-git-feature` gitignores the file and `git rm --cached`s it
+on first run in a project that still tracks it, so the migration is automatic.
+
 ## Currently shipped
 
 <!-- AGENT: keep this list in sync with the directories under extensions/ and presets/. Regenerate by running:

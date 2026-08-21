@@ -76,9 +76,9 @@ extension resolves back to this repo's source tree, so you can also point at
 
 - Fires on session **startup** and **resume** (Claude ignores a hook-set title
   after `/clear` and during compaction, so it stays silent then).
-- Reads `.specify/feature.json`: `source_issue` → `#N: <issue title>` (via `gh`),
-  else `branch_name`; falls back to the live git branch. On the main checkout with
-  no feature, it emits nothing and Claude keeps its auto-generated title.
+- Reads `source_issue` from `.specify/feature.json` → `#N: <issue title>` (via `gh`),
+  else the live git branch. On the main checkout with no feature, it emits
+  nothing and Claude keeps its auto-generated title.
 - Never blocks a session from starting — every failure degrades quietly.
 
 ### Known limitation

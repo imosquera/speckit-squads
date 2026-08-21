@@ -14,7 +14,7 @@ When numbering is sequential, the script:
 
 1. Creates a stub GitHub issue *before* numbering the branch.
 2. Uses the issue number as `FEATURE_NUM` so the spec dir, branch, and issue all share the same identifier (e.g. `specs/008-user-auth/`, branch `008-user-auth`, issue `#8`).
-3. After the branch + worktree are materialised, prefixes the issue title with `NNN: ` and writes `source_issue` into the new worktree's `.specify/feature.json` so `/speckit-git-pr`, `/speckit-git-commit`, `/speckit-archive-feature`, and `/speckit-git-clean` automatically pick up the linked issue.
+3. After the branch + worktree are materialised, prefixes the issue title with `NNN: ` and writes `source_issue` into the new worktree's `.specify/feature.json` so `/speckit-git-pr`, `/speckit-git-commit`, `/speckit-archive-feature`, and `/speckit-git-clean` automatically pick up the linked issue. That is the file's only field, it is gitignored, and it is removed outright when the run created no issue — everything else about the feature is derived from git at read time (issue #33).
 
 If the issue's number ends up below the next free spec number (e.g. issue #5 created while `specs/008-*` already exists), the branch is still numbered using the next free spec number and the issue title is updated to match — so the alignment stays visible.
 
@@ -57,7 +57,7 @@ Everything deterministic is handled by the script:
 - Detecting whether the working directory is a git repo (warns and skips branch creation if not)
 - Reading `branch_numbering` from `.specify/extensions/git/git-config.yml` (falling back to `.specify/init-options.json`, then to `sequential`) — pass `--timestamp` **only** if the user explicitly asked for timestamp numbering for this single invocation
 - Creating the tracking GitHub issue and reconciling its number against the next free spec/branch slot
-- Materialising the worktree and writing / merging `.specify/feature.json`
+- Materialising the worktree and writing (or removing) the gitignored `.specify/feature.json`
 
 **IMPORTANT**:
 - Do NOT pass `--number` — the script determines the correct next number automatically
@@ -71,5 +71,5 @@ The script outputs JSON with:
 - `BRANCH_NAME`: The branch name (e.g., `003-user-auth` or `20260319-143022-user-auth`)
 - `FEATURE_NUM`: The numeric or timestamp prefix used
 - `WORKTREE_PATH`: The absolute path of the materialised feature worktree
-- `SOURCE_ISSUE` (when an issue was created): The numeric GitHub issue id (also written to the worktree's `.specify/feature.json`)
+- `SOURCE_ISSUE` (when an issue was created): The numeric GitHub issue id (also the sole contents of the worktree's `.specify/feature.json`)
 - `ISSUE_URL` (when an issue was created): The full URL of the tracking issue

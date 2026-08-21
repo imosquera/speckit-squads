@@ -210,29 +210,18 @@ mismatched numbering.
    GIT_BRANCH_NAME="NNN-slug" <run /speckit-git-feature>
    ```
    (Or use `/speckit-git-worktree` if a suitable branch already exists.)
-3. **Link the existing issue** by writing the *whole* feature identity into the new
-   worktree's `.specify/feature.json` (so `/speckit-git-pr`, `/speckit-git-commit`,
-   and `/speckit-git-clean` all pick up issue `#N` and this feature's paths):
+3. **Link the existing issue** by writing `source_issue` into the new worktree's
+   gitignored `.specify/feature.json` (so `/speckit-git-pr`, `/speckit-git-commit`,
+   and `/speckit-git-clean` all pick up issue `#N`):
    ```bash
    # in the new worktree
-   python3 - "$N" "NNN-slug" "NNN" "$PWD" <<'PY'
-   import json, sys, pathlib
-   issue, branch, num, wt = sys.argv[1:5]
-   p = pathlib.Path(".specify/feature.json")
-   d = json.loads(p.read_text()) if p.exists() else {}
-   d.pop("feature_directory", None)
-   d.update(branch_name=branch, feature_num=num, worktree_path=wt,
-            source_issue=int(issue))
-   p.write_text(json.dumps(d, indent=2) + "\n")
-   print(json.dumps(d))
-   PY
+   printf '{"source_issue":%s}\n' "$N" > .specify/feature.json
    ```
-   Write all five fields, not just `source_issue`. `.specify/feature.json` is tracked,
-   so a fresh worktree starts with the *previous* feature's copy; `create-new-feature.sh`
-   refreshes branch identity itself, but re-asserting it here is cheap defence in depth
-   (see issue #33). **Verify the printed object names this feature** before continuing —
-   a stale `branch_name`/`worktree_path` makes `/speckit-git-clean` remove the wrong
-   worktree and `/speckit-git-pr` close the wrong issue.
+   That single key is the file's entire contents. Never add `branch_name`,
+   `feature_num`, `worktree_path`, or `feature_directory` — every one of those is
+   derived from git at read time precisely so it cannot go stale, and writing them
+   is what used to point `/speckit-git-clean` and `/speckit-git-pr` at the previous
+   feature (issue #33).
 4. **`cd` into the worktree** and run everything below from there. Speckit resolves
    paths from the worktree root; running from the main checkout drifts the cwd and
    breaks the `.specify/` scripts.

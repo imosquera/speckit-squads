@@ -255,26 +255,11 @@ what was actually asked. Let it write `spec.md` and sync the issue. If the body 
 thin, enrich the spec from the title + any linked context, but don't invent scope the
 issue didn't imply.
 
-**After `/speckit-specify` completes, opportunistically run the `after_specify` hooks —
-but only if this install actually has a `hook` subcommand.** `specify hook run` does
-**not** exist in speckit ≤ 0.15.1; on those installs skip this block **silently** — it
-is expected, not an error, and must not produce a ⚠️ in the run report:
-
-```bash
-if specify hook --help >/dev/null 2>&1; then
-  specify hook run speckit.agent-context.update || true
-  specify hook run speckit.graphify.update      || true
-fi
-```
-
-Note that neither hook is registered in the stock `extensions.yml`, so on most projects
-there is nothing to run even when the subcommand exists — `speckit.graphify.update` in
-particular does not exist at all, since graphify ships as the `graphify-on-implement`
-preset and fires at implement, not specify. Where the hooks *are* registered they keep
-agent-context and the knowledge graph current after a spec write. Stderr is deliberately
-not suppressed so a real hook failure is visible and distinguishable from an absent CLI
-feature; `|| true` still keeps such a failure from blocking the pipeline.
-
+Registered lifecycle hooks (e.g. the `progress` extension's `before_tasks` /
+`before_implement`) fire on their own when `settings.auto_execute_hooks` is true — there
+is nothing to invoke by hand here, and the `specify` CLI has no `hook` subcommand to
+invoke them with. If this project keeps a knowledge graph, refresh it with the Claude
+`/graphify` skill (not a `specify` subcommand); skip it when the project has no graph.
 
 ## Step 4 — Clarify (you answer the questions)
 

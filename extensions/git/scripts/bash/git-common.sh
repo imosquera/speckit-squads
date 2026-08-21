@@ -134,9 +134,18 @@ spec_kit_resolve_feature() {
 # Write the per-worktree feature.json, gitignore it, and untrack it if a
 # previous (pre-#33) commit put it under version control.
 #
-# `source_issue` is the entire payload. When $2 is empty the file is REMOVED
-# rather than left behind: a run that created no issue must not leave the
-# previous feature's issue number where /speckit-git-pr can find it.
+# `source_issue` is the entire payload. When $2 is empty, whether an existing
+# file is stale turns on one question: is it TRACKED?
+#
+#   tracked   -> it arrived from the base branch when this worktree was
+#                materialised, so it describes the PREVIOUS feature. Remove it,
+#                or /speckit-git-pr closes the wrong issue (issue #33).
+#   untracked -> the file is gitignored, so it can only have been written for
+#                THIS worktree by an earlier run of this script or by autopilot.
+#                Preserve it: re-running /speckit-git-feature against an
+#                existing branch (--allow-existing-branch, or an idempotent
+#                worktree rematerialisation) creates no issue, and must not
+#                destroy the linkage the first run established.
 spec_kit_write_feature_json() {
     local worktree="$1"
     local source_issue="${2:-}"
@@ -147,7 +156,14 @@ spec_kit_write_feature_json() {
     if [ -n "$source_issue" ]; then
         printf '{"source_issue":%s}\n' "$source_issue" > "$json"
     elif [ -f "$json" ]; then
-        rm -f "$json"
+        # Check trackedness BEFORE spec_kit_ignore_feature_json runs its
+        # `git rm --cached`, which would make every file look untracked.
+        if git -C "$worktree" ls-files --error-unmatch ".specify/feature.json" >/dev/null 2>&1; then
+            rm -f "$json"
+            >&2 echo "[specify] Removed inherited .specify/feature.json (it described the previous feature)."
+        else
+            >&2 echo "[specify] Kept this worktree's existing .specify/feature.json (issue #$(spec_kit_feature_source_issue "$worktree")); this run created no issue."
+        fi
     fi
 
     spec_kit_ignore_feature_json "$worktree"

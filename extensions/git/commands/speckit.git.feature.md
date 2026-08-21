@@ -14,7 +14,7 @@ When numbering is sequential, the script:
 
 1. Creates a stub GitHub issue *before* numbering the branch.
 2. Uses the issue number as `FEATURE_NUM` so the spec dir, branch, and issue all share the same identifier (e.g. `specs/008-user-auth/`, branch `008-user-auth`, issue `#8`).
-3. After the branch + worktree are materialised, prefixes the issue title with `NNN: ` and writes `source_issue` into the new worktree's `.specify/feature.json` so `/speckit-git-pr`, `/speckit-git-commit`, `/speckit-archive-feature`, and `/speckit-git-clean` automatically pick up the linked issue. That is the file's only field, it is gitignored, and it is removed outright when the run created no issue — everything else about the feature is derived from git at read time (issue #33).
+3. After the branch + worktree are materialised, prefixes the issue title with `NNN: ` and writes `source_issue` into the new worktree's `.specify/feature.json` so `/speckit-git-pr`, `/speckit-git-commit`, `/speckit-archive-feature`, and `/speckit-git-clean` automatically pick up the linked issue. That is the file's only field and it is gitignored. When a run creates no issue, an *inherited* (still-tracked) file is removed so the previous feature's issue can't leak forward, while a file this worktree already owns is preserved — so re-running against an existing branch keeps its linkage. Everything else about the feature is derived from git at read time (issue #33).
 
 If the issue's number ends up below the next free spec number (e.g. issue #5 created while `specs/008-*` already exists), the branch is still numbered using the next free spec number and the issue title is updated to match — so the alignment stays visible.
 

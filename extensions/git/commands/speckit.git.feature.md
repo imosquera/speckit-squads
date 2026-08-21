@@ -18,7 +18,7 @@ When numbering is sequential, the script:
 
 If the issue's number ends up below the next free spec number (e.g. issue #5 created while `specs/008-*` already exists), the branch is still numbered using the next free spec number and the issue title is updated to match — so the alignment stays visible.
 
-The issue body is intentionally a stub; `/speckit-specify` (when wrapped by the `spec-minimal` preset) updates the issue body with the rendered spec content because `source_issue` is already set.
+The issue body is intentionally a stub; `/speckit-git-issue` fills it in with the rendered spec content because `source_issue` is already set. That command runs automatically on the `after_specify` hook, so the stub is replaced as soon as the spec exists — no preset required.
 
 Issue creation is bypassed (and numbering falls back to the normal sequential / timestamp logic) only when the caller has explicitly opted out of issue-driven numbering:
 - `--timestamp`, `--number`, or `GIT_BRANCH_NAME` is in effect

@@ -8,7 +8,7 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
   autopilot/       Oldest eligible issue → draft PR, driving the whole pipeline unattended (+ launchd scheduler)
-  git/             Feature-branch + worktree + linked GitHub issue, clean, PR, auto-commit hooks
+  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR, auto-commit hooks
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)
@@ -18,7 +18,8 @@ presets/      # Spec Kit presets (template + command overrides)
   explicit-task-dependencies/   tasks-template with explicit dependency edges
   graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
-  spec-minimal/                 composable wrapper for /speckit-specify and /speckit-plan, with UI preview support
+  spec-minimal/                 Artifact minimalism: strips spec sections, keeps the feature tree to spec/plan/tasks
+  spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
   library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
@@ -65,6 +66,7 @@ specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
 specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
+specify preset add --dev "$SQUADS/presets/spec-ui-preview"
 specify preset add --dev "$SQUADS/presets/library-research"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
@@ -80,7 +82,9 @@ Or use the bundled script from inside the checkout:
 ./install.sh --force /path/to/your/spec-kit-project   # reinstall everything
 ```
 
-`--dev` keeps each install pointed at this source tree, so edits here are picked up without re-adding.
+`--dev` records this checkout as the install source, but it does **not** symlink: `specify` copies the
+directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are
+therefore **not** picked up live — re-run `./install.sh --force <project>` to refresh a consumer.
 
 `install.sh` first runs `check-cli-usage.sh`, which verifies every `specify <verb>` a
 command file tells an agent to execute against the installed CLI's actual verbs, and
@@ -88,9 +92,11 @@ aborts the install if one doesn't exist.
 
 `install.sh` and `uninstall.sh` auto-discover every `extensions/*/extension.yml`, so new commands are included automatically once their manifest exists.
 
+**Migrating from `spec-minimal` 1.x:** 2.0.0 is breaking — `spec-minimal` now only strips spec sections and holds the plan tree. The UI preview moved to the separate `spec-ui-preview` preset, and issue sync moved into the `git` extension. Install both to keep the 1.x behavior.
+
 ## Authoring
 
-Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. After non-trivial changes, re-run the matching `specify ... add --dev` in any consuming project to refresh registered commands.
+Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. Because installs are copies rather than symlinks, re-run `./install.sh --force <project>` (or the matching `specify ... add --dev`) in any consuming project after *any* change — command text and scripts included, not just manifests.
 
 ### Preset composition: `wrap` vs `replace`
 

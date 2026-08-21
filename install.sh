@@ -2,14 +2,13 @@
 # Install every extension and preset in this repo into a Spec Kit project
 # via `specify ... add --dev`.
 #
-# Because every install uses --dev, the project's .specify/extensions/<id>/
-# and .specify/presets/<id>/ stay pointed at this repo's source tree —
-# edits to command files, scripts, or templates are picked up live with no
-# reinstall step. "Already installed" is therefore a no-op success, not an
-# error.
+# --dev records this repo as the install source, but it does NOT symlink:
+# `specify` copies the directory into the project (shutil.copytree) for both
+# presets and extensions. Edits made here are therefore NOT picked up live.
 #
-# (If you change a manifest itself — extension.yml / preset.yml — run with
-# --force to re-register installed items and refresh command/template registry.)
+# Plain `./install.sh <project>` treats "already installed" as a no-op success,
+# so it will not propagate changes. Run with --force after changing ANYTHING —
+# command markdown, scripts, templates, or a manifest — to refresh the target.
 #
 # Usage:
 #   ./install.sh [--force] <project-dir>

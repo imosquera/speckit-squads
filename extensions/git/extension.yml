@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: git
   name: "Git Branching Workflow"
-  version: "1.0.0"
+  version: "1.1.0"
   description: "Feature branch creation, worktree management, feature cleanup, auto-commit hooks, and PR creation"
   author: spec-kit-core
   repository: https://github.com/github/spec-kit
@@ -26,6 +26,9 @@ provides:
     - name: speckit.git.clean
       file: commands/speckit.git.clean.md
       description: "Clean up the current feature worktree, branch, issue, and uncommitted changes"
+    - name: speckit.git.issue
+      file: commands/speckit.git.issue.md
+      description: "Update the linked GitHub issue's body from spec.md (a manual run may also create one when none is linked)"
     - name: speckit.git.commit
       file: commands/speckit.git.commit.md
       description: "Auto-commit changes after a Spec Kit command completes"
@@ -85,10 +88,21 @@ hooks:
     prompt: "Commit constitution changes?"
     description: "Auto-commit after constitution update"
   after_specify:
-    command: speckit.git.commit
-    optional: true
-    prompt: "Commit specification changes?"
-    description: "Auto-commit after specification"
+    # DECLARATION ORDER IS LOAD-BEARING — do not reorder these two entries.
+    # The agent-driven hook runner iterates hooks.after_specify in the order
+    # they are registered, which is this manifest's order; it does not sort by
+    # `priority`. The priority values below only record the intended order.
+    # speckit.git.issue must come first because it can write `source_issue`
+    # into .specify/feature.json, which speckit.git.commit then picks up.
+    - command: speckit.git.issue
+      priority: 5
+      optional: false
+      description: "Update the feature's GitHub issue body from the rendered spec (clean no-op when no issue is linked)"
+    - command: speckit.git.commit
+      priority: 10
+      optional: true
+      prompt: "Commit specification changes?"
+      description: "Auto-commit after specification"
   after_clarify:
     command: speckit.git.commit
     optional: true

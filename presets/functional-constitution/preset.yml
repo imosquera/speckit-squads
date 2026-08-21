@@ -18,7 +18,7 @@ provides:
       name: "speckit.constitution"
       file: "commands/speckit.constitution.md"
       description: "Constitution command that always injects and normalizes the Functional Programming Paradigms section"
-      replaces: "speckit.constitution"
+      strategy: "replace"
 
 tags:
   - "constitution"

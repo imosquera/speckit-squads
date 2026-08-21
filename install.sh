@@ -61,10 +61,55 @@ cd "$PROJECT_DIR"
 
 shopt -s nullglob
 
-# install_one <kind> <name> <source-dir>
+# ---------------------------------------------------------------- priorities
+#
+# ORDERING CONTRACT for /speckit-implement (issue #25).
+#
+# `specify` resolves a command by walking installed presets sorted by
+# (priority ASC, id ASC) — lower number = higher precedence. For `wrap` layers
+# the highest-precedence layer is composed LAST, so it ends up OUTERMOST: its
+# pre-seam text runs first and its post-seam text runs last. The composition
+# base is the nearest `replace` layer scanning from highest precedence down;
+# only layers above the base compose at all.
+#
+# Six presets target speckit.implement. Without explicit priorities they all sit
+# at the default 10 and the alphabetical tie-break decides, which is how
+# explicit-task-dependencies came to win outright and silently kill the other
+# five (issue #25). These numbers are therefore load-bearing, not cosmetic:
+#
+#   5  worktree-isolation          outermost — the cd must precede every write
+#   6  graphify-on-implement       post-seam `graphify update` lands last
+#   7  progress-report             dashboard card wrap
+#   8  implement-prelude-skills    prelude runs just before implementation
+#   9  parse-dont-validate         discipline + AST gate hug the implementation
+#  20  explicit-task-dependencies  `replace` — the executor base, innermost
+#
+# explicit-task-dependencies must sort LAST so it becomes the base rather than
+# swallowing the wrappers. When it is not installed the stock core template is
+# the base (core templates are always appended as a final `replace` layer) and
+# the five wrappers still compose.
+#
+# Anything not listed here installs at the CLI default of 10.
+preset_priority() {
+  case "$1" in
+    worktree-isolation)         echo 5  ;;
+    graphify-on-implement)      echo 6  ;;
+    progress-report)            echo 7  ;;
+    implement-prelude-skills)   echo 8  ;;
+    parse-dont-validate)        echo 9  ;;
+    explicit-task-dependencies) echo 20 ;;
+    *)                          echo 10 ;;
+  esac
+}
+
+# install_one <kind> <name> <source-dir> [priority]
 install_one() {
-  local kind="$1" name="$2" src="$3"
+  local kind="$1" name="$2" src="$3" priority="${4:-}"
   local out rc
+  local -a prio_args=()
+  if [[ -n "$priority" ]]; then
+    prio_args=(--priority "$priority")
+  fi
 
   reinstall_one() {
     local rm_out rm_rc add_out add_rc
@@ -81,7 +126,7 @@ install_one() {
     fi
 
     set +o pipefail
-    add_out="$(yes | specify "$kind" add --dev "$src" 2>&1)"
+    add_out="$(yes | specify "$kind" add --dev "$src" ${prio_args[@]+"${prio_args[@]}"} 2>&1)"
     add_rc=$?
     set -o pipefail
 
@@ -99,7 +144,7 @@ install_one() {
   # the pipeline's exit code even when `specify` itself succeeded. Disable
   # pipefail just for this call so we read `specify`'s real status.
   set +o pipefail
-  out="$(yes | specify "$kind" add --dev "$src" 2>&1)"
+  out="$(yes | specify "$kind" add --dev "$src" ${prio_args[@]+"${prio_args[@]}"} 2>&1)"
   rc=$?
   set -o pipefail
 
@@ -114,9 +159,10 @@ install_one() {
       return $?
     fi
 
-    # --dev means the existing registration already points at this source
-    # tree, so file edits are live. Manifest changes still require --force.
-    echo "  already installed (live via --dev; use --force to refresh manifest)"
+    # --dev is a copy, not a symlink: an existing registration is a stale
+    # snapshot of this tree, and its recorded priority is whatever it was
+    # installed with. Use --force to refresh both.
+    echo "  already installed (stale snapshot; use --force to refresh)"
     return 0
   fi
 
@@ -137,8 +183,9 @@ done
 for preset_dir in "$REPO_DIR"/presets/*/; do
   [[ -f "$preset_dir/preset.yml" ]] || continue
   name="$(basename "$preset_dir")"
-  echo "==> preset: $name"
-  install_one preset "$name" "$preset_dir" || EXIT=1
+  prio="$(preset_priority "$name")"
+  echo "==> preset: $name (priority $prio)"
+  install_one preset "$name" "$preset_dir" "$prio" || EXIT=1
 done
 
 echo

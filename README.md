@@ -100,4 +100,34 @@ Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands
 
 ### Preset composition: `wrap` vs `replace`
 
-A preset's command template uses `strategy: "wrap"` (composes with other presets on the same command, via a `{CORE_TEMPLATE}` seam that expands to the next inner wrapper) or `strategy: "replace"` / `replaces:` (fully owns the command body). **A `wrap` loses to a `replace`**: if two presets target the same command and one of them replaces it, that preset's body wins outright and any other preset's `wrap` on that command is dropped — it never runs. Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensions can. So a preset that needs to survive being clobbered by a `replace`-strategy sibling ships a companion extension with lifecycle hooks as a fallback path (see `progress` next to `progress-report`, and `stale-tasks-guard`, which is a standalone extension for exactly this reason).
+A preset's command template declares `strategy: "wrap"` (composes with other presets on the same command, via a `{CORE_TEMPLATE}` seam that expands to the next inner layer) or `strategy: "replace"` (fully owns the command body). **`replace` is the default when `strategy` is omitted** — that default is what made five `/speckit-implement` presets silently inert (issue #25), so declare it explicitly either way.
+
+There is no `replaces:` key. It is not in the preset schema and `PresetManifest._validate()` never reads it, so it looks like it declares intent and does nothing. Use `strategy:`.
+
+`specify` sorts installed presets by **(priority ASC, id ASC)** — lower number = higher precedence. Composition works like this:
+
+- The **base** is the nearest `replace` layer scanning from highest precedence downward. Only layers *above* the base compose at all; anything below it is dead.
+- If the highest-precedence layer is itself a `replace`, it short-circuits and wins outright — every other layer is dropped.
+- Core templates are always appended as a final `replace` layer, so a stack of pure wrappers still composes over the stock command.
+- Wrappers are applied bottom-up, so the **lowest priority number ends up outermost**: its pre-seam text runs first and its post-seam text runs last.
+
+Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensions can. So a preset that needs to survive being clobbered by a `replace`-strategy sibling ships a companion extension with lifecycle hooks as a fallback path (see `progress` next to `progress-report`, and `stale-tasks-guard`, which is a standalone extension for exactly this reason).
+
+### The `/speckit-implement` ordering contract
+
+Six presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
+
+| Priority | Preset | Strategy | Role |
+|---|---|---|---|
+| 5 | `worktree-isolation` | wrap | outermost — the `cd` must precede every write |
+| 6 | `graphify-on-implement` | wrap | post-seam `graphify update` lands last |
+| 7 | `progress-report` | wrap | dashboard card |
+| 8 | `implement-prelude-skills` | wrap | prelude runs just before implementation |
+| 9 | `parse-dont-validate` | wrap | discipline + AST gate hug the implementation |
+| 20 | `explicit-task-dependencies` | **replace** | the executor base, innermost |
+
+Resulting execution order: worktree `cd` → progress card → prelude skills → parse-don't-validate discipline → **implement** (wave DAG, or the stock loop when `explicit-task-dependencies` isn't installed) → AST scan gate → progress card → `graphify update`.
+
+`explicit-task-dependencies` stays `replace` because it genuinely substitutes wave-DAG subagent fan-out for the stock serial loop — wrapping it would execute every task twice. It sorts last so it becomes the base rather than swallowing the wrappers.
+
+If you install presets by hand rather than via `install.sh`, pass the same `--priority` values or the composition silently degrades.

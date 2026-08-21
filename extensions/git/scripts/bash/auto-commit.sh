@@ -136,11 +136,14 @@ fi
 # Append `Closes #N` if .specify/feature.json carries a source_issue.
 # Only do this when the message doesn't already reference the issue, and
 # only on `after_*` events (a `before_*` commit is a checkpoint, not a fix).
+#
+# source_issue is the file's only field — everything else about the feature is
+# derived from git by spec_kit_resolve_feature (git-common.sh), so there is no
+# stale identity to inherit here (issue #33).
 _feature_json="$REPO_ROOT/.specify/feature.json"
 if [ "$_phase" = "after" ] && [ -f "$_feature_json" ]; then
-    _source_issue=$(grep -E '"source_issue"[[:space:]]*:' "$_feature_json" 2>/dev/null \
-        | head -1 \
-        | sed -E 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/')
+    _source_issue=$(sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
+        "$_feature_json" 2>/dev/null | head -1)
     if echo "$_source_issue" | grep -Eq '^[0-9]+$'; then
         if ! echo "$_commit_msg" | grep -Eqi "(closes|fixes|resolves)[[:space:]]+#${_source_issue}\b"; then
             _commit_msg="${_commit_msg}

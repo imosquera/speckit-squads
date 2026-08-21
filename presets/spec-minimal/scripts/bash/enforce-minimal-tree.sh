@@ -8,8 +8,8 @@
 # content into plan.md inside an idempotent sentinel block, then removes the
 # path.
 #
-# ALLOWED top-level entries:  spec.md, plan.md, tasks.md, quickstart.md
-# FORBIDDEN (any form):       research.md, data-model.md, contracts (file or dir)
+# ALLOWED top-level entries:  spec.md, plan.md, tasks.md, quickstart.md, research.md
+# FORBIDDEN (any form):       data-model.md, contracts (file or dir)
 #
 # Anything else at the top level is UNKNOWN: warned about on stderr and left
 # alone. Dotfiles are ignored entirely. Other stacked presets legitimately write
@@ -94,9 +94,9 @@ from pathlib import Path
 
 feature_dir = Path(sys.argv[1])
 
-ALLOWED = ("spec.md", "plan.md", "tasks.md", "quickstart.md")
+ALLOWED = ("spec.md", "plan.md", "tasks.md", "quickstart.md", "research.md")
 # Deterministic processing order — keeps plan.md stable across runs.
-FORBIDDEN = ("research.md", "data-model.md", "contracts")
+FORBIDDEN = ("data-model.md", "contracts")
 
 PLAN = feature_dir / "plan.md"
 

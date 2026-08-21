@@ -1,5 +1,5 @@
 ---
-description: "Execute the implementation plan by processing and executing all tasks defined in tasks.md. Per BeadBits Constitution v2.3.0 Principle VII (Feature-Work Isolation), this command MUST run inside the feature's dedicated worktree; the agent cd's into the worktree recorded in .specify/feature.json before executing any task."
+description: "Execute tasks.md inside the feature's dedicated worktree"
 argument-hint: "Optional implementation guidance or task filter"
 compatibility: "Requires spec-kit project structure with .specify/ directory"
 metadata:
@@ -35,19 +35,26 @@ Per BeadBits Constitution v2.3.0 Principle VII (Feature-Work Isolation),
 This step runs BEFORE any filesystem write performed by the rest of this
 outline.
 
-1. Read `.specify/feature.json` (relative to the current cwd). If the file
-   is missing or cannot be parsed as JSON, ERROR with:
-   "Cannot resolve feature: .specify/feature.json is missing or malformed.
-   Run /speckit-specify to (re)initialize a feature."
+1. Resolve the current branch with `git rev-parse --abbrev-ref HEAD`. If the
+   cwd is not inside a git worktree, ERROR with:
+   "Cannot resolve feature: not inside a git worktree.
+   Run /speckit-git-feature to create the feature branch and worktree."
    Do NOT proceed.
 
-2. Let `WT = feature.json.worktree_path`.
+   Do NOT read `worktree_path` from `.specify/feature.json`. That field no
+   longer exists: the file is per-worktree state carrying only `source_issue`,
+   and the recorded path used to name the *previous* feature's worktree in any
+   fresh worktree (issue #33).
 
-3. If `WT` is null or the field is absent:
+2. Let `WT` be the worktree whose branch matches the current branch, found via
+   `git worktree list --porcelain`. When the cwd is already inside that
+   worktree, `WT` is `git rev-parse --show-toplevel`.
+
+3. If no worktree matches the current branch:
    Emit a single-sentence warning:
-   "This feature has no recorded worktree_path (likely created before
-   Constitution v2.3.0). Proceeding in the current cwd; Principle VII
-   isolation is not enforced for this invocation."
+   "This feature has no dedicated worktree (it is checked out in the main
+   working tree). Proceeding in the current cwd; Principle VII isolation is
+   not enforced for this invocation."
    Then proceed in the current cwd. Skip steps 4–6.
 
 4. If `WT` is non-null but the directory does NOT exist on disk:
@@ -206,12 +213,15 @@ This preset override exists specifically to close the resume-case gap left by PR
 for `/speckit-implement`. The substantive operational behaviour it adds beyond the stock
 `speckit-implement` skill is:
 
-1. Reading `worktree_path` from `.specify/feature.json` at the cwd.
+1. Resolving the feature's worktree from `git worktree list` by the current branch.
 2. `cd`-ing into that path before any filesystem write performed by the implement outline.
-3. Falling back to the current cwd (with a warning) when the recorded worktree directory
-   does not exist on disk — because `worktree_path` is a machine-local absolute path
-   committed to `.specify/feature.json`, a fresh clone would otherwise abort on a path
-   it can never have.
+3. Falling back to the current cwd (with a warning) when no worktree matches — e.g. the
+   branch is checked out in the main working tree.
+
+Deriving the path from git rather than reading a recorded `worktree_path` is deliberate:
+that field was a machine-local absolute path committed to `.specify/feature.json`, so a
+fresh clone aborted on a path it could never have, and a fresh worktree inherited the
+previous feature's path outright (issue #33).
 
 This override SUPERSEDES the in-skill worktree-resolution block previously added in
 commit fee6cf3, which auto-created worktrees from the branch name. A missing worktree

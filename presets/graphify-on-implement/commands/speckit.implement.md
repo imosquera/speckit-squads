@@ -1,5 +1,5 @@
 ---
-description: "Execute /speckit-implement normally, then always run graphify update as the final step"
+description: "Run /speckit-implement, then always run graphify update"
 ---
 
 ## User Input
@@ -14,7 +14,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 1. Execute the canonical stock `/speckit-implement` flow unchanged (including all prerequisite checks, task execution behavior, and normal hook handling).
 2. After implementation succeeds, run one final graph refresh step:
-   - Resolve worktree root to graph (prefer `.specify/feature.json.worktree_path`; otherwise use current repository root).
+   - Resolve the worktree root to graph with `git rev-parse --show-toplevel` (falling back to the current repository root).
    - Execute `graphify update <resolved-worktree-path>`.
 3. This graph refresh is mandatory and must run as the last implementation step.
 

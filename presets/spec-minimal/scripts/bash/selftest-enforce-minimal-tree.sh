@@ -86,22 +86,22 @@ else
 fi
 
 # ---------------------------------------------------------------- case 2
-start "research.md with content => inlined + removed"
-d="$(mkfeature research)"
-printf '# Research\n\nWe picked sqlite because it is boring.\n' > "$d/research.md"
+start "data-model.md with content => inlined + removed"
+d="$(mkfeature data-model)"
+printf '# Data Model\n\nWe picked sqlite because it is boring.\n' > "$d/data-model.md"
 run "$d"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
-elif [[ -e "$d/research.md" ]]; then
-    fail "research.md still on disk"
-elif ! has "$(b_sent research.md)" "$d/plan.md"; then
+elif [[ -e "$d/data-model.md" ]]; then
+    fail "data-model.md still on disk"
+elif ! has "$(b_sent data-model.md)" "$d/plan.md"; then
     fail "BEGIN sentinel missing from plan.md"
-elif ! has "$(e_sent research.md)" "$d/plan.md"; then
+elif ! has "$(e_sent data-model.md)" "$d/plan.md"; then
     fail "END sentinel missing from plan.md"
-elif ! has '## Inlined from research.md' "$d/plan.md"; then
+elif ! has '## Inlined from data-model.md' "$d/plan.md"; then
     fail "heading missing from plan.md"
 elif ! has 'boring' "$d/plan.md"; then
-    fail "research content missing from plan.md"
+    fail "data-model content missing from plan.md"
 elif ! has 'some plan' "$d/plan.md"; then
     fail "original plan.md content lost"
 else
@@ -134,15 +134,15 @@ fi
 # ---------------------------------------------------------------- case 4
 start "idempotence: re-running over the same artifact is byte-identical"
 d="$(mkfeature idempotent)"
-printf '# Research\n\nround one\n' > "$d/research.md"
+printf '# Data Model\n\nround one\n' > "$d/data-model.md"
 run "$d"
 first="$(cat "$d/plan.md")"
 # Recreate the same artifact and heal again — the block must be replaced,
 # not duplicated, and plan.md must come out byte-identical.
-printf '# Research\n\nround one\n' > "$d/research.md"
+printf '# Data Model\n\nround one\n' > "$d/data-model.md"
 run "$d"
 second="$(cat "$d/plan.md")"
-n="$(count "$(b_sent research.md)" "$d/plan.md")"
+n="$(count "$(b_sent data-model.md)" "$d/plan.md")"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
 elif [[ "$first" != "$second" ]]; then
@@ -173,16 +173,16 @@ fi
 start "forbidden artifact + missing plan.md => plan.md created, artifact rehomed, exit 0"
 d="$(mkfeature noplan)"
 rm -f "$d/plan.md"
-printf '# Research\n\nirreplaceable\n' > "$d/research.md"
+printf '# Data Model\n\nirreplaceable\n' > "$d/data-model.md"
 run "$d"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
 elif [[ ! -f "$d/plan.md" ]]; then
     fail "plan.md was not created"
-elif [[ -e "$d/research.md" ]]; then
-    fail "research.md still on disk (acceptance: never left behind)"
+elif [[ -e "$d/data-model.md" ]]; then
+    fail "data-model.md still on disk (acceptance: never left behind)"
 elif ! has 'irreplaceable' "$d/plan.md"; then
-    fail "research content was not rehomed into the new plan.md"
+    fail "data-model content was not rehomed into the new plan.md"
 elif ! has '# Implementation Plan' "$d/plan.md"; then
     fail "created plan.md is missing its header"
 elif [[ "$OUT" != *created:*plan.md* ]]; then
@@ -243,33 +243,32 @@ start "C2a: inlined content quoting a foreign BEGIN sentinel must not truncate p
 d="$(mkfeature sentinel-truncate)"
 mk_c2a() {
     {
-        printf '# Research\n\nQuoting a sentinel, as this preset README does:\n\n'
-        b_sent data-model.md; printf '\n\nRESEARCHTAIL\n'
-    } > "$d/research.md"
-    printf '# Data Model\n\nDMCONTENT\n' > "$d/data-model.md"
+        printf '# Data Model\n\nQuoting a sentinel, as this preset README does:\n\n'
+        b_sent contracts; printf '\n\nDMTAIL\n'
+    } > "$d/data-model.md"
+    mkdir -p "$d/contracts"
+    printf 'openapi: 3.0.0\n' > "$d/contracts/api.yml"
 }
 mk_c2a; run "$d"
 mk_c2a; run "$d"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
-elif [[ -e "$d/research.md" || -e "$d/data-model.md" ]]; then
+elif [[ -e "$d/data-model.md" || -e "$d/contracts" ]]; then
     fail "forbidden artifact left on disk"
-elif ! has 'RESEARCHTAIL' "$d/plan.md"; then
-    fail "research block was truncated — RESEARCHTAIL lost"
-elif ! has 'DMCONTENT' "$d/plan.md"; then
-    fail "data-model content lost"
+elif ! has 'DMTAIL' "$d/plan.md"; then
+    fail "data-model block was truncated — DMTAIL lost"
+elif ! has 'openapi' "$d/plan.md"; then
+    fail "contracts content lost"
 elif ! has 'some plan' "$d/plan.md"; then
     fail "original plan.md content lost"
-elif [[ "$(count "$(b_sent research.md)" "$d/plan.md")" -ne 1 ]]; then
-    fail "expected exactly 1 research.md BEGIN, found $(count "$(b_sent research.md)" "$d/plan.md")"
-elif [[ "$(count "$(e_sent research.md)" "$d/plan.md")" -ne 1 ]]; then
-    fail "expected exactly 1 research.md END"
 elif [[ "$(count "$(b_sent data-model.md)" "$d/plan.md")" -ne 1 ]]; then
     fail "expected exactly 1 data-model.md BEGIN, found $(count "$(b_sent data-model.md)" "$d/plan.md")"
 elif [[ "$(count "$(e_sent data-model.md)" "$d/plan.md")" -ne 1 ]]; then
     fail "expected exactly 1 data-model.md END"
-elif ! has '(escaped by spec-minimal)' "$d/plan.md"; then
-    fail "quoted sentinel was not neutralized"
+elif [[ "$(count "$(b_sent contracts)" "$d/plan.md")" -ne 1 ]]; then
+    fail "expected exactly 1 contracts BEGIN, found $(count "$(b_sent contracts)" "$d/plan.md")"
+elif [[ "$(count "$(e_sent contracts)" "$d/plan.md")" -ne 1 ]]; then
+    fail "expected exactly 1 contracts END"
 else
     pass
 fi
@@ -279,9 +278,9 @@ start "C2b: inlined content quoting its own END sentinel must not grow plan.md"
 d="$(mkfeature sentinel-growth)"
 mk_c2b() {
     {
-        printf '# Research\n\nbefore\n\n'
-        e_sent research.md; printf '\n\nafter\n'
-    } > "$d/research.md"
+        printf '# Data Model\n\nbefore\n\n'
+        e_sent data-model.md; printf '\n\nafter\n'
+    } > "$d/data-model.md"
 }
 mk_c2b; run "$d"; r1="$(cat "$d/plan.md")"
 mk_c2b; run "$d"; r2="$(cat "$d/plan.md")"
@@ -290,10 +289,10 @@ if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
 elif [[ "$r1" != "$r2" || "$r2" != "$r3" ]]; then
     fail "plan.md is not idempotent across runs (grew or shrank)"
-elif [[ "$(count "$(b_sent research.md)" "$d/plan.md")" -ne 1 ]]; then
-    fail "expected exactly 1 BEGIN, found $(count "$(b_sent research.md)" "$d/plan.md")"
-elif [[ "$(count "$(e_sent research.md)" "$d/plan.md")" -ne 1 ]]; then
-    fail "expected exactly 1 END, found $(count "$(e_sent research.md)" "$d/plan.md")"
+elif [[ "$(count "$(b_sent data-model.md)" "$d/plan.md")" -ne 1 ]]; then
+    fail "expected exactly 1 BEGIN, found $(count "$(b_sent data-model.md)" "$d/plan.md")"
+elif [[ "$(count "$(e_sent data-model.md)" "$d/plan.md")" -ne 1 ]]; then
+    fail "expected exactly 1 END, found $(count "$(e_sent data-model.md)" "$d/plan.md")"
 elif ! has 'after' "$d/plan.md"; then
     fail "content after the quoted sentinel was lost"
 elif ! has 'some plan' "$d/plan.md"; then
@@ -307,18 +306,18 @@ start "C3: orphan BEGIN in plan.md => exit 1, nothing written, nothing removed"
 d="$(mkfeature orphan-begin)"
 {
     printf '# Plan\n\nsome plan\n\n'
-    b_sent research.md; printf '\n\nKEEPME\n'
+    b_sent data-model.md; printf '\n\nKEEPME\n'
 } > "$d/plan.md"
-printf '# Research\n\nnew round\n' > "$d/research.md"
+printf '# Data Model\n\nnew round\n' > "$d/data-model.md"
 plan_before="$(cat "$d/plan.md")"
-research_before="$(cat "$d/research.md")"
+dm_before="$(cat "$d/data-model.md")"
 run "$d"
 if [[ $RC -ne 1 ]]; then
     fail "expected exit 1, got $RC"
-elif [[ ! -f "$d/research.md" ]]; then
-    fail "research.md was removed despite the hard error"
-elif [[ "$(cat "$d/research.md")" != "$research_before" ]]; then
-    fail "research.md was modified"
+elif [[ ! -f "$d/data-model.md" ]]; then
+    fail "data-model.md was removed despite the hard error"
+elif [[ "$(cat "$d/data-model.md")" != "$dm_before" ]]; then
+    fail "data-model.md was modified"
 elif [[ "$(cat "$d/plan.md")" != "$plan_before" ]]; then
     fail "plan.md was modified despite the hard error (KEEPME at risk)"
 elif [[ "$ERR" != *unbalanced* ]]; then
@@ -334,17 +333,17 @@ fi
 # ---------------------------------------------------------------- case 13 (C1a)
 start "C1a: read-only plan.md => healed atomically, content never lost, mode preserved"
 d="$(mkfeature readonly-plan)"
-printf '# Research\n\nWe picked sqlite because it is boring.\n' > "$d/research.md"
+printf '# Data Model\n\nWe picked sqlite because it is boring.\n' > "$d/data-model.md"
 chmod 444 "$d/plan.md"
 run "$d"
 mode="$(ls -l "$d/plan.md" | cut -c1-10)"
 chmod 644 "$d/plan.md"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
-elif [[ -e "$d/research.md" ]]; then
-    fail "research.md removed without its content being written"
+elif [[ -e "$d/data-model.md" ]]; then
+    fail "data-model.md removed without its content being written"
 elif ! has 'boring' "$d/plan.md"; then
-    fail "research content was NOT written to plan.md (data loss)"
+    fail "data-model content was NOT written to plan.md (data loss)"
 elif ! has 'some plan' "$d/plan.md"; then
     fail "original plan.md content lost"
 elif [[ "$mode" != "-r--r--r--" ]]; then
@@ -356,16 +355,16 @@ fi
 # ---------------------------------------------------------------- case 14 (C1b)
 start "C1b: non-UTF-8 locale with non-latin1 content => still healed losslessly"
 d="$(mkfeature nonutf8-locale)"
-printf '# Research\n\nJAPANESEMARKER \345\244\251\346\260\227 caf\303\251\n' > "$d/research.md"
+printf '# Data Model\n\nJAPANESEMARKER \345\244\251\346\260\227 caf\303\251\n' > "$d/data-model.md"
 run_env "LC_ALL=en_US.ISO8859-1" "$d"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
-elif [[ -e "$d/research.md" ]]; then
-    fail "research.md removed but plan.md write failed"
+elif [[ -e "$d/data-model.md" ]]; then
+    fail "data-model.md removed but plan.md write failed"
 elif [[ ! -s "$d/plan.md" ]]; then
     fail "plan.md was truncated to 0 bytes"
 elif ! has 'JAPANESEMARKER' "$d/plan.md"; then
-    fail "research content missing from plan.md"
+    fail "data-model content missing from plan.md"
 elif ! LC_ALL=C grep -q -F -- "$(printf '\345\244\251\346\260\227')" "$d/plan.md"; then
     fail "non-latin1 bytes were mangled or dropped"
 elif ! has 'some plan' "$d/plan.md"; then
@@ -377,7 +376,7 @@ fi
 # ---------------------------------------------------------------- case 15 (M1)
 start "M1: one artifact removable, one not => exit 1, content safe, state reported exactly"
 d="$(mkfeature partial-removal)"
-printf '# Research\n\nRESEARCHBODY\n' > "$d/research.md"
+printf '# Data Model\n\nDMBODY\n' > "$d/data-model.md"
 mkdir -p "$d/contracts/locked"
 printf 'LOCKEDCONTRACT\n' > "$d/contracts/locked/api.yml"
 chmod 500 "$d/contracts/locked"
@@ -385,12 +384,12 @@ run "$d"
 chmod 700 "$d/contracts/locked" 2>/dev/null
 if [[ $RC -ne 1 ]]; then
     fail "expected exit 1, got $RC ($OUT)"
-elif [[ -e "$d/research.md" ]]; then
-    fail "research.md should have been removed (its removal succeeds)"
+elif [[ -e "$d/data-model.md" ]]; then
+    fail "data-model.md should have been removed (its removal succeeds)"
 elif [[ ! -d "$d/contracts" ]]; then
     fail "contracts/ should still be on disk (its removal fails)"
-elif ! has 'RESEARCHBODY' "$d/plan.md"; then
-    fail "research content not inlined before removal"
+elif ! has 'DMBODY' "$d/plan.md"; then
+    fail "data-model content not inlined before removal"
 elif ! has 'LOCKEDCONTRACT' "$d/plan.md"; then
     fail "contracts content not inlined — it is about to be reported as unremovable"
 elif ! has 'some plan' "$d/plan.md"; then
@@ -406,20 +405,20 @@ else
 fi
 
 # ---------------------------------------------------------------- case 16 (M2)
-start "M2: dangling research.md symlink => detected and removed, not reported clean"
+start "M2: dangling data-model.md symlink => detected and removed, not reported clean"
 d="$(mkfeature dangling-symlink)"
-ln -s "$WORK/does-not-exist-ever" "$d/research.md"
+ln -s "$WORK/does-not-exist-ever" "$d/data-model.md"
 run "$d"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
-elif [[ -L "$d/research.md" ]]; then
-    fail "dangling research.md symlink left on disk"
-elif [[ "$OUT" != *symlink:*research.md* ]]; then
-    fail "expected a 'symlink:' line for research.md, got: $OUT"
-elif [[ "$OUT" != *removed:*research.md* ]]; then
-    fail "expected a 'removed:' line for research.md, got: $OUT"
-elif [[ "$ERR" == *"unknown top-level entry"*research.md* ]]; then
-    fail "research.md was misreported as an unknown entry: $ERR"
+elif [[ -L "$d/data-model.md" ]]; then
+    fail "dangling data-model.md symlink left on disk"
+elif [[ "$OUT" != *symlink:*data-model.md* ]]; then
+    fail "expected a 'symlink:' line for data-model.md, got: $OUT"
+elif [[ "$OUT" != *removed:*data-model.md* ]]; then
+    fail "expected a 'removed:' line for data-model.md, got: $OUT"
+elif [[ "$ERR" == *"unknown top-level entry"*data-model.md* ]]; then
+    fail "data-model.md was misreported as an unknown entry: $ERR"
 else
     pass
 fi
@@ -453,7 +452,7 @@ fi
 # ---------------------------------------------------------------- case 18 (L1)
 start "L1: unreadable feature dir => clean exit 1, no traceback, nothing removed"
 d="$(mkfeature unreadable-dir)"
-printf '# Research\n\nSTILLHERE\n' > "$d/research.md"
+printf '# Data Model\n\nSTILLHERE\n' > "$d/data-model.md"
 chmod 300 "$d"
 run "$d"
 chmod 700 "$d"
@@ -465,10 +464,30 @@ elif [[ "$ERR" != FAIL:* ]]; then
     fail "expected a 'FAIL:' line on stderr, got: $ERR"
 elif [[ "$ERR" != *"HEALING IMPOSSIBLE"* ]]; then
     fail "expected stderr to state HEALING IMPOSSIBLE, got: $ERR"
+elif [[ ! -f "$d/data-model.md" ]]; then
+    fail "data-model.md was removed"
+elif ! has 'STILLHERE' "$d/data-model.md"; then
+    fail "data-model.md content changed"
+else
+    pass
+fi
+
+# ---------------------------------------------------------------- case 18b
+start "research.md is ALLOWED => kept untouched, no warning"
+d="$(mkfeature research-allowed)"
+printf '# Research\n\nLIBFINDINGS\n' > "$d/research.md"
+plan_before="$(cat "$d/plan.md")"
+run "$d"
+if [[ $RC -ne 0 ]]; then
+    fail "expected exit 0, got $RC ($ERR)"
 elif [[ ! -f "$d/research.md" ]]; then
-    fail "research.md was removed"
-elif ! has 'STILLHERE' "$d/research.md"; then
+    fail "research.md was removed — it is in the allowed set"
+elif ! has 'LIBFINDINGS' "$d/research.md"; then
     fail "research.md content changed"
+elif [[ "$(cat "$d/plan.md")" != "$plan_before" ]]; then
+    fail "plan.md changed — research.md must not be inlined"
+elif [[ "$ERR" == *warning:*research.md* ]]; then
+    fail "research.md was warned about as unknown, got: $ERR"
 else
     pass
 fi
@@ -493,19 +512,19 @@ start "L3: pre-existing duplicate blocks for one name converge to a single block
 d="$(mkfeature duplicate-blocks)"
 {
     printf '# Plan\n\nsome plan\n\n'
-    b_sent research.md; printf '\n## Inlined from research.md\n\nSTALEONE\n'
-    e_sent research.md; printf '\n\n'
-    b_sent research.md; printf '\n## Inlined from research.md\n\nSTALETWO\n'
-    e_sent research.md; printf '\n\nPLANTAIL\n'
+    b_sent data-model.md; printf '\n## Inlined from data-model.md\n\nSTALEONE\n'
+    e_sent data-model.md; printf '\n\n'
+    b_sent data-model.md; printf '\n## Inlined from data-model.md\n\nSTALETWO\n'
+    e_sent data-model.md; printf '\n\nPLANTAIL\n'
 } > "$d/plan.md"
-printf '# Research\n\nFRESHCONTENT\n' > "$d/research.md"
+printf '# Data Model\n\nFRESHCONTENT\n' > "$d/data-model.md"
 run "$d"
-n_begin="$(count "$(b_sent research.md)" "$d/plan.md")"
-n_end="$(count "$(e_sent research.md)" "$d/plan.md")"
+n_begin="$(count "$(b_sent data-model.md)" "$d/plan.md")"
+n_end="$(count "$(e_sent data-model.md)" "$d/plan.md")"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
-elif [[ -e "$d/research.md" ]]; then
-    fail "research.md still on disk"
+elif [[ -e "$d/data-model.md" ]]; then
+    fail "data-model.md still on disk"
 elif [[ "$n_begin" -ne 1 ]]; then
     fail "expected exactly 1 BEGIN after healing, found $n_begin"
 elif [[ "$n_end" -ne 1 ]]; then

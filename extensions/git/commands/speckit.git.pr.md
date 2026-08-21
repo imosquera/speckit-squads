@@ -4,7 +4,7 @@ description: "Open a GitHub PR for the current feature branch, auto-appending Cl
 
 # Create PR for Current Feature
 
-Open a GitHub pull request from the current feature branch into `main` (or another base passed as an argument). If `.specify/feature.json` carries a `source_issue` field — written by `/speckit-specify` when the input referenced a GitHub issue — the PR body will include a `Closes #N` line so merging the PR automatically closes that issue.
+Open a GitHub pull request from the current feature branch into `main` (or another base passed as an argument). If `.specify/feature.json` carries a `source_issue` field — written by `/speckit-git-feature` when it created or was bound to a GitHub issue — the PR body will include a `Closes #N` line so merging the PR automatically closes that issue. That is the file's only field; every other part of the feature's identity is derived from git at read time (issue #33).
 
 Designed to be invoked as the `after_implement` hook (alongside the existing auto-commit hook), or directly via `/speckit-git-pr`.
 
@@ -23,9 +23,9 @@ If either command is unavailable or fails, stop and return an error. Do not cont
    - `/speckit-archive-feature`
    - `/speckit-git-commit`
 2. Verify `gh` is installed and the cwd is a git repo on a non-default branch.
-3. Read `.specify/feature.json`:
-   - `feature_directory` → used to derive the PR title from the spec's H1 and to mention spec/plan/tasks paths in the PR body.
-   - `source_issue` → if present and numeric, append `Closes #N` to the PR body.
+3. Resolve the feature:
+   - The feature directory is derived from the current branch (`specs/<branch>`, honouring `SPECIFY_FEATURE_DIRECTORY`/`SPECIFY_FEATURE`) → used to derive the PR title from the spec's H1 and to mention spec/plan/tasks paths in the PR body.
+   - `source_issue` is read from `.specify/feature.json`, its only field → if present and numeric, append `Closes #N` to the PR body.
 4. If `squash_before_pr: true` in `git-config.yml`, squash every commit between `merge-base(HEAD, <base>)` and `HEAD` into a single commit (title from the spec H1, body listing the original commit subjects). Aborts if the working tree has uncommitted changes.
 5. If the branch isn't yet on `origin`, push it (`git push -u origin <branch>`). If it was already pushed and a squash happened, force-push with `--force-with-lease`.
 6. If a PR already exists for the branch, print its URL and exit.

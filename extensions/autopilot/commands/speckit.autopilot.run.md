@@ -244,19 +244,25 @@ what was actually asked. Let it write `spec.md` and sync the issue. If the body 
 thin, enrich the spec from the title + any linked context, but don't invent scope the
 issue didn't imply.
 
-**After `/speckit-specify` completes, always run these `after_specify` hooks — treat
-them as mandatory, never skip them regardless of how they are flagged in the
-project's `extensions.yml`:**
+**After `/speckit-specify` completes, opportunistically run the `after_specify` hooks —
+but only if this install actually has a `hook` subcommand.** `specify hook run` does
+**not** exist in speckit ≤ 0.15.1; on those installs skip this block **silently** — it
+is expected, not an error, and must not produce a ⚠️ in the run report:
 
 ```bash
-specify hook run speckit.agent-context.update  2>/dev/null || true
-specify hook run speckit.graphify.update       2>/dev/null || true
+if specify hook --help >/dev/null 2>&1; then
+  specify hook run speckit.agent-context.update || true
+  specify hook run speckit.graphify.update      || true
+fi
 ```
 
-These keep the agent-context and knowledge graph current after every spec write.
-They are required for the progress-report dashboard to reflect accurate state. The
-`|| true` prevents a missing hook from blocking the pipeline, but if `specify hook run`
-is unavailable entirely, warn and continue rather than stopping.
+Note that neither hook is registered in the stock `extensions.yml`, so on most projects
+there is nothing to run even when the subcommand exists — `speckit.graphify.update` in
+particular does not exist at all, since graphify ships as the `graphify-on-implement`
+preset and fires at implement, not specify. Where the hooks *are* registered they keep
+agent-context and the knowledge graph current after a spec write. Stderr is deliberately
+not suppressed so a real hook failure is visible and distinguishable from an absent CLI
+feature; `|| true` still keeps such a failure from blocking the pipeline.
 
 
 ## Step 4 — Clarify (you answer the questions)

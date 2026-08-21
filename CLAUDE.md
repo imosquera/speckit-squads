@@ -9,6 +9,7 @@ extensions/<id>/   extension.yml + commands/ + scripts/
 presets/<id>/      preset.yml    + commands/ + templates/
 install.sh         install every extension+preset into a Spec Kit project
 uninstall.sh       remove every extension+preset from a Spec Kit project
+check-cli-usage.sh validate `specify <verb>` calls in command files against the real CLI
 ```
 
 ## Install / uninstall
@@ -27,6 +28,11 @@ Every install uses `specify ... add --dev <repo-path>`, which keeps the project'
 The one case where a registry refresh is required: changes to a manifest itself (`extension.yml` / `preset.yml`) — adding a new command, renaming the id, or changing hooks. For that, run `./install.sh --force <project>`.
 
 Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify`. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (e.g. `progress-report` wraps cycle commands *and* needs `before_*` hooks), ship it as a preset + companion extension pair.
+
+`install.sh` runs `check-cli-usage.sh` as a pre-flight and aborts on failure: every
+`specify <verb> [<subverb>]` inside a fenced bash block in `*/commands/*.md` is checked
+against `specify --help`, so a command file can't ship instructions to run CLI surface
+that doesn't exist. Prose outside code fences is ignored. Run it standalone any time.
 
 `uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
 

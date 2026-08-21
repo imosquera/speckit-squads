@@ -55,6 +55,11 @@ fi
 
 cd "$PROJECT_DIR"
 
+# Pre-flight: every `specify <verb>` a command file tells an agent to run must exist
+# in the installed CLI. Catches invented CLI surface before it ships to a project.
+"$REPO_DIR/check-cli-usage.sh" || exit 1
+
+
 shopt -s nullglob
 
 # install_one <kind> <name> <source-dir>

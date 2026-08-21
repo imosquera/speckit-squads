@@ -82,6 +82,10 @@ Or use the bundled script from inside the checkout:
 
 `--dev` keeps each install pointed at this source tree, so edits here are picked up without re-adding.
 
+`install.sh` first runs `check-cli-usage.sh`, which verifies every `specify <verb>` a
+command file tells an agent to execute against the installed CLI's actual verbs, and
+aborts the install if one doesn't exist.
+
 `install.sh` and `uninstall.sh` auto-discover every `extensions/*/extension.yml`, so new commands are included automatically once their manifest exists.
 
 ## Authoring

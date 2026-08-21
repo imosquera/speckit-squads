@@ -218,14 +218,19 @@ _find_project_root() {
 _common_loaded=false
 _PROJECT_ROOT=$(_find_project_root "$SCRIPT_DIR") || true
 
+# Always load git-common.sh first: it is the only source of the spec_kit_*
+# feature-identity helpers, and core common.sh (loaded after, when present)
+# takes precedence for the helpers they both define.
+if [ -f "$SCRIPT_DIR/git-common.sh" ]; then
+    source "$SCRIPT_DIR/git-common.sh"
+    _common_loaded=true
+fi
+
 if [ -n "$_PROJECT_ROOT" ] && [ -f "$_PROJECT_ROOT/.specify/scripts/bash/common.sh" ]; then
     source "$_PROJECT_ROOT/.specify/scripts/bash/common.sh"
     _common_loaded=true
 elif [ -n "$_PROJECT_ROOT" ] && [ -f "$_PROJECT_ROOT/scripts/bash/common.sh" ]; then
     source "$_PROJECT_ROOT/scripts/bash/common.sh"
-    _common_loaded=true
-elif [ -f "$SCRIPT_DIR/git-common.sh" ]; then
-    source "$SCRIPT_DIR/git-common.sh"
     _common_loaded=true
 fi
 
@@ -597,83 +602,34 @@ if [ "$DRY_RUN" != true ]; then
     fi
 
     # ---------------------------------------------------------------------
-    # Persist source_issue into the worktree's .specify/feature.json and
-    # prefix the issue title with the actual FEATURE_NUM.
+    # Write the worktree's per-worktree feature state, and prefix the issue
+    # title with the actual FEATURE_NUM.
+    #
+    # `.specify/feature.json` carries `source_issue` and nothing else — every
+    # other field (branch, number, worktree path, spec directory) is derived
+    # from git at read time by spec_kit_resolve_feature(), so it cannot go
+    # stale. The helper also gitignores the file and untracks it if an older
+    # layout committed it; see git-common.sh and issue #33.
+    #
+    # When this run created no issue (the GIT_BRANCH_NAME / --timestamp /
+    # --number paths) the file is removed rather than left inherited, so
+    # /speckit-git-pr cannot close the previous feature's issue.
     #
     # In the common case FEATURE_NUM == SOURCE_ISSUE because issue creation
     # drives numbering. They can diverge if the next free spec number was
     # already higher than the issue number (e.g. issue #5 created while
     # specs/008-* already exists), in which case we still write the issue
-    # title with FEATURE_NUM so the issue ↔ spec alignment is visible.
+    # title with FEATURE_NUM so the issue <-> spec alignment is visible.
     # ---------------------------------------------------------------------
-    if [ -n "$SOURCE_ISSUE" ] && [ "$HAS_GIT" = true ] && [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
-        _wt_specify_dir="$WORKTREE_PATH/.specify"
-        _wt_feature_json="$_wt_specify_dir/feature.json"
-        mkdir -p "$_wt_specify_dir"
-
-        # Write or merge feature.json. When the file already exists (e.g. the
-        # previous feature committed it and it was carried into the new worktree
-        # via the base branch), we OVERWRITE the four feature-identity fields
-        # rather than skipping — otherwise the worktree keeps the stale
-        # source_issue/feature_directory and downstream commands (PR, archive,
-        # clean, auto-commit) would close or operate on the previous feature's
-        # tracking artefacts.
-        if command -v jq >/dev/null 2>&1; then
-            if [ -f "$_wt_feature_json" ]; then
-                _tmp_json="${_wt_feature_json}.tmp.$$"
-                if jq \
-                    --arg branch_name "$BRANCH_NAME" \
-                    --arg feature_num "$FEATURE_NUM" \
-                    --arg worktree_path "$WORKTREE_PATH" \
-                    --argjson source_issue "$SOURCE_ISSUE" \
-                    '. + {branch_name:$branch_name,feature_num:$feature_num,worktree_path:$worktree_path,source_issue:$source_issue} | del(.feature_directory)' \
-                    "$_wt_feature_json" > "$_tmp_json"; then
-                    mv "$_tmp_json" "$_wt_feature_json"
-                    >&2 echo "[specify] Updated stale .specify/feature.json in worktree with new feature identity (source_issue=${SOURCE_ISSUE})."
-                else
-                    rm -f "$_tmp_json"
-                    >&2 echo "[specify] Warning: failed to merge .specify/feature.json; overwriting with new feature identity."
-                    jq -n \
-                        --arg branch_name "$BRANCH_NAME" \
-                        --arg feature_num "$FEATURE_NUM" \
-                        --arg worktree_path "$WORKTREE_PATH" \
-                        --argjson source_issue "$SOURCE_ISSUE" \
-                        '{branch_name:$branch_name,feature_num:$feature_num,worktree_path:$worktree_path,source_issue:$source_issue}' \
-                        > "$_wt_feature_json"
-                fi
-            else
-                jq -n \
-                    --arg branch_name "$BRANCH_NAME" \
-                    --arg feature_num "$FEATURE_NUM" \
-                    --arg worktree_path "$WORKTREE_PATH" \
-                    --argjson source_issue "$SOURCE_ISSUE" \
-                    '{branch_name:$branch_name,feature_num:$feature_num,worktree_path:$worktree_path,source_issue:$source_issue}' \
-                    > "$_wt_feature_json"
-            fi
-        else
-            # No jq → write minimal JSON, overwriting any prior content. This
-            # loses non-identity fields the previous owner may have stashed,
-            # but keeping stale identity fields is the worse failure mode.
-            if type json_escape >/dev/null 2>&1; then
-                _je_branch=$(json_escape "$BRANCH_NAME")
-                _je_num=$(json_escape "$FEATURE_NUM")
-                _je_wt=$(json_escape "$WORKTREE_PATH")
-            else
-                _je_branch="$BRANCH_NAME"
-                _je_num="$FEATURE_NUM"
-                _je_wt="$WORKTREE_PATH"
-            fi
-            if [ -f "$_wt_feature_json" ]; then
-                >&2 echo "[specify] Warning: jq not installed; overwriting stale .specify/feature.json (non-identity fields will be lost)."
-            fi
-            printf '{"branch_name":"%s","feature_num":"%s","worktree_path":"%s","source_issue":%s}\n' \
-                "$_je_branch" "$_je_num" "$_je_wt" "$SOURCE_ISSUE" \
-                > "$_wt_feature_json"
+    if [ "$HAS_GIT" = true ] && [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
+        spec_kit_write_feature_json "$WORKTREE_PATH" "$SOURCE_ISSUE"
+        if [ -n "$SOURCE_ISSUE" ]; then
+            >&2 echo "[specify] Linked worktree to issue #${SOURCE_ISSUE} via .specify/feature.json."
         fi
 
         # Prefix the issue title with the spec number so the issue list
         # mirrors the specs/ layout. Best-effort; failures are non-fatal.
-        if command -v gh >/dev/null 2>&1; then
+        if [ -n "$SOURCE_ISSUE" ] && command -v gh >/dev/null 2>&1; then
             _new_title="${FEATURE_NUM}: ${FEATURE_DESCRIPTION}"
             if ! gh issue edit "$SOURCE_ISSUE" --title "$_new_title" >/dev/null 2>&1; then
                 >&2 echo "[specify] Warning: failed to prefix issue #${SOURCE_ISSUE} title with '${FEATURE_NUM}:'"

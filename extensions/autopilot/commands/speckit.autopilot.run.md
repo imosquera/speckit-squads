@@ -211,17 +211,17 @@ mismatched numbering.
    ```
    (Or use `/speckit-git-worktree` if a suitable branch already exists.)
 3. **Link the existing issue** by writing `source_issue` into the new worktree's
-   `.specify/feature.json` (so `/speckit-git-pr`, `/speckit-git-commit`, and
-   `/speckit-git-clean` all pick up issue `#N` automatically):
+   gitignored `.specify/feature.json` (so `/speckit-git-pr`, `/speckit-git-commit`,
+   and `/speckit-git-clean` all pick up issue `#N`):
    ```bash
    # in the new worktree
-   python3 - "$N" <<'PY'
-   import json, sys, pathlib
-   p = pathlib.Path(".specify/feature.json"); d = json.loads(p.read_text())
-   d["source_issue"] = int(sys.argv[1]); p.write_text(json.dumps(d, indent=2))
-   print("linked source_issue", sys.argv[1])
-   PY
+   printf '{"source_issue":%s}\n' "$N" > .specify/feature.json
    ```
+   That single key is the file's entire contents. Never add `branch_name`,
+   `feature_num`, `worktree_path`, or `feature_directory` — every one of those is
+   derived from git at read time precisely so it cannot go stale, and writing them
+   is what used to point `/speckit-git-clean` and `/speckit-git-pr` at the previous
+   feature (issue #33).
 4. **`cd` into the worktree** and run everything below from there. Speckit resolves
    paths from the worktree root; running from the main checkout drifts the cwd and
    breaks the `.specify/` scripts.

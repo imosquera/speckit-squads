@@ -39,6 +39,16 @@ Plain `./install.sh <project>` treats "already installed" as a no-op success, so
 
 Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify`. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (e.g. `progress-report` wraps cycle commands *and* needs `before_*` hooks), ship it as a preset + companion extension pair.
 
+Note on composition (issue #25): a preset command template's `strategy` defaults
+to **`replace`** when omitted, and a `replace` layer kills every layer below it —
+that default silently disabled five `/speckit-implement` presets at once. Always
+declare `strategy:` explicitly. There is no `replaces:` key; it is not in the
+schema and is silently dropped. Presets are ordered by `(priority ASC, id ASC)`,
+lowest number outermost, and priority is an **install-time** argument, not a
+manifest field — so `install.sh`'s `preset_priority()` map is load-bearing
+wherever more than one preset targets a command. The `/speckit-implement`
+ordering contract is tabulated in `README.md`; keep the two in sync.
+
 `install.sh` runs `check-cli-usage.sh` as a pre-flight and aborts on failure: every
 `specify <verb> [<subverb>]` inside a fenced bash block in `*/commands/*.md` is checked
 against `specify --help`, so a command file can't ship instructions to run CLI surface
@@ -70,7 +80,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `archive` — archive a completed feature folder, close linked GitHub issues
 - `autopilot` — `/speckit-autopilot-run`: take the oldest eligible open issue (or a given issue number) from backlog to a reviewed **draft PR** by driving the whole pipeline unattended (specify → clarify auto-answered → plan → tasks → implement → review), binding the worktree to the existing issue and posting progress comments at every stage. Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
 - `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases
-- `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` on tasks/implement is clobbered whenever another preset **replaces** those bodies (e.g. `explicit-task-dependencies`); a hook fires regardless. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
+- `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.
 

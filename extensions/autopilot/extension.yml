@@ -27,6 +27,15 @@ provides:
     - name: stream-decode.py
       file: scripts/bash/stream-decode.py
       executable: true
+    - name: bind-feature-issue.sh
+      file: scripts/bash/bind-feature-issue.sh
+      executable: true
+    - name: fetch-open-issues.sh
+      file: scripts/bash/fetch-open-issues.sh
+      executable: true
+    - name: preflight-issues.py
+      file: scripts/bash/preflight-issues.py
+      executable: true
 
   commands:
     - name: speckit.autopilot.run

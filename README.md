@@ -145,5 +145,6 @@ Each layer runs the core flow, then edits the written constitution in place to e
 
 - **Idempotency matches on the section title, not its roman numeral** — so a section stays recognized after renumbering.
 - **Every layer renumbers all numbered principle sections sequentially** in document order after inserting. The numeral in a preset's canonical text is a placeholder; the outermost layer runs last and leaves the document consistently numbered.
+- **Every layer repeats the core flow's bookkeeping if it changed anything.** The core flow does its version bump, Sync Impact Report, validation, and user summary *before* any wrapper runs, so a section injected afterwards is invisible to all of it. Each layer re-derives the version (added principle = `MINOR`, body-only edit = `PATCH`), amends the Sync Impact Report, and corrects the reported version — **bumping at most once per run**, so two presets each adding a principle produce one `MINOR` bump, not two.
 
-A new preset that injects a constitution section should follow the same two rules.
+A new preset that injects a constitution section should follow the same three rules.

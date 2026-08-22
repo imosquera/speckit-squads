@@ -46,6 +46,47 @@ written, ensure the canonical section below exists **exactly once**.
 - Do not weaken, paraphrase, or omit any of the constraints.
 - Do not remove or reword a governance section injected by another preset.
 
+### Re-run the core flow's bookkeeping if this layer changed anything
+
+The core flow performs its semantic-version bump, Sync Impact Report, validation,
+and final user summary **before** this layer runs, so a section inserted or
+rewritten above is invisible to all of it. Left alone, the constitution's
+governance metadata contradicts its own contents — the classic case being a
+constitution that already carried a sibling preset's section, so the core flow
+saw "no change" while this layer went on to add a whole new principle.
+
+First decide what this layer actually did:
+
+- **No change** — the section was already present and its body already matched
+  the canonical text verbatim. Do nothing further; skip the rest of this section.
+  A re-run must not bump the version.
+- **Body-only change** — the section existed and its body was replaced, or the
+  only difference is renumbering. This is a `PATCH`-level change.
+- **New principle added** — no such section existed and one was inserted. This
+  is at least a `MINOR` change.
+
+Then repeat the core flow's finalization steps for that change, in the same file:
+
+1. **Version.** Re-derive `CONSTITUTION_VERSION` under the core flow's own
+   semver rules, treating an added principle as `MINOR` and a body-only edit as
+   `PATCH`. **Bump at most once per run.** If this run's Sync Impact Report
+   already records a bump of equal or greater significance — because the core
+   flow bumped, or because another stacked preset's layer already did — do not
+   bump again; record your change under that existing version. Two stacked
+   presets each adding a principle is one `MINOR` bump, not two.
+2. **Sync Impact Report.** Update the HTML comment at the top of the file so it
+   describes the constitution as it now stands: list this section under added or
+   modified principles, and correct the `old → new` version line if step 1
+   changed it. Amend the existing report; do not prepend a second one.
+3. **`LAST_AMENDED_DATE`.** Set it to today if it is not already today's date.
+4. **Validation.** Re-run the core flow's validation checks over the final file —
+   the version line matches the report, no unexplained bracket tokens, dates are
+   ISO `YYYY-MM-DD`, and principle numbering is sequential with no duplicates.
+5. **Summary.** The core flow already reported a version and rationale to the
+   user. If step 1 changed either, correct it in your final summary and say
+   which section caused the change, so the user is not told a version that is no
+   longer in the file.
+
 ## Canonical Section (body MUST be present verbatim)
 
 The roman numeral below is a placeholder; the body is what must appear verbatim.

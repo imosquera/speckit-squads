@@ -13,6 +13,19 @@ Registers two commands:
   `run-now`. `.run` detects whether a schedule exists and *suggests* setting one up
   when it doesn't — it never schedules itself.
 
+## Binding a worktree to an existing issue
+
+Autopilot creates its worktree with `GIT_BRANCH_NAME` set, which makes
+`/speckit-git-feature` skip issue creation — so nothing writes the issue linkage,
+and the fresh worktree may still carry an *inherited* `.specify/feature.json` from
+the base branch. `scripts/bash/bind-feature-issue.sh <issue> [worktree]` performs
+that binding through the git extension's shared writer,
+`spec_kit_write_feature_json()`, so the file is gitignored (and `git rm --cached`ed
+in a project whose older layout still tracks it) on this path too. Writing the file
+with a raw `printf` skips that half and leaves a tracked `feature.json` that the
+next worktree inherits — the stale-state bug of issue #33, on the one code path that
+runs unattended (issue #21). The git extension is required.
+
 See `commands/speckit.autopilot.run.md` for the full workflow and the decisions behind
 it (one issue per run, full autonomy with an issue-comment audit trail, stop only
 on hard blockers), and `commands/speckit.autopilot.schedule.md` for the scheduler.

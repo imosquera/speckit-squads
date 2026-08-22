@@ -214,10 +214,18 @@ mismatched numbering.
    gitignored `.specify/feature.json` (so `/speckit-git-pr`, `/speckit-git-commit`,
    and `/speckit-git-clean` all pick up issue `#N`):
    ```bash
-   # in the new worktree
-   printf '{"source_issue":%s}\n' "$N" > .specify/feature.json
+   BIND_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/bind-feature-issue.sh"
+   bash "$BIND_SCRIPT" "$N" "<absolute path to the new worktree>"
    ```
-   That single key is the file's entire contents. Never add `branch_name`,
+   Do **not** write the file by hand. The script delegates to the git extension's
+   shared writer, `spec_kit_write_feature_json()`, which does two things a raw
+   `printf > .specify/feature.json` does not: it gitignores the file, and it
+   `git rm --cached`s it in a project whose older layout still tracks it. Writing
+   it raw leaves a *tracked* `feature.json`, which the next worktree cut from this
+   branch then inherits — reviving the stale-inheritance bug of issue #33 on the
+   one path that runs unattended (issue #21).
+
+   `source_issue` is the file's entire contents. Never add `branch_name`,
    `feature_num`, `worktree_path`, or `feature_directory` — every one of those is
    derived from git at read time precisely so it cannot go stale, and writing them
    is what used to point `/speckit-git-clean` and `/speckit-git-pr` at the previous

@@ -87,6 +87,11 @@ fi
 # old early-claim-before-launch code was. Removing a label that was never
 # applied (skill never reached Step 1, or already cleaned up itself) is a
 # harmless no-op.
+#
+# It clears ONLY `autopilot:claimed`. `autopilot:blocked` — the durable park a
+# skill writes on a hard blocker (repo issue #32) — must survive this trap and
+# every future tick; clearing it here would restore the exact re-pick loop it
+# exists to stop. Only a human clears it, once the blocker is actually fixed.
 if [ -n "$PICKED_ISSUE" ]; then
   trap 'gh issue edit "$PICKED_ISSUE" --remove-label "autopilot:claimed" 2>/dev/null || true; rmdir "$lock" 2>/dev/null' EXIT
 fi

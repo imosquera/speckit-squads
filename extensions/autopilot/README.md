@@ -13,6 +13,36 @@ Registers two commands:
   `run-now`. `.run` detects whether a schedule exists and *suggests* setting one up
   when it doesn't — it never schedules itself.
 
+## The two labels: `autopilot:claimed` and `autopilot:blocked`
+
+Autopilot keeps its state on the issue itself, in two labels that mean opposite
+things and are cleaned up by different actors.
+
+| Label | Lifetime | Written by | Cleared by |
+|---|---|---|---|
+| `autopilot:claimed` | **transient** — one run | the skill body, once, at Step 1 | the skill on every exit path; `autopilot-run.sh`'s `EXIT` trap as a safety net if the session dies ungracefully |
+| `autopilot:blocked` | **durable** — until the blocker is fixed | the skill body, on a hard non-recoverable stop | **a human**, deliberately |
+
+Both are in `preflight-issues.py`'s `BLOCK` set, so a labelled issue is skipped by
+the auto-pick and explicit-issue paths alike.
+
+`autopilot:blocked` exists because removing the claim on a hard stop restores the
+issue to the eligible pool in full: the next scheduled tick re-picks it,
+rediscovers the identical blocker, posts a near-duplicate comment, and unclaims.
+One issue went through that loop **10 times over two days** before anyone noticed
+(issue #32). The blocking run now also posts a comment carrying a machine-readable
+marker line:
+
+```
+AUTOPILOT-BLOCKED: fix target `~/.claude/skills/hindsight/hindsight.py` resolves outside any git repo
+```
+
+`preflight-issues.py`'s `blocked_reason()` reads that line back (newest matching
+comment wins) so an explicit `/speckit-autopilot-run N` on a parked issue prints
+`SKIP: #N blocked — <reason>` instead of silently repeating the cycle. Nothing
+automatic ever removes `autopilot:blocked` — clearing it is the human signal that
+the blocker is actually resolved.
+
 ## Binding a worktree to an existing issue
 
 Autopilot creates its worktree with `GIT_BRANCH_NAME` set, which makes

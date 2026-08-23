@@ -132,7 +132,13 @@ python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json
 A `SKIP:` result on the explicit-issue path means **stop immediately** — do not
 create a spec, branch, worktree, or commit. Report the exact SKIP reason to the
 user (e.g. "already claimed by another autopilot run" or "already in progress on
-branch 082-…") before ending the session. A `SKIP:` result on the auto-pick path
+branch 082-…") before ending the session. `SKIP: #N blocked — <reason>` is the
+durable case: a previous run hit a hard blocker and parked the issue (see
+[Stop conditions](#stop-conditions)). The script reads that reason back out of the
+issue thread, so **relay it verbatim** — a human who deliberately typed
+`/speckit-autopilot-run N` is asking "why not?", and the answer is right there.
+Do not clear `autopilot:blocked` to force a retry; clearing it is a human's call
+once the underlying blocker is actually fixed. A `SKIP:` result on the auto-pick path
 means the whole backlog is unworkable right now — say so and stop; that's success,
 not failure, unless the script reported a hard failure (couldn't parse issues),
 which is a Stop condition.
@@ -348,21 +354,74 @@ Stop, leave the worktree intact, post what you found to the issue, and hand back
 the user only when continuing would be reckless or is impossible:
 
 - **Missing capability** — `gh` / `gcloud` / build creds absent or unauthenticated and
-  the step needs them (login is interactive; you can't do it).
-- **Not a speckit repo** — no `.specify/`.
+  the step needs them (login is interactive; you can't do it). *Durable.*
+- **Fix target outside any git repo** — the file the issue asks you to change
+  resolves (often through a symlink) somewhere `git rev-parse` fails, so no PR
+  against any repo could contain the fix. Resolve the real path with
+  `readlink -f` / `realpath` before concluding this. *Durable.*
+- **Not a speckit repo** — no `.specify/`. (Happens before any claim; nothing to
+  clean up.)
 - **Irreversible ambiguity** — a clarify or design decision that is both genuinely
   undetermined and destructive if guessed wrong (data deletion, spend, sending real
-  messages, production migration). Ask; don't guess.
+  messages, production migration). Ask; don't guess. *Durable.*
 - **Repeated gate failure with no progress** — you've tried a fix two or three times
   and the same gate still fails for a reason you don't understand. Surface the exact
-  error rather than thrash or paper over it.
+  error rather than thrash or paper over it. *Transient* — a flaky or environmental
+  gate can pass on the next tick. But if the issue thread already carries a comment
+  from an **earlier run** reporting the *same* gate failing the same way, that's not
+  flakiness, it's a standing blocker: treat it as durable.
 
-**Whenever you stop after having claimed an issue** (i.e. any stop from Step 1's
-claim onward), remove the claim before ending the session — a stuck claim on a
-dead run would block the issue forever:
+### Clean up on every stop — transient claim off, durable block on
+
+Two distinct pieces of state, and getting only the first one right is what made
+issue #32 re-pick a single issue in **10 consecutive sessions**.
+
+**Always** remove the claim — a stuck claim on a dead run would block the issue
+forever:
 ```bash
 gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
 ```
+
+**Additionally, for a stop marked *Durable* above**, record the blocker where the
+next run's preflight will actually see it. Removing the claim alone writes *no*
+durable state, so `preflight-issues.py` sees a clean, oldest, unlabeled issue on
+the very next tick and picks it again — forever. `autopilot:blocked` is in that
+script's `BLOCK` set, so this is the one write that ends the loop:
+
+```bash
+gh label create "autopilot:blocked" --color "b60205" \
+  --description "Autopilot hit a hard blocker; do not re-pick until resolved" 2>/dev/null || true
+
+gh issue comment "$N" --body "$(cat <<'EOF'
+🚫 **Autopilot hard blocker** — parking this issue; it will not be re-picked until
+a human clears the `autopilot:blocked` label.
+
+AUTOPILOT-BLOCKED: <ONE-LINE reason, self-contained, no leading formatting>
+
+<the full diagnosis: what you tried, what you observed, what would unblock it>
+EOF
+)"
+
+gh issue edit "$N" --add-label "autopilot:blocked"
+```
+
+The `AUTOPILOT-BLOCKED:` marker is not decoration — `preflight-issues.py`'s
+`blocked_reason()` greps the issue's comments for that exact string (newest
+match wins) and replays the text after it when a human explicitly re-runs
+`/speckit-autopilot-run N`. So write **one** line there that stands alone out of
+context ("fix target `~/.claude/skills/hindsight/hindsight.py` resolves outside
+any git repo"), and put the narrative in the paragraph below it, not on the
+marker line. Comment first, then label: if the label write lands and the comment
+doesn't, the next run reports a blocker with no recorded reason.
+
+Order matters on the way out too — add `autopilot:blocked` and remove
+`autopilot:claimed`. Leaving the claim on would also block the issue, but it
+would block it as a *stale lock* that a human is supposed to clear, which is the
+opposite of the deliberate, documented park you just wrote.
+
+**Never** apply `autopilot:blocked` for a transient stop — a collision with a
+sibling run (Step 2's `LIVE:`), a flaky gate, a network blip. Those resolve on
+their own; parking them permanently is worse than re-picking them.
 
 A skipped or deferred *task* is not a blocker — note it and keep going. The bar for
 stopping is "a human would be angry I proceeded," not "this got hard."
@@ -389,6 +448,16 @@ stopping is "a human would be angry I proceeded," not "this got hard."
   restate the block-label list inline and had already drifted from
   `preflight-issues.py` (missing `autopilot:claimed`) by the time #150 collided.
   Both paths now `exec` the same script so they can't drift again.
+- **A hard stop writes durable state, not just an unlock** — the cleanup path used
+  to remove `autopilot:claimed` and nothing else. `autopilot:claimed` is a
+  *transient* lock, so removing it restores the issue to the eligible pool in full;
+  the next scheduled tick then re-picks the same issue, rediscovers the identical
+  blocker, posts a near-duplicate comment, and unclaims — 10 times over two days on
+  issue #181 before anyone noticed (issue #32). The audit-trail comments were the
+  only record and nothing read them. `autopilot:blocked` is the counterpart write:
+  durable, in the preflight script's own `BLOCK` set, and carrying its reason in a
+  machine-readable comment marker so a deliberate re-run gets *told why* instead of
+  silently repeating the cycle.
 - **Never auto-resume a branch/worktree** — an empty, seconds-old worktree from a
   sibling run and a crashed leftover from days ago look identical at first glance.
   Proving "dead" (no open PR, no fresh pickup comment, no recent activity, no live

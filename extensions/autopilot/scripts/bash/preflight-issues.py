@@ -19,6 +19,16 @@ the run has already added `autopilot:claimed` to its OWN issue, so re-running
 the full label-aware check would see that self-applied label and immediately
 (and incorrectly) treat every run as colliding with itself.
 
+`autopilot:blocked` is the *durable* counterpart to the transient
+`autopilot:claimed` lock. A run that hits a hard, non-recoverable blocker
+removes its claim (transient) and adds `autopilot:blocked` (durable), so the
+issue leaves the eligible pool for good instead of being re-picked on the very
+next tick. Without it the cleanup path wrote no durable state at all and one
+issue was re-picked in 10 consecutive sessions (repo issue #32). The reason
+travels in an issue comment tagged with BLOCK_SENTINEL, which
+`blocked_reason()` reads back so an explicit re-run is *told why* rather than
+silently skipped.
+
 Existence of a branch/worktree/PR is unconditionally treated as in-progress
 here — there is no "looks dead, might be safe to reuse" downgrade. A fresh,
 seconds-old worktree from a sibling run and a genuinely abandoned one from a
@@ -33,6 +43,7 @@ Output format (callers read the first word to decide):
   SKIP: 5 open but all in-progress (branches: 003-foo, 005-bar)
   PICK: #42 "Fix the thing" (explicit)
   SKIP: #42 parked:autopilot:claimed
+  SKIP: #42 blocked — fix target is outside any git repo
   SKIP: #42 in-progress:082-fix-thing
   SKIP: #42 not open or not found
   LIVE: 082-fix-thing
@@ -47,7 +58,14 @@ BLOCK = {
     "needs-discussion", "needs discussion",
     "on-hold", "on hold", "question", "epic",
     "autopilot:claimed",
+    "autopilot:blocked",
 }
+
+# Durable "do not retry" label, and the marker autopilot writes into the issue
+# comment that explains why. Kept here so the writer (the skill) and the reader
+# (this script) can never disagree about the string.
+BLOCKED_LABEL = "autopilot:blocked"
+BLOCK_SENTINEL = "AUTOPILOT-BLOCKED:"
 
 
 def sh(*args):
@@ -92,12 +110,43 @@ def in_progress(n):
     return ""
 
 
-def eligibility_reason(i):
-    """Return "" if eligible, else a SKIP reason string."""
+def blocked_reason(n):
+    """Read back WHY autopilot durably blocked issue #N.
+
+    The stopping run posts a comment containing a BLOCK_SENTINEL line; the
+    newest such comment wins (a later run may have refined the diagnosis).
+    Returns "" when no tagged comment exists — e.g. a human applied the label
+    by hand — so callers must treat the reason as best-effort, never as proof
+    the label is real. Only the explicit-issue path pays for this extra `gh`
+    call; auto-pick just counts the issue as parked.
+    """
+    out = sh("gh", "issue", "view", str(n), "--json", "comments")
+    try:
+        comments = json.loads(out).get("comments", []) if out else []
+    except Exception:
+        return ""
+    for c in reversed(comments):
+        for line in (c.get("body") or "").splitlines():
+            if BLOCK_SENTINEL in line:
+                return line.split(BLOCK_SENTINEL, 1)[1].strip().strip("*_` ")[:160]
+    return ""
+
+
+def eligibility_reason(i, explain=False):
+    """Return "" if eligible, else a SKIP reason string.
+
+    `explain` costs one extra `gh` call and is only worth it on the
+    explicit-issue path, where a human typed the number and deserves to be
+    told why their re-run is refusing (repo issue #32).
+    """
     n = i["number"]
     labels = {l["name"].lower() for l in i.get("labels", [])}
     blocking = labels & BLOCK
     if blocking:
+        if explain and BLOCKED_LABEL in blocking:
+            why = blocked_reason(n)
+            return f"blocked — {why}" if why else \
+                f"blocked — {BLOCKED_LABEL} label set, no recorded reason"
         return "parked:" + ",".join(sorted(blocking))
     if not (i.get("body") or "").strip():
         return "empty-body"
@@ -112,7 +161,7 @@ def validate_one(issues, target):
     if match is None:
         print(f"SKIP: #{target} not open or not found")
         return
-    reason = eligibility_reason(match)
+    reason = eligibility_reason(match, explain=True)
     if reason:
         print(f"SKIP: #{target} {reason}")
         return

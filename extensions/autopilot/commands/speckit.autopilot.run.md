@@ -330,10 +330,17 @@ human reviewer would. Re-run the gates after applying fixes.
 
 ## Step 9 — Open the draft PR
 
-Run `/speckit-git-pr` to push the branch and open the PR. Open it **as a draft** — a
-human explicitly wants a not-yet-mergeable PR to review, not an auto-merge. Because
-`source_issue` is set, the body includes `Closes #N`, so merging later auto-closes the
-issue.
+Run `/speckit-git-pr --draft` to push the branch and open the PR. `--draft` is the
+whole handoff contract in one flag, so do **not** hand-roll it (issue #28):
+
+- it passes `--draft` to `gh pr create` directly, so the PR is never briefly
+  mergeable and never needs a post-hoc `gh pr ready <url> --undo`;
+- it skips the `/speckit-archive-feature` pre-step, so the tracking issue stays
+  **open** and the spec stays in the active tree until a human merges. Archiving
+  there would close the issue and file the spec away before anyone reviewed the work.
+
+Because `source_issue` is set, the body includes `Closes #N`, so merging later
+auto-closes the issue.
 
 **Final issue comment**: link the draft PR and give a 3–5 line summary — what was
 built, the assumptions you made (link the earlier clarify comment), gate status

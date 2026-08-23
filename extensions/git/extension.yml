@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: git
   name: "Git Branching Workflow"
-  version: "1.1.0"
+  version: "1.2.0"
   description: "Feature branch creation, worktree management, feature cleanup, auto-commit hooks, and PR creation"
   author: spec-kit-core
   repository: https://github.com/github/spec-kit
@@ -34,7 +34,7 @@ provides:
       description: "Auto-commit changes after a Spec Kit command completes"
     - name: speckit.git.pr
       file: commands/speckit.git.pr.md
-      description: "Open a GitHub PR for the current feature branch, auto-appending Closes #N from .specify/feature.json when source_issue is set"
+      description: "Open a GitHub PR for the current feature branch, auto-appending Closes #N from .specify/feature.json when source_issue is set; --draft opens it as a draft and leaves the issue open"
 
   config:
     - name: "git-config.yml"

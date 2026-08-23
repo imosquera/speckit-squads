@@ -9,7 +9,7 @@ extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
   autopilot/       Oldest eligible issue → draft PR, driving the whole pipeline unattended (+ launchd scheduler);
                    parks hard-blocked issues with a durable autopilot:blocked label so they aren't re-picked forever
-  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR, auto-commit hooks
+  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR (+ --draft), auto-commit hooks
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)

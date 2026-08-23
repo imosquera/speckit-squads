@@ -8,7 +8,8 @@ This extension provides Git operations as an optional, self-contained module. It
 
 - **Feature branch creation** with sequential (`001-feature-name`) or timestamp (`20260319-143022-feature-name`) numbering
 - **Worktree creation and cleanup** for feature isolation
-- **PR creation** for completed feature branches
+- **PR creation** for completed feature branches (`--draft` for a human-review handoff:
+  opens the PR as a draft and leaves the tracking issue open)
 - **GitHub issue sync** — when a tracking issue is linked, its body is re-rendered from `spec.md` after every `/speckit-specify` (title untouched); skipped cleanly when there is no linked issue
 - **Auto-commit** after core commands (configurable per-command with custom messages)
 
@@ -21,7 +22,7 @@ This extension provides Git operations as an optional, self-contained module. It
 | `speckit.git.clean` | Clean up the current feature worktree, branch, issue, and uncommitted changes |
 | `speckit.git.issue` | Update the linked GitHub issue's body from `spec.md` (a manual run may also create one when none is linked) |
 | `speckit.git.commit` | Auto-commit changes (configurable per-command enable/disable and messages) |
-| `speckit.git.pr` | Open a GitHub PR for the current feature branch |
+| `speckit.git.pr` | Open a GitHub PR for the current feature branch; `--draft` opens it as a draft and skips the archive-feature pre-step |
 
 ## Hooks
 

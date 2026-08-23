@@ -4,12 +4,37 @@
 # carries `source_issue`, the PR body includes `Closes #N` so merging the PR
 # automatically closes the originating GitHub issue.
 #
-# Usage: create-pr.sh [base_branch]
+# Usage: create-pr.sh [base_branch] [--draft]
 #   base_branch defaults to "main".
+#   --draft opens the PR as a draft directly (gh pr create --draft) instead of
+#   creating a mergeable PR that then has to be converted with `gh pr ready
+#   --undo` after the fact. Callers that use --draft must also skip the
+#   /speckit-archive-feature pre-step — see commands/speckit.git.pr.md — so the
+#   tracking issue stays open and the spec stays unarchived until a human
+#   merges (issue #28).
 
 set -e
 
-BASE_BRANCH="${1:-main}"
+BASE_BRANCH=""
+DRAFT=false
+for _arg in "$@"; do
+    case "$_arg" in
+        --draft) DRAFT=true ;;
+        -*)
+            echo "[specify] Error: unknown option: $_arg" >&2
+            echo "[specify] Usage: create-pr.sh [base_branch] [--draft]" >&2
+            exit 1
+            ;;
+        *)
+            if [ -n "$BASE_BRANCH" ]; then
+                echo "[specify] Error: unexpected argument: $_arg" >&2
+                exit 1
+            fi
+            BASE_BRANCH="$_arg"
+            ;;
+    esac
+done
+BASE_BRANCH="${BASE_BRANCH:-main}"
 
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -159,10 +184,22 @@ fi
 # Open the PR (skip if one already exists for this branch)
 if gh pr view "$CURRENT_BRANCH" >/dev/null 2>&1; then
     _url=$(gh pr view "$CURRENT_BRANCH" --json url -q .url)
+    if [ "$DRAFT" = "true" ] && \
+        [ "$(gh pr view "$CURRENT_BRANCH" --json isDraft -q .isDraft 2>/dev/null)" = "false" ]; then
+        echo "[specify] Warning: existing PR is not a draft; convert it with \`gh pr ready $_url --undo\`" >&2
+    fi
     echo "[OK] PR already exists: $_url" >&2
     exit 0
 fi
 
-_url=$(gh pr create --base "$BASE_BRANCH" --head "$CURRENT_BRANCH" \
-    --title "$_pr_title" --body "$_pr_body")
-echo "[OK] PR created: $_url" >&2
+_gh_args=(--base "$BASE_BRANCH" --head "$CURRENT_BRANCH" --title "$_pr_title" --body "$_pr_body")
+if [ "$DRAFT" = "true" ]; then
+    _gh_args+=(--draft)
+fi
+
+_url=$(gh pr create "${_gh_args[@]}")
+if [ "$DRAFT" = "true" ]; then
+    echo "[OK] Draft PR created: $_url" >&2
+else
+    echo "[OK] PR created: $_url" >&2
+fi

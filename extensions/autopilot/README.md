@@ -43,15 +43,68 @@ comment wins) so an explicit `/speckit-autopilot-run N` on a parked issue prints
 automatic ever removes `autopilot:blocked` — clearing it is the human signal that
 the blocker is actually resolved.
 
-## Cross-repo delivery (`--cross-repo`)
+## One run, one repository
+
+An autopilot run is bound to exactly one repo and one checkout, in both directions:
+
+- **Input** — `fetch-open-issues.sh` runs `gh issue list` with no `--repo`, so the
+  backlog comes from the checkout's own remote. Autopilot has never sourced work
+  from another repository.
+- **Schedule** — `autopilot-schedule.sh` resolves the repo root via
+  `git rev-parse --show-toplevel`, labels the launchd job
+  `com.speckit.autopilot.<repo-slug>`, and bakes that root into the plist as the
+  runner's argument. One plist per checkout; `--project DIR` lets several repos
+  each hold their own timer without colliding.
+- **Output** — enforced by `check-target-repo.sh` (below). This is the half that
+  used to be missing.
+
+### The output guard (`check-target-repo.sh`)
+
+Nothing checked where the *fix* had to land. lead-drop#182 asked for a change to a
+file that resolved into a different repository; autopilot did the work and opened
+the PR over there, while the issue it "finished" stayed open behind it. A run bound
+to one repo delivered to another — and that open issue is what three later runs then
+picked up again (issue #34).
+
+The pre-existing "fix target outside any git repo" stop condition did not catch it:
+that target was inside a perfectly good repo, just not ours.
+
+Step 1.5 now hands every path the issue names to the guard:
+
+```
+$ check-target-repo.sh hindsight.py README.md
+FOREIGN: hindsight.py → /Users/iam/Code/dotskills
+INSIDE: README.md → /Users/iam/Code/lead-drop
+BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/lead-drop
+```
+
+- Resolves `~` and symlinks — the #34 target presented through a symlink.
+- A path that does not exist yet (an issue asking for a **new** file) resolves to
+  its deepest existing ancestor: the directory the file would be created in.
+- Repo identity is the git **common dir**, never the worktree toplevel. Autopilot
+  always runs inside a worktree, where `--show-toplevel` is the worktree path while
+  `--git-common-dir` is the main repo's `.git`; comparing toplevels would report
+  every in-repo file as foreign.
+- `OUTSIDE` (no git repo at all) stays distinguishable from `FOREIGN` (a different
+  repo), because they are different stop conditions with different advice.
+
+A non-zero exit is a *Durable* stop: park with `park-issue.sh`, naming the repo the
+fix belongs in, and release the claim. A human moves the issue; autopilot does not
+guess.
+
+## Cross-repo delivery detection (`--cross-repo`)
+
+The guard above stops autopilot from *creating* a cross-repo delivery. This check is
+the cleanup net for ones that already exist — work delivered elsewhere before the
+guard existed, or a PR a human links by hand.
 
 Every other eligibility check looks only at *this* repo: `has_open_pr()` searches
 the current repo, and the branch/worktree scan is local by definition. So an issue
-whose fix already shipped as a PR in a **different** repository — a skills repo, a
-sibling service — reads as perfectly fresh. On 2026-08-20 that cost three full
-sessions on one issue: the first run delivered it as a PR elsewhere, and three
-later runs each picked it, claimed it, and only then worked out by hand that it was
-done. One started 35 seconds after the delivering run finished (issue #34).
+whose fix already shipped as a PR in a **different** repository reads as perfectly
+fresh, and gets picked again. That is what cost three sessions on lead-drop#182.
+
+Note this never *sources* work from another repo — it reads issues from this repo
+only, and a finding can only ever cause a **skip**.
 
 `preflight-issues.py <issues.json> [N] --cross-repo` closes that gap. It reads the
 issue's own thread (body + comments — the same fetch `blocked_reason()` already

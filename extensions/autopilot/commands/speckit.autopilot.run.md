@@ -209,6 +209,55 @@ condition (see [Stop conditions](#stop-conditions)):
 gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
 ```
 
+## Step 1.5 — Confirm the fix belongs in THIS repo
+
+**An autopilot run is bound to exactly one repository and one checkout.**
+`autopilot-schedule.sh` writes the repo root into the launchd plist (one plist per
+checkout, labelled `com.speckit.autopilot.<repo-slug>`), and `fetch-open-issues.sh`
+reads issues only from that repo's own `gh issue list`. The work must land there
+too — this run may not open a PR against a different repository.
+
+Nothing used to check that. lead-drop#182 asked for a change to a file that resolved
+into a *different* repo; autopilot did the work and opened the PR over there, while
+the issue it "finished" stayed open. That is what then let three later runs pick the
+same issue up again (issue #34). The pre-existing "fix target outside any git repo"
+stop condition did not catch it, because that target was inside a perfectly good
+repo — just not ours.
+
+So, before any spec, branch, or worktree: read the issue and list every file path it
+asks you to change or create, then hand them all to the guard in one call:
+
+```bash
+GUARD="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/check-target-repo.sh"
+bash "$GUARD" path/to/one.py ~/some/other/file.ts
+# => "INSIDE: … → <repo>"   per target, then
+#    "OK: 2 target(s) inside <repo>"          (exit 0 — proceed)
+#    "BLOCKED: 1 of 2 target(s) not in <repo>" (exit 1 — stop, see below)
+```
+
+It resolves `~` and symlinks, and for a file that does not exist yet it uses the
+deepest existing ancestor — the directory the file would be created in. Repo
+identity is the git **common dir**, not the worktree toplevel, so a path inside this
+feature's worktree correctly reads as INSIDE rather than foreign.
+
+Pass paths you are reasonably confident about. If the issue names no file at all,
+skip the guard rather than inventing targets — the check is a scope guard, not a
+substitute for reading the issue.
+
+**On a non-zero exit, stop.** This is a *Durable* stop: park the issue and release
+the claim, exactly as [Stop conditions](#stop-conditions) prescribes.
+
+```bash
+PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+bash "$PARK_SCRIPT" "$N" \
+  "fix target <path> lives in <other-repo>; this autopilot run is bound to <this-repo> — move the issue to that repo, or clear autopilot:blocked if it can be fixed here" \
+  --title "📍 **Wrong repository**"
+gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
+```
+
+Say plainly in the final report which repo the fix belongs in, so a human can move
+the issue rather than guess why it was parked.
+
 ## Step 2 — Bind a worktree to the EXISTING issue (avoid the duplicate-issue trap)
 
 This is the sharpest edge. `/speckit-git-feature` is built to **create a new** stub
@@ -397,6 +446,12 @@ the user only when continuing would be reckless or is impossible:
   resolves (often through a symlink) somewhere `git rev-parse` fails, so no PR
   against any repo could contain the fix. Resolve the real path with
   `readlink -f` / `realpath` before concluding this. *Durable.*
+- **Fix target in a DIFFERENT git repo** — the target resolves inside a real
+  repository that is not the one this run is bound to. Opening a PR there would put
+  the work outside the repo whose backlog, schedule, and checkout this run owns, and
+  would leave the issue open behind it (issue #34). `check-target-repo.sh` decides
+  this; see [Step 1.5](#step-15--confirm-the-fix-belongs-in-this-repo). Park it and
+  name the correct repo so a human can move the issue. *Durable.*
 - **Not a speckit repo** — no `.specify/`. (Happens before any claim; nothing to
   clean up.)
 - **Irreversible ambiguity** — a clarify or design decision that is both genuinely

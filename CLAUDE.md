@@ -84,11 +84,19 @@ on first run in a project that still tracks it, so the migration is automatic.
   the reason back out of — without it, removing the transient `autopilot:claimed`
   label left no durable state and one issue was re-picked in 10 consecutive runs
   (issue #32); only a human clears `autopilot:blocked`.
-  `preflight-issues.py --cross-repo` (passed by both the skill and the wrapper) also
-  scans an issue's own thread for PR links and resolves them with `gh pr view --repo`,
-  so an issue already delivered by a PR in a **different repo** is skipped instead of
-  re-picked — that blind spot burned three sessions on one issue in a day (issue #34).
-  Merged beats open, closed-unmerged never counts as delivery, and the script stays
+  **A run is bound to one repo and one checkout in both directions.** Input and
+  schedule always were (`gh issue list` with no `--repo`; one launchd plist per repo
+  root). Output was not: nothing checked where the *fix* had to land, so an issue
+  whose target resolved into a different repo got worked and delivered there while
+  staying open behind it (issue #34). `check-target-repo.sh` is the guard — Step 1.5
+  hands it every path the issue names, and a `FOREIGN`/`OUTSIDE` verdict is a durable
+  stop. It keys on the git **common dir**, never `--show-toplevel`: autopilot always
+  runs in a worktree, so comparing toplevels would flag every in-repo file as foreign.
+  `preflight-issues.py --cross-repo` (passed by both the skill and the wrapper) is the
+  cleanup net for deliveries that already exist — it scans an issue's own thread for
+  PR links, resolves them with `gh pr view --repo`, and skips an issue already
+  delivered elsewhere. It never *sources* work from another repo; a finding can only
+  cause a skip. Merged beats open, closed-unmerged never counts, and the script stays
   read-only: it emits `DELIVERED: <n> <url> (<state>)` after the verdict and the
   caller parks via `park-issue.sh` — the single writer of `autopilot:blocked` and the
   `AUTOPILOT-BLOCKED:` sentinel, shared by the skill and the wrapper. Both must park:

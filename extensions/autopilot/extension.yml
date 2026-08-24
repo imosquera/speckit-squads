@@ -39,6 +39,9 @@ provides:
     - name: park-issue.sh
       file: scripts/bash/park-issue.sh
       executable: true
+    - name: check-target-repo.sh
+      file: scripts/bash/check-target-repo.sh
+      executable: true
 
   commands:
     - name: speckit.autopilot.run

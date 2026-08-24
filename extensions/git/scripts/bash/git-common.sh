@@ -190,3 +190,39 @@ spec_kit_ignore_feature_json() {
         >&2 echo "[specify]   The removal is staged in this worktree and lands when this feature merges."
     fi
 }
+
+# ---------------------------------------------------------------------------
+# commit_exclude: paths the auto-commit hook must never stage.
+#
+# Some repos track a large generated artifact whose canonical copy is rebuilt on
+# the default branch by CI — lead-drop's `graphify-out/` is a 440k-line dated
+# snapshot rebuilt by a dedicated `chore(graphify)` job. A feature branch that
+# regenerates it (the graphify lifecycle hook does, every phase) and lets
+# `git add .` sweep it in produces an unreviewable PR diff AND massive rebase
+# conflicts — "440920 insertions(+), 88677 deletions(-)" on one branch. Every
+# autopilot run then had to hand-reconcile it before opening the PR (issue #22).
+#
+# Listing the path here keeps the hook running (the graph stays accurate for the
+# rest of the session) while its output stays out of every commit, so the branch
+# never carries the snapshot in the first place.
+#
+# Usage: spec_kit_commit_excludes [repo_root]   → one path per line, or nothing.
+spec_kit_commit_excludes() {
+    local root="${1:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+    local cfg="$root/.specify/extensions/git/git-config.yml"
+    [ -f "$cfg" ] || return 0
+
+    awk '
+        /^[[:space:]]*commit_exclude:[[:space:]]*$/ { inlist = 1; next }
+        inlist && /^[[:space:]]*-[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]*-[[:space:]]*/, "", line)      # strip the bullet
+            sub(/[[:space:]]*#.*$/, "", line)                 # strip trailing comment
+            gsub(/^["'"'"']|["'"'"']$/, "", line)             # strip quotes
+            gsub(/[[:space:]]+$/, "", line)
+            if (line != "") print line
+            next
+        }
+        inlist && /^[[:space:]]*[^[:space:]-]/ { inlist = 0 }  # next key ends the list
+    ' "$cfg"
+}

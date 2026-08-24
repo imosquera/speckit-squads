@@ -121,13 +121,21 @@ which is exactly how two runs collided on the same issue — see issue #19). Alw
 PREFLIGHT_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/preflight-issues.py"
 
 # With an explicit issue number in $ARGUMENTS, validate THAT issue only:
-python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json "$N"
+python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json "$N" --cross-repo
 # => "PICK: #42 \"Fix the thing\" (explicit)"  or  "SKIP: #42 <reason>"
 
 # With no input, auto-pick the oldest eligible issue:
-python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json
+python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json --cross-repo
 # => "PICK: #42 \"Fix the thing\" (7 open, 2 parked, 1 in-progress)"  or  "SKIP: ..."
 ```
+
+**Always pass `--cross-repo`.** The rest of the eligibility check only sees *this*
+repo, so an issue whose fix already shipped as a PR **somewhere else** looks
+perfectly fresh. That is not hypothetical: on 2026-08-20 one issue was picked and
+claimed by three separate runs after the first had already delivered it in another
+repo — one of them starting 35 seconds after the delivering run finished (issue
+#34). `--cross-repo` scans the issue's own thread for PR links, resolves them with
+`gh pr view --repo`, and turns that into `SKIP: #N delivered — <url> (<state>)`.
 
 A `SKIP:` result on the explicit-issue path means **stop immediately** — do not
 create a spec, branch, worktree, or commit. Report the exact SKIP reason to the
@@ -142,6 +150,30 @@ once the underlying blocker is actually fixed. A `SKIP:` result on the auto-pick
 means the whole backlog is unworkable right now — say so and stop; that's success,
 not failure, unless the script reported a hard failure (couldn't parse issues),
 which is a Stop condition.
+
+`SKIP: #N delivered — <url> (<state>)` needs one extra write before you stop.
+Preflight only *reads*; without a durable mark the next tick re-derives the same
+answer and the issue keeps cycling — the exact re-pick loop `autopilot:blocked`
+was introduced to end (issue #32). So park it the same way, with the delivering PR
+as the reason, then stop:
+
+```bash
+gh label create "autopilot:blocked" --color "b60205" \
+  --description "Autopilot hit a hard blocker; do not re-pick until resolved" 2>/dev/null || true
+
+gh issue comment "$N" --body "$(cat <<'EOF'
+✅ **Already delivered** — parking this issue; autopilot will not re-pick it.
+
+AUTOPILOT-BLOCKED: delivered by <PR-URL> (<state>) — close this issue, or clear the `autopilot:blocked` label if that PR does not in fact resolve it.
+EOF
+)"
+
+gh issue edit "$N" --add-label "autopilot:blocked"
+```
+
+Do **not** close the issue yourself: a linked PR is strong evidence, not proof, and
+whether it truly resolves the issue is a human's call. Parking stops the waste;
+closing is theirs.
 
 `gh issue list` already excludes PRs, so you won't accidentally grab one.
 

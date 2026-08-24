@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: autopilot
   name: "Issue Backlog Autopilot"
-  version: "0.1.0"
+  version: "0.2.0"
   description: "Take the oldest eligible open GitHub issue from backlog to a reviewed draft PR by driving the full speckit pipeline unattended (specify → clarify → plan → tasks → implement → review), auto-answering clarify questions and posting progress to the issue at every stage."
   author: imosquera
   license: MIT

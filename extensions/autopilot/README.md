@@ -43,6 +43,45 @@ comment wins) so an explicit `/speckit-autopilot-run N` on a parked issue prints
 automatic ever removes `autopilot:blocked` — clearing it is the human signal that
 the blocker is actually resolved.
 
+## Cross-repo delivery (`--cross-repo`)
+
+Every other eligibility check looks only at *this* repo: `has_open_pr()` searches
+the current repo, and the branch/worktree scan is local by definition. So an issue
+whose fix already shipped as a PR in a **different** repository — a skills repo, a
+sibling service — reads as perfectly fresh. On 2026-08-20 that cost three full
+sessions on one issue: the first run delivered it as a PR elsewhere, and three
+later runs each picked it, claimed it, and only then worked out by hand that it was
+done. One started 35 seconds after the delivering run finished (issue #34).
+
+`preflight-issues.py <issues.json> [N] --cross-repo` closes that gap. It reads the
+issue's own thread (body + comments — the same fetch `blocked_reason()` already
+pays for), pulls out every `github.com/<owner>/<repo>/pull/<n>` URL, and resolves
+each with `gh pr view --repo`:
+
+```
+SKIP: #182 delivered — https://github.com/imosquera/dotskills/pull/3 (merged)
+```
+
+- **Merged beats open**, so the message names the PR that actually shipped rather
+  than whichever was linked first.
+- **Closed-unmerged never counts** — abandoned work must not park an issue forever.
+- **Draft is reported, not decisive**: an open draft still means someone is on it,
+  matching the "existence alone means skip" rule the local checks already follow.
+- **Unresolvable links are ignored** (private repo, deleted PR), so a token that
+  can't read the other repo degrades to today's behaviour instead of parking the
+  issue on no evidence.
+
+It is opt-in for cost — one `gh issue view` plus one `gh pr view` per linked PR —
+and on the auto-pick path it runs only against the issue about to be picked, the
+one position where the answer changes the outcome. Both callers (the skill's Step 1
+and `autopilot-run.sh`'s launch preflight) pass it.
+
+The script itself never writes. On a `delivered` skip the **skill** applies
+`autopilot:blocked` with the PR URL as the `AUTOPILOT-BLOCKED:` reason, so the
+finding is durable and the issue stops cycling. It does not close the issue: a
+linked PR is strong evidence, not proof that it resolves the issue, and that call
+is a human's.
+
 ## Binding a worktree to an existing issue
 
 Autopilot creates its worktree with `GIT_BRANCH_NAME` set, which makes

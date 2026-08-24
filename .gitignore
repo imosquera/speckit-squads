@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Python bytecode (a .pyc for preflight-issues.py was committed by accident in #40)
+__pycache__/
+*.pyc

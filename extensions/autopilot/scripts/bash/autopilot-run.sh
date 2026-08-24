@@ -58,7 +58,10 @@ if command -v gh >/dev/null 2>&1 \
    && bash "$SCRIPT_DIR/fetch-open-issues.sh" "$ISSUES_TMP" >/dev/null 2>&1 \
    && [ -s "$ISSUES_TMP" ]; then
 
-  PREFLIGHT=$(python3 "$SCRIPT_DIR/preflight-issues.py" "$ISSUES_TMP" 2>/dev/null) || PREFLIGHT=""
+  # --cross-repo: an issue whose fix already shipped as a PR in ANOTHER repo is
+  # invisible to every other check here, and launching a full claude session to
+  # rediscover that by hand cost three runs in one day (issue #34).
+  PREFLIGHT=$(python3 "$SCRIPT_DIR/preflight-issues.py" "$ISSUES_TMP" --cross-repo 2>/dev/null) || PREFLIGHT=""
   rm -f "$ISSUES_TMP"
 
   if [ -z "$PREFLIGHT" ]; then

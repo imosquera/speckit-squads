@@ -36,6 +36,9 @@ provides:
     - name: preflight-issues.py
       file: scripts/bash/preflight-issues.py
       executable: true
+    - name: park-issue.sh
+      file: scripts/bash/park-issue.sh
+      executable: true
 
   commands:
     - name: speckit.autopilot.run

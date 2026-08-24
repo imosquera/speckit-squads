@@ -89,7 +89,12 @@ on first run in a project that still tracks it, so the migration is automatic.
   so an issue already delivered by a PR in a **different repo** is skipped instead of
   re-picked — that blind spot burned three sessions on one issue in a day (issue #34).
   Merged beats open, closed-unmerged never counts as delivery, and the script stays
-  read-only: the durable park write belongs to the skill. Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
+  read-only: it emits `DELIVERED: <n> <url> (<state>)` after the verdict and the
+  caller parks via `park-issue.sh` — the single writer of `autopilot:blocked` and the
+  `AUTOPILOT-BLOCKED:` sentinel, shared by the skill and the wrapper. Both must park:
+  the wrapper exits on `SKIP:` before the skill ever launches, and a delivered issue
+  doesn't stop the scan, so a run can `PICK:` a later issue while an earlier delivered
+  one still needs parking. Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
 - `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases. `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)

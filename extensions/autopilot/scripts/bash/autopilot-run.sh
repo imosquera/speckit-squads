@@ -67,12 +67,30 @@ if command -v gh >/dev/null 2>&1 \
   if [ -z "$PREFLIGHT" ]; then
     echo "$(ts) preflight: could not evaluate issues — proceeding anyway"
   else
+    # The verdict is the FIRST line; `DELIVERED:` park requests follow it.
+    VERDICT=$(printf '%s\n' "$PREFLIGHT" | head -1)
+
+    # Park every cross-repo delivery BEFORE acting on the verdict. This wrapper
+    # exits on SKIP without ever launching the skill, so if the parking were left
+    # to the skill (as it is for a human-driven run) a delivered issue would be
+    # rediscovered — same GitHub lookups, same result — on every scheduled tick,
+    # forever. It also matters on the PICK path: a delivered issue does not stop
+    # preflight's scan, so a later issue can be picked while an earlier delivered
+    # one still needs parking. park-issue.sh is shared with the skill precisely so
+    # this second caller is not a second, drift-prone implementation.
+    printf '%s\n' "$PREFLIGHT" | grep '^DELIVERED: ' | while read -r _tag _num _pr; do
+      echo "$(ts) preflight: #$_num already delivered by $_pr — parking"
+      bash "$SCRIPT_DIR/park-issue.sh" "$_num" "delivered by $_pr — close this issue, or clear the autopilot:blocked label if that PR does not resolve it" \
+        --title "✅ **Already delivered**" >/dev/null 2>&1 \
+        || echo "$(ts) preflight: WARNING could not park #$_num; it will be re-checked next tick"
+    done
+
     # If preflight says nothing is eligible, skip the claude session entirely.
-    case "$PREFLIGHT" in
-      SKIP:*) echo "$(ts) preflight: $PREFLIGHT"; exit 0;;
+    case "$VERDICT" in
+      SKIP:*) echo "$(ts) preflight: $VERDICT"; exit 0;;
     esac
-    PICKED_ISSUE=$(echo "$PREFLIGHT" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
-    echo "$(ts) preflight: $PREFLIGHT"
+    PICKED_ISSUE=$(echo "$VERDICT" | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+    echo "$(ts) preflight: $VERDICT"
   fi
 else
   rm -f "$ISSUES_TMP" 2>/dev/null || true

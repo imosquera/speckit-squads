@@ -154,26 +154,25 @@ which is a Stop condition.
 `SKIP: #N delivered — <url> (<state>)` needs one extra write before you stop.
 Preflight only *reads*; without a durable mark the next tick re-derives the same
 answer and the issue keeps cycling — the exact re-pick loop `autopilot:blocked`
-was introduced to end (issue #32). So park it the same way, with the delivering PR
-as the reason, then stop:
+was introduced to end (issue #32). Park it with the delivering PR as the reason,
+then stop:
 
 ```bash
-gh label create "autopilot:blocked" --color "b60205" \
-  --description "Autopilot hit a hard blocker; do not re-pick until resolved" 2>/dev/null || true
-
-gh issue comment "$N" --body "$(cat <<'EOF'
-✅ **Already delivered** — parking this issue; autopilot will not re-pick it.
-
-AUTOPILOT-BLOCKED: delivered by <PR-URL> (<state>) — close this issue, or clear the `autopilot:blocked` label if that PR does not in fact resolve it.
-EOF
-)"
-
-gh issue edit "$N" --add-label "autopilot:blocked"
+PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+bash "$PARK_SCRIPT" "$N" \
+  "delivered by <PR-URL> (<state>) — close this issue, or clear the autopilot:blocked label if that PR does not resolve it" \
+  --title "✅ **Already delivered**"
 ```
 
 Do **not** close the issue yourself: a linked PR is strong evidence, not proof, and
 whether it truly resolves the issue is a human's call. Parking stops the waste;
 closing is theirs.
+
+`autopilot-run.sh` parks deliveries it finds in its own launch preflight, using the
+same script — it exits before this skill ever starts, so it cannot delegate the
+write here (and a delivered issue does not stop preflight's scan, so it can also
+surface one while still picking a different issue). Parking is idempotent: an issue
+that already carries `autopilot:blocked` is left alone rather than re-commented.
 
 `gh issue list` already excludes PRs, so you won't accidentally grab one.
 
@@ -428,21 +427,15 @@ the very next tick and picks it again — forever. `autopilot:blocked` is in tha
 script's `BLOCK` set, so this is the one write that ends the loop:
 
 ```bash
-gh label create "autopilot:blocked" --color "b60205" \
-  --description "Autopilot hit a hard blocker; do not re-pick until resolved" 2>/dev/null || true
-
-gh issue comment "$N" --body "$(cat <<'EOF'
-🚫 **Autopilot hard blocker** — parking this issue; it will not be re-picked until
-a human clears the `autopilot:blocked` label.
-
-AUTOPILOT-BLOCKED: <ONE-LINE reason, self-contained, no leading formatting>
-
-<the full diagnosis: what you tried, what you observed, what would unblock it>
-EOF
-)"
-
-gh issue edit "$N" --add-label "autopilot:blocked"
+PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+bash "$PARK_SCRIPT" "$N" "<ONE-LINE reason, self-contained, no leading formatting>"
 ```
+
+`park-issue.sh` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
+sentinel — the unattended wrapper writes the same park through it — so the strings
+the reader (`preflight-issues.py`) greps for can never drift between two
+hand-rolled copies. It creates the label if missing, posts the comment, applies the
+label, and no-ops when the issue is already parked.
 
 The `AUTOPILOT-BLOCKED:` marker is not decoration — `preflight-issues.py`'s
 `blocked_reason()` greps the issue's comments for that exact string (newest

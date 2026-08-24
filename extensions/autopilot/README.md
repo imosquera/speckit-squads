@@ -76,11 +76,28 @@ and on the auto-pick path it runs only against the issue about to be picked, the
 one position where the answer changes the outcome. Both callers (the skill's Step 1
 and `autopilot-run.sh`'s launch preflight) pass it.
 
-The script itself never writes. On a `delivered` skip the **skill** applies
-`autopilot:blocked` with the PR URL as the `AUTOPILOT-BLOCKED:` reason, so the
-finding is durable and the issue stops cycling. It does not close the issue: a
-linked PR is strong evidence, not proof that it resolves the issue, and that call
-is a human's.
+The script itself never writes; it emits the finding as a machine-readable
+`DELIVERED: <n> <url> (<state>)` line after the verdict, and the caller parks the
+issue through the shared `park-issue.sh`. Parking is what makes the finding
+durable — the label is in preflight's `BLOCK` set, so the next tick skips the issue
+outright instead of re-running the same GitHub lookups forever.
+
+**Both** callers park, and neither can delegate to the other:
+
+- `autopilot-run.sh` exits on a `SKIP:` verdict *before* launching the skill, so a
+  delivered issue that leaves nothing else eligible would otherwise be rediscovered
+  on every scheduled tick, with no durable state ever written.
+- A delivered issue does not stop preflight's scan, so a run can report `PICK:` for
+  a later issue while still having found a delivered earlier one — which needs
+  parking on the success path too.
+
+`park-issue.sh` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
+sentinel (the hard-blocker stop path uses it as well), so the strings preflight
+greps for cannot drift between two hand-rolled copies. It no-ops on an issue that
+is already parked, so a re-park adds no duplicate comment.
+
+Parking is not closing: a linked PR is strong evidence, not proof that it resolves
+the issue, and that call is a human's.
 
 ## Binding a worktree to an existing issue
 

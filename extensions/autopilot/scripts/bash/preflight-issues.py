@@ -53,9 +53,24 @@ PR, and on the auto-pick path it runs **only against the issue about to be picke
 — the one place the answer changes the outcome — never against every candidate.
 
 This script only ever *reads*. A confirmed cross-repo delivery still needs the
-durable `autopilot:blocked` park, and that write belongs to the caller
-(speckit.autopilot.run.md), which owns every other label mutation. See the
-`SKIP: #N delivered — ...` handling there.
+durable `autopilot:blocked` park, and that write belongs to the caller — via the
+shared `park-issue.sh`, the single writer of the label and sentinel.
+
+To make that possible for *every* caller, a cross-repo finding is also emitted as
+machine-readable `DELIVERED: <n> <url> (<state>)` lines after the verdict line.
+Two callers need them and neither can recover the finding from the verdict prose:
+
+  * `autopilot-run.sh` exits on `SKIP:` **before** launching the skill, so when a
+    delivered issue leaves nothing else eligible the skill — the only component
+    that used to park — never runs at all. The finding would be rediscovered, with
+    the same GitHub lookups, on every scheduled tick forever.
+  * A delivered issue does not stop the scan (see `auto_pick`), so a run can report
+    `PICK:` for a *later* issue while still having found a delivered earlier one.
+    That one needs parking too, on the success path.
+
+The verdict is always the FIRST line, so the existing "read the first word to
+decide" contract is unchanged; callers that do not care about parking can keep
+reading `head -1` and ignore the rest.
 
 Existence of a branch/worktree/PR is unconditionally treated as in-progress
 here — there is no "looks dead, might be safe to reuse" downgrade. A fresh,
@@ -75,6 +90,9 @@ Output format (callers read the first word to decide):
   SKIP: #42 in-progress:082-fix-thing
   SKIP: #42 delivered — https://github.com/o/r/pull/3 (merged)
   SKIP: #42 not open or not found
+
+Plus, after the verdict line, zero or more machine-readable park requests:
+  DELIVERED: 42 https://github.com/o/r/pull/3 (merged)
   LIVE: 082-fix-thing
   CLEAR
 """
@@ -283,6 +301,8 @@ def validate_one(issues, target, cross_repo=False):
     reason = eligibility_reason(match, explain=True, cross_repo=cross_repo)
     if reason:
         print(f"SKIP: #{target} {reason}")
+        if reason.startswith("delivered — "):
+            print(f"DELIVERED: {target} {reason[len('delivered — '):]}")
         return
     title = match.get("title", "").strip()[:70]
     print(f'PICK: #{target} "{title}" (explicit)')
@@ -327,7 +347,7 @@ def auto_pick(issues, cross_repo=False):
             if cross_repo:
                 pr = delivered_by(n)
                 if pr:
-                    delivered.append(f"#{n} {pr}")
+                    delivered.append((n, pr))
                     continue
             pick = (n, title)
             # keep scanning to count the rest accurately
@@ -341,7 +361,8 @@ def auto_pick(issues, cross_repo=False):
     if in_prog:
         parts.append(f"{len(in_prog)} in-progress ({', '.join(in_prog[:3])}{'…' if len(in_prog) > 3 else ''})")
     if delivered:
-        parts.append(f"{len(delivered)} delivered ({', '.join(delivered)})")
+        parts.append(f"{len(delivered)} delivered "
+                     f"({', '.join(f'#{n} {pr}' for n, pr in delivered)})")
     ctx = f"{total} open" + (f" — {', '.join(parts)}" if parts else "")
 
     if pick:
@@ -349,6 +370,10 @@ def auto_pick(issues, cross_repo=False):
         print(f'PICK: #{n} "{title}" ({ctx})')
     else:
         print(f"SKIP: nothing eligible — {ctx}")
+
+    # After the verdict, never before it: the first line is the caller's contract.
+    for n, pr in delivered:
+        print(f"DELIVERED: {n} {pr}")
 
 
 def main():

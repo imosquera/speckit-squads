@@ -121,13 +121,21 @@ which is exactly how two runs collided on the same issue — see issue #19). Alw
 PREFLIGHT_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/preflight-issues.py"
 
 # With an explicit issue number in $ARGUMENTS, validate THAT issue only:
-python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json "$N"
+python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json "$N" --cross-repo
 # => "PICK: #42 \"Fix the thing\" (explicit)"  or  "SKIP: #42 <reason>"
 
 # With no input, auto-pick the oldest eligible issue:
-python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json
+python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json --cross-repo
 # => "PICK: #42 \"Fix the thing\" (7 open, 2 parked, 1 in-progress)"  or  "SKIP: ..."
 ```
+
+**Always pass `--cross-repo`.** The rest of the eligibility check only sees *this*
+repo, so an issue whose fix already shipped as a PR **somewhere else** looks
+perfectly fresh. That is not hypothetical: on 2026-08-20 one issue was picked and
+claimed by three separate runs after the first had already delivered it in another
+repo — one of them starting 35 seconds after the delivering run finished (issue
+#34). `--cross-repo` scans the issue's own thread for PR links, resolves them with
+`gh pr view --repo`, and turns that into `SKIP: #N delivered — <url> (<state>)`.
 
 A `SKIP:` result on the explicit-issue path means **stop immediately** — do not
 create a spec, branch, worktree, or commit. Report the exact SKIP reason to the
@@ -142,6 +150,29 @@ once the underlying blocker is actually fixed. A `SKIP:` result on the auto-pick
 means the whole backlog is unworkable right now — say so and stop; that's success,
 not failure, unless the script reported a hard failure (couldn't parse issues),
 which is a Stop condition.
+
+`SKIP: #N delivered — <url> (<state>)` needs one extra write before you stop.
+Preflight only *reads*; without a durable mark the next tick re-derives the same
+answer and the issue keeps cycling — the exact re-pick loop `autopilot:blocked`
+was introduced to end (issue #32). Park it with the delivering PR as the reason,
+then stop:
+
+```bash
+PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+bash "$PARK_SCRIPT" "$N" \
+  "delivered by <PR-URL> (<state>) — close this issue, or clear the autopilot:blocked label if that PR does not resolve it" \
+  --title "✅ **Already delivered**"
+```
+
+Do **not** close the issue yourself: a linked PR is strong evidence, not proof, and
+whether it truly resolves the issue is a human's call. Parking stops the waste;
+closing is theirs.
+
+`autopilot-run.sh` parks deliveries it finds in its own launch preflight, using the
+same script — it exits before this skill ever starts, so it cannot delegate the
+write here (and a delivered issue does not stop preflight's scan, so it can also
+surface one while still picking a different issue). Parking is idempotent: an issue
+that already carries `autopilot:blocked` is left alone rather than re-commented.
 
 `gh issue list` already excludes PRs, so you won't accidentally grab one.
 
@@ -177,6 +208,55 @@ condition (see [Stop conditions](#stop-conditions)):
 ```bash
 gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
 ```
+
+## Step 1.5 — Confirm the fix belongs in THIS repo
+
+**An autopilot run is bound to exactly one repository and one checkout.**
+`autopilot-schedule.sh` writes the repo root into the launchd plist (one plist per
+checkout, labelled `com.speckit.autopilot.<repo-slug>`), and `fetch-open-issues.sh`
+reads issues only from that repo's own `gh issue list`. The work must land there
+too — this run may not open a PR against a different repository.
+
+Nothing used to check that. lead-drop#182 asked for a change to a file that resolved
+into a *different* repo; autopilot did the work and opened the PR over there, while
+the issue it "finished" stayed open. That is what then let three later runs pick the
+same issue up again (issue #34). The pre-existing "fix target outside any git repo"
+stop condition did not catch it, because that target was inside a perfectly good
+repo — just not ours.
+
+So, before any spec, branch, or worktree: read the issue and list every file path it
+asks you to change or create, then hand them all to the guard in one call:
+
+```bash
+GUARD="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/check-target-repo.sh"
+bash "$GUARD" path/to/one.py ~/some/other/file.ts
+# => "INSIDE: … → <repo>"   per target, then
+#    "OK: 2 target(s) inside <repo>"          (exit 0 — proceed)
+#    "BLOCKED: 1 of 2 target(s) not in <repo>" (exit 1 — stop, see below)
+```
+
+It resolves `~` and symlinks, and for a file that does not exist yet it uses the
+deepest existing ancestor — the directory the file would be created in. Repo
+identity is the git **common dir**, not the worktree toplevel, so a path inside this
+feature's worktree correctly reads as INSIDE rather than foreign.
+
+Pass paths you are reasonably confident about. If the issue names no file at all,
+skip the guard rather than inventing targets — the check is a scope guard, not a
+substitute for reading the issue.
+
+**On a non-zero exit, stop.** This is a *Durable* stop: park the issue and release
+the claim, exactly as [Stop conditions](#stop-conditions) prescribes.
+
+```bash
+PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+bash "$PARK_SCRIPT" "$N" \
+  "fix target <path> lives in <other-repo>; this autopilot run is bound to <this-repo> — move the issue to that repo, or clear autopilot:blocked if it can be fixed here" \
+  --title "📍 **Wrong repository**"
+gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
+```
+
+Say plainly in the final report which repo the fix belongs in, so a human can move
+the issue rather than guess why it was parked.
 
 ## Step 2 — Bind a worktree to the EXISTING issue (avoid the duplicate-issue trap)
 
@@ -366,6 +446,12 @@ the user only when continuing would be reckless or is impossible:
   resolves (often through a symlink) somewhere `git rev-parse` fails, so no PR
   against any repo could contain the fix. Resolve the real path with
   `readlink -f` / `realpath` before concluding this. *Durable.*
+- **Fix target in a DIFFERENT git repo** — the target resolves inside a real
+  repository that is not the one this run is bound to. Opening a PR there would put
+  the work outside the repo whose backlog, schedule, and checkout this run owns, and
+  would leave the issue open behind it (issue #34). `check-target-repo.sh` decides
+  this; see [Step 1.5](#step-15--confirm-the-fix-belongs-in-this-repo). Park it and
+  name the correct repo so a human can move the issue. *Durable.*
 - **Not a speckit repo** — no `.specify/`. (Happens before any claim; nothing to
   clean up.)
 - **Irreversible ambiguity** — a clarify or design decision that is both genuinely
@@ -396,21 +482,15 @@ the very next tick and picks it again — forever. `autopilot:blocked` is in tha
 script's `BLOCK` set, so this is the one write that ends the loop:
 
 ```bash
-gh label create "autopilot:blocked" --color "b60205" \
-  --description "Autopilot hit a hard blocker; do not re-pick until resolved" 2>/dev/null || true
-
-gh issue comment "$N" --body "$(cat <<'EOF'
-🚫 **Autopilot hard blocker** — parking this issue; it will not be re-picked until
-a human clears the `autopilot:blocked` label.
-
-AUTOPILOT-BLOCKED: <ONE-LINE reason, self-contained, no leading formatting>
-
-<the full diagnosis: what you tried, what you observed, what would unblock it>
-EOF
-)"
-
-gh issue edit "$N" --add-label "autopilot:blocked"
+PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+bash "$PARK_SCRIPT" "$N" "<ONE-LINE reason, self-contained, no leading formatting>"
 ```
+
+`park-issue.sh` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
+sentinel — the unattended wrapper writes the same park through it — so the strings
+the reader (`preflight-issues.py`) greps for can never drift between two
+hand-rolled copies. It creates the label if missing, posts the comment, applies the
+label, and no-ops when the issue is already parked.
 
 The `AUTOPILOT-BLOCKED:` marker is not decoration — `preflight-issues.py`'s
 `blocked_reason()` greps the issue's comments for that exact string (newest

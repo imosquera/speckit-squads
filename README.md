@@ -11,7 +11,8 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    parks hard-blocked issues with a durable autopilot:blocked label so they aren't re-picked forever;
                    bound to one repo + checkout in both directions — a fix target in another repo is a durable stop,
                    and --cross-repo preflight skips issues already delivered by a PR elsewhere
-  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR (+ --draft), auto-commit hooks
+  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR (+ --draft), auto-commit hooks;
+                   commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)

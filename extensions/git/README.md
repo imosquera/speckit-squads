@@ -10,6 +10,9 @@ This extension provides Git operations as an optional, self-contained module. It
 - **Worktree creation and cleanup** for feature isolation
 - **PR creation** for completed feature branches (`--draft` for a human-review handoff:
   opens the PR as a draft and leaves the tracking issue open)
+- **`commit_exclude`** — repo-tracked generated artifacts that CI rebuilds on the
+  default branch are kept out of every auto-commit, and reset to the base branch
+  before a PR opens
 - **GitHub issue sync** — when a tracking issue is linked, its body is re-rendered from `spec.md` after every `/speckit-specify` (title untouched); skipped cleanly when there is no linked issue
 - **Auto-commit** after core commands (configurable per-command with custom messages)
 

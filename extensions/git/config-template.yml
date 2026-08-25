@@ -11,7 +11,7 @@ init_commit_message: "[Spec Kit] Initial commit"
 # commit (against the merge-base with the PR base) before pushing. Useful for
 # keeping `main`'s history flat. If the branch was already pushed, the squashed
 # branch is force-pushed with --force-with-lease.
-squash_before_pr: false
+squash_before_pr: true
 
 # Paths the auto-commit hook must never stage, and that /speckit-git-pr resets
 # to HEAD before opening a PR.

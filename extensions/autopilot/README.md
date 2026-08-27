@@ -155,10 +155,14 @@ the issue, and that call is a human's.
 ## Binding a worktree to an existing issue
 
 Autopilot creates its worktree with `GIT_BRANCH_NAME` set, which makes
-`/speckit-git-feature` skip issue creation — so nothing writes the issue linkage,
-and the fresh worktree may still carry an *inherited* `.specify/feature.json` from
-the base branch. `scripts/bash/bind-feature-issue.sh <issue> [worktree]` performs
-that binding through the git extension's shared writer,
+`/speckit-git-feature` skip issue creation — so on its own nothing writes the issue
+linkage, and the fresh worktree may still carry an *inherited* `.specify/feature.json`
+from the base branch. Passing `--source-issue N` alongside `GIT_BRANCH_NAME` closes
+that gap in one call: the git extension writes the linkage itself, no second step
+(issue #44). `scripts/bash/bind-feature-issue.sh <issue> [worktree]` remains the
+explicit fallback — for a worktree made some other way, or an installed `git`
+extension too old to know `--source-issue`. It performs the same binding through the
+git extension's shared writer,
 `spec_kit_write_feature_json()`, so the file is gitignored (and `git rm --cached`ed
 in a project whose older layout still tracks it) on this path too. Writing the file
 with a raw `printf` skips that half and leaves a tracked `feature.json` that the

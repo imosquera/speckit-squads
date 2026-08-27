@@ -22,9 +22,35 @@ The issue body is intentionally a stub; `/speckit-git-issue` fills it in with th
 
 Issue creation is bypassed (and numbering falls back to the normal sequential / timestamp logic) only when the caller has explicitly opted out of issue-driven numbering:
 - `--timestamp`, `--number`, or `GIT_BRANCH_NAME` is in effect
+- `--source-issue N` is passed (see below)
 - `--dry-run` is set
 
 In every other case `gh` is mandatory: a missing binary, an unauthenticated session, or a failing `gh issue create` is a hard error.
+
+## Binding to an issue that already exists: `--source-issue N`
+
+Pass `--source-issue N` when the tracking issue was filed by a human (or by another
+tool) and this run must bind to it rather than open a duplicate. The script then:
+
+- skips `gh issue create` entirely,
+- writes `{"source_issue": N}` into the new worktree's gitignored `.specify/feature.json` itself,
+- numbers the branch from `N` (subject to the same next-free-slot guard) unless
+  `GIT_BRANCH_NAME`, `--number`, or `--timestamp` already fixes the name,
+- leaves the issue **title alone** — the `NNN: ` prefix is only applied to stub
+  issues this script created, never to a pre-existing one.
+
+This exists so a caller binding an existing issue never has to post-patch
+`.specify/feature.json` in a second step. Under `GIT_BRANCH_NAME` alone the script
+has no issue number, so it removes the inherited file and leaves the worktree
+unlinked; every such caller previously had to write the linkage back itself, and
+forgetting to left downstream commands pointed at the previous feature's issue
+(issue #44).
+
+```bash
+GIT_BRANCH_NAME="090-automatic-arrival" \
+  .specify/extensions/git/scripts/bash/create-new-feature.sh \
+    --json --source-issue 90 --short-name "automatic-arrival" "Automatic arrival detection"
+```
 
 ## User Input
 

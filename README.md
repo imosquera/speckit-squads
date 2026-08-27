@@ -12,7 +12,8 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    bound to one repo + checkout in both directions — a fix target in another repo is a durable stop,
                    and --cross-repo preflight skips issues already delivered by a PR elsewhere
   git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR (+ --draft), auto-commit hooks;
-                   commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches
+                   commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches;
+                   --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json)
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)
@@ -90,9 +91,20 @@ Or use the bundled script from inside the checkout:
 directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are
 therefore **not** picked up live — re-run `./install.sh --force <project>` to refresh a consumer.
 
-`install.sh` first runs `check-cli-usage.sh`, which verifies every `specify <verb>` a
-command file tells an agent to execute against the installed CLI's actual verbs, and
-aborts the install if one doesn't exist.
+`install.sh` first runs `check-cli-usage.sh`, which aborts the install on two classes of
+invented path. It verifies every `specify <verb>` a command file tells an agent to execute
+against the installed CLI's actual verbs, and it resolves every **script path** a command
+file names: each must exist on disk, be declared under its manifest's `provides.scripts:`,
+and never point into `.specify/scripts/bash/<subdir>/` — that tree is core Spec Kit's and
+is flat.
+
+After installing, `install.sh` runs `gen-agent-index.py`, which writes the command→script
+mapping into the consumer as `.specify/extensions/AGENTS.md` plus a breadcrumb at
+`.specify/scripts/bash/README.md`. Extension scripts install to
+`.specify/extensions/<id>/scripts/…`, never into the flat core tree, and command names do
+not predict script names (`/speckit-git-feature` runs `create-new-feature.sh`) — so the
+mapping has to travel with the install rather than live only in this repo's docs.
+`uninstall.sh` removes both generated files.
 
 `install.sh` and `uninstall.sh` auto-discover every `extensions/*/extension.yml`, so new commands are included automatically once their manifest exists.
 

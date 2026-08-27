@@ -16,6 +16,49 @@ requires:
       required: false
 
 provides:
+  scripts:
+    - name: create-new-feature.sh
+      file: scripts/bash/create-new-feature.sh
+      executable: true
+      command: speckit.git.feature
+    - name: create-new-feature.ps1
+      file: scripts/powershell/create-new-feature.ps1
+      executable: true
+      command: speckit.git.feature
+    - name: worktree-add.sh
+      file: scripts/bash/worktree-add.sh
+      executable: true
+      command: speckit.git.worktree
+    - name: clean.sh
+      file: scripts/bash/clean.sh
+      executable: true
+      command: speckit.git.clean
+    - name: auto-commit.sh
+      file: scripts/bash/auto-commit.sh
+      executable: true
+      command: speckit.git.commit
+    - name: auto-commit.ps1
+      file: scripts/powershell/auto-commit.ps1
+      executable: true
+      command: speckit.git.commit
+    - name: create-pr.sh
+      file: scripts/bash/create-pr.sh
+      executable: true
+      command: speckit.git.pr
+    # Libraries sourced by the scripts above; no command invokes them directly.
+    - name: git-common.sh
+      file: scripts/bash/git-common.sh
+      executable: false
+    - name: git-common.ps1
+      file: scripts/powershell/git-common.ps1
+      executable: false
+    - name: initialize-repo.sh
+      file: scripts/bash/initialize-repo.sh
+      executable: true
+    - name: initialize-repo.ps1
+      file: scripts/powershell/initialize-repo.ps1
+      executable: true
+
   commands:
     - name: speckit.git.feature
       file: commands/speckit.git.feature.md

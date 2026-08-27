@@ -22,6 +22,7 @@ provides:
     - name: "stale_tasks_guard.py"
       file: "scripts/python/stale_tasks_guard.py"
       executable: true
+      command: speckit.stale-tasks-guard.implement
       description: "Deterministic mtime/commit-time comparison of spec.md vs tasks.md. Resolves the feature directory from SPECIFY_FEATURE_DIRECTORY, else SPECIFY_FEATURE, else the current git branch (specs/<branch>) — never from .specify/feature.json, which holds only source_issue. Exit 0 = not stale or guard skipped (unresolvable feature directory, missing files); exit 1 = stale, prints the STALE TASKS banner. Stdlib-only Python 3; uses git commit time instead of raw mtime for clean files so a fresh worktree checkout doesn't defeat the comparison."
 
   commands:

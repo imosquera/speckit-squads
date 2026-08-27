@@ -30,18 +30,23 @@ provides:
     - name: bind-feature-issue.sh
       file: scripts/bash/bind-feature-issue.sh
       executable: true
+      command: speckit.autopilot.run
     - name: fetch-open-issues.sh
       file: scripts/bash/fetch-open-issues.sh
       executable: true
+      command: speckit.autopilot.run
     - name: preflight-issues.py
       file: scripts/bash/preflight-issues.py
       executable: true
+      command: speckit.autopilot.run
     - name: park-issue.sh
       file: scripts/bash/park-issue.sh
       executable: true
+      command: speckit.autopilot.run
     - name: check-target-repo.sh
       file: scripts/bash/check-target-repo.sh
       executable: true
+      command: speckit.autopilot.run
 
   commands:
     - name: speckit.autopilot.run

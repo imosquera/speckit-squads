@@ -12,6 +12,12 @@ ALLOW_EXISTING=false
 SHORT_NAME=""
 BRANCH_NUMBER=""
 USE_TIMESTAMP=false
+# Populated either by --source-issue (caller binds an already-existing issue)
+# or by this script's own `gh issue create` path further down. Declared here so
+# every code path below sees a defined value regardless of which branch ran.
+SOURCE_ISSUE=""
+ISSUE_URL=""
+ISSUE_CREATED_HERE=false
 ARGS=()
 i=1
 while [ $i -le $# ]; do
@@ -56,11 +62,29 @@ while [ $i -le $# ]; do
                 exit 1
             fi
             ;;
+        --source-issue)
+            if [ $((i + 1)) -gt $# ]; then
+                echo 'Error: --source-issue requires a value' >&2
+                exit 1
+            fi
+            i=$((i + 1))
+            next_arg="${!i}"
+            if [[ "$next_arg" == --* ]]; then
+                echo 'Error: --source-issue requires a value' >&2
+                exit 1
+            fi
+            SOURCE_ISSUE="$next_arg"
+            SOURCE_ISSUE="${SOURCE_ISSUE#\#}"
+            if [[ ! "$SOURCE_ISSUE" =~ ^[0-9]+$ ]]; then
+                echo 'Error: --source-issue must be a positive integer issue number' >&2
+                exit 1
+            fi
+            ;;
         --timestamp)
             USE_TIMESTAMP=true
             ;;
         --help|-h)
-            echo "Usage: $0 [--json] [--dry-run] [--allow-existing-branch] [--short-name <name>] [--number N] [--timestamp] <feature_description>"
+            echo "Usage: $0 [--json] [--dry-run] [--allow-existing-branch] [--short-name <name>] [--number N] [--source-issue N] [--timestamp] <feature_description>"
             echo ""
             echo "Options:"
             echo "  --json              Output in JSON format"
@@ -68,6 +92,9 @@ while [ $i -le $# ]; do
             echo "  --allow-existing-branch  Switch to branch if it already exists instead of failing"
             echo "  --short-name <name> Provide a custom short name (2-4 words) for the branch"
             echo "  --number N          Specify branch number manually (overrides auto-detection)"
+            echo "  --source-issue N    Bind to an EXISTING GitHub issue #N instead of creating a new"
+            echo "                      stub issue; N also drives numbering unless --number/--timestamp/"
+            echo "                      GIT_BRANCH_NAME already fix the branch name"
             echo "  --timestamp         Use timestamp prefix (YYYYMMDD-HHMMSS) instead of sequential numbering"
             echo "  --help, -h          Show this help message"
             echo ""
@@ -78,6 +105,7 @@ while [ $i -le $# ]; do
             echo "  $0 'Add user authentication system' --short-name 'user-auth'"
             echo "  $0 'Implement OAuth2 integration for API' --number 5"
             echo "  $0 --timestamp --short-name 'user-auth' 'Add user authentication'"
+            echo "  $0 --source-issue 90 --short-name 'automatic-arrival' 'Automatic arrival detection'"
             echo "  GIT_BRANCH_NAME=my-branch $0 'feature description'"
             exit 0
             ;;
@@ -90,7 +118,7 @@ done
 
 FEATURE_DESCRIPTION="${ARGS[*]}"
 if [ -z "$FEATURE_DESCRIPTION" ]; then
-    echo "Usage: $0 [--json] [--dry-run] [--allow-existing-branch] [--short-name <name>] [--number N] [--timestamp] <feature_description>" >&2
+    echo "Usage: $0 [--json] [--dry-run] [--allow-existing-branch] [--short-name <name>] [--number N] [--source-issue N] [--timestamp] <feature_description>" >&2
     exit 1
 fi
 
@@ -385,15 +413,16 @@ else
     #   - GIT_BRANCH_NAME is set (caller controls the branch name explicitly)
     #   - --timestamp is used (different naming scheme)
     #   - --number is passed (caller controls numbering explicitly)
+    #   - --source-issue is passed (the issue already exists; the caller is
+    #     binding to it, so creating another one would duplicate it)
     #   - --dry-run is set
     #
     # Outside those cases, a missing `gh`, an unauthenticated session, or a
     # failing `gh issue create` is a hard error.
     # ---------------------------------------------------------------------
-    SOURCE_ISSUE=""
-    ISSUE_URL=""
     if [ "$USE_TIMESTAMP" != true ] \
        && [ -z "$BRANCH_NUMBER" ] \
+       && [ -z "$SOURCE_ISSUE" ] \
        && [ "$DRY_RUN" != true ] \
        && [ "$HAS_GIT" = true ]; then
 
@@ -433,6 +462,7 @@ Stub created by \`/speckit-git-feature\`. The full spec body will be filled in b
             exit 1
         fi
 
+        ISSUE_CREATED_HERE=true
         >&2 echo "[specify] Created GitHub issue #${SOURCE_ISSUE}: ${ISSUE_URL}"
 
         # Compare the newly-created issue number with the next-free spec/branch
@@ -450,6 +480,26 @@ Stub created by \`/speckit-git-feature\`. The full spec body will be filled in b
 
         if [ "$((10#$SOURCE_ISSUE))" -lt "$((10#$_next_free))" ]; then
             >&2 echo "[specify] Issue #${SOURCE_ISSUE} is behind next free spec number ${_next_free}; using ${_next_free} for FEATURE_NUM (issue title will be updated to match)."
+            BRANCH_NUMBER="$_next_free"
+        else
+            BRANCH_NUMBER="$SOURCE_ISSUE"
+        fi
+    elif [ -n "$SOURCE_ISSUE" ] \
+         && [ "$USE_TIMESTAMP" != true ] \
+         && [ -z "$BRANCH_NUMBER" ]; then
+        # --source-issue with no explicit number: the existing issue drives
+        # numbering exactly as a freshly created one would, so the spec dir,
+        # branch, and issue keep sharing one identifier. Same next-free guard —
+        # an old issue number can easily be behind existing specs/NNN-* dirs.
+        if [ "$HAS_GIT" = true ]; then
+            _next_free=$(check_existing_branches "$SPECS_DIR" "$DRY_RUN")
+        else
+            _highest=$(get_highest_from_specs "$SPECS_DIR")
+            _next_free=$((_highest + 1))
+        fi
+
+        if [ "$((10#$SOURCE_ISSUE))" -lt "$((10#$_next_free))" ]; then
+            >&2 echo "[specify] Issue #${SOURCE_ISSUE} is behind next free spec number ${_next_free}; using ${_next_free} for FEATURE_NUM."
             BRANCH_NUMBER="$_next_free"
         else
             BRANCH_NUMBER="$SOURCE_ISSUE"
@@ -611,9 +661,16 @@ if [ "$DRY_RUN" != true ]; then
     # stale. The helper also gitignores the file and untracks it if an older
     # layout committed it; see git-common.sh and issue #33.
     #
-    # When this run created no issue (the GIT_BRANCH_NAME / --timestamp /
-    # --number paths) the file is removed rather than left inherited, so
-    # /speckit-git-pr cannot close the previous feature's issue.
+    # When this run has no issue at all (the GIT_BRANCH_NAME / --timestamp /
+    # --number paths without --source-issue) the file is removed rather than
+    # left inherited, so /speckit-git-pr cannot close the previous feature's
+    # issue.
+    #
+    # `--source-issue N` binds an already-existing issue here, in this one
+    # script, so a caller that opted out of issue creation (autopilot always
+    # does — it works an issue that already exists, so it must set
+    # GIT_BRANCH_NAME) no longer has to post-patch the file in a second step
+    # (issue #44).
     #
     # In the common case FEATURE_NUM == SOURCE_ISSUE because issue creation
     # drives numbering. They can diverge if the next free spec number was
@@ -629,7 +686,11 @@ if [ "$DRY_RUN" != true ]; then
 
         # Prefix the issue title with the spec number so the issue list
         # mirrors the specs/ layout. Best-effort; failures are non-fatal.
-        if [ -n "$SOURCE_ISSUE" ] && command -v gh >/dev/null 2>&1; then
+        #
+        # Only for an issue this run created: the stub title is ours to rewrite.
+        # An issue passed via --source-issue is pre-existing and human-written,
+        # and renaming someone else's issue is not this script's business.
+        if [ "$ISSUE_CREATED_HERE" = true ] && [ -n "$SOURCE_ISSUE" ] && command -v gh >/dev/null 2>&1; then
             _new_title="${FEATURE_NUM}: ${FEATURE_DESCRIPTION}"
             if ! gh issue edit "$SOURCE_ISSUE" --title "$_new_title" >/dev/null 2>&1; then
                 >&2 echo "[specify] Warning: failed to prefix issue #${SOURCE_ISSUE} title with '${FEATURE_NUM}:'"
@@ -700,6 +761,8 @@ else
     fi
     if [ -n "$SOURCE_ISSUE" ]; then
         echo "SOURCE_ISSUE: $SOURCE_ISSUE"
+    fi
+    if [ -n "$ISSUE_URL" ]; then
         echo "ISSUE_URL: $ISSUE_URL"
     fi
     if [ "$DRY_RUN" != true ]; then

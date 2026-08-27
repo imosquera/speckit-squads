@@ -13,6 +13,19 @@ requires:
   speckit_version: ">=0.6.0"
 
 provides:
+  scripts:
+    - name: "strip-spec-sections.sh"
+      file: "scripts/bash/strip-spec-sections.sh"
+      executable: true
+      command: "speckit.specify"
+    - name: "enforce-minimal-tree.sh"
+      file: "scripts/bash/enforce-minimal-tree.sh"
+      executable: true
+      command: "speckit.plan"
+    - name: "selftest-enforce-minimal-tree.sh"
+      file: "scripts/bash/selftest-enforce-minimal-tree.sh"
+      executable: true
+
   templates:
     - type: "command"
       name: "speckit.specify"

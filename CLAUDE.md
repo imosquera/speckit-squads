@@ -9,8 +9,27 @@ extensions/<id>/   extension.yml + commands/ + scripts/
 presets/<id>/      preset.yml    + commands/ + templates/
 install.sh         install every extension+preset into a Spec Kit project
 uninstall.sh       remove every extension+preset from a Spec Kit project
-check-cli-usage.sh validate `specify <verb>` calls in command files against the real CLI
+check-cli-usage.sh validate `specify <verb>` calls AND every script path in command files
+gen-agent-index.py  generate the consumer-side command->script index (run by install.sh)
 ```
+
+**Installed layout is not the same shape.** In a consumer project, `specify` copies each
+extension whole into `.specify/extensions/<id>/`, preserving its internal structure. It
+never merges extension scripts into the core tree, so a consumer has **two** script trees:
+
+```
+.specify/scripts/bash/                    core Spec Kit scripts — FLAT, no per-extension subdirs
+    check-prerequisites.sh  common.sh  create-new-feature.sh  setup-plan.sh  setup-tasks.sh
+.specify/extensions/<id>/scripts/bash/    one tree per extension
+.specify/presets/<id>/
+```
+
+There is no `.specify/scripts/bash/<extension-id>/`. Never guess a script path from the
+command name: **command names and script names do not correspond.** `/speckit-git-feature`
+runs `create-new-feature.sh` (not `feature.sh`), and that filename also collides with the
+unrelated core `scripts/bash/create-new-feature.sh`. The authoritative path for every
+extension command is the `- **Bash**:` line in its own `commands/*.md`; `ls` the extension
+tree before invoking anything.
 
 ## Install / uninstall
 
@@ -102,8 +121,17 @@ on first run in a project that still tracks it, so the migration is automatic.
   `AUTOPILOT-BLOCKED:` sentinel, shared by the skill and the wrapper. Both must park:
   the wrapper exits on `SKIP:` before the skill ever launches, and a delivered issue
   doesn't stop the scan, so a run can `PICK:` a later issue while an earlier delivered
-  one still needs parking. Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
-- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases. `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
+  one still needs parking.
+  **`optional:` hooks are run, not skipped.** With no phase policy the coordinator
+  read "optional" as "skip when unattended" and silently dropped the `after_specify`
+  graphify / agent-context refreshes, leaving later phases on stale context (issue
+  #14). The Operating contract now states the opposite default — run every enabled
+  `before_*`/`after_*` hook for the phase, answer its `prompt:` yes, and skip only for
+  a stated reason (tool missing/unauthed, or plainly inapplicable) recorded in the
+  phase's issue comment. Step 3 enumerates the `after_specify` slot explicitly, and
+  Steps 5–7 name their own; Step 8 *is* the `after_implement` review hook, so it
+  isn't run twice. Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
+- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases. `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes `{"source_issue": N}` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.
@@ -127,6 +155,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 ## When you add a new extension or preset
 
 1. Drop the new directory under `extensions/<id>/` or `presets/<id>/` with a valid manifest. The install/uninstall scripts will pick it up automatically — do **not** edit them.
+1a. **Declare every script under `provides.scripts:`** with `file:` and, when one command owns it, `command:`. This is not decoration — `check-cli-usage.sh` fails the install when a command file references a script that is undeclared or missing, and `gen-agent-index.py` builds the consumer's command→script table from these entries. An undeclared script is invisible to agents working in a consumer project.
 2. Update the **Currently shipped** list above with one bullet: `` `<id>` — one-line description ``.
 3. Update the matching list in `README.md` so the user-facing doc stays in sync.
 4. If a consumer project should pick it up, run `./install.sh --force <project>` from there.

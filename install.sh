@@ -188,6 +188,11 @@ for preset_dir in "$REPO_DIR"/presets/*/; do
   install_one preset "$name" "$preset_dir" "$prio" || EXIT=1
 done
 
+# The installed layout does not match this repo's, and command names do not predict
+# script names. A consumer-side agent cannot read this repo's CLAUDE.md, so the
+# command -> script mapping is generated into the project on every install.
+"$REPO_DIR/gen-agent-index.py" "$REPO_DIR" "$PROJECT_DIR" || EXIT=1
+
 echo
 echo "Done. Target: $PROJECT_DIR"
 exit $EXIT

@@ -20,7 +20,7 @@ This extension provides Git operations as an optional, self-contained module. It
 
 | Command | Description |
 |---------|-------------|
-| `speckit.git.feature` | Create a feature branch with sequential or timestamp numbering |
+| `speckit.git.feature` | Create a feature branch with sequential or timestamp numbering; `--source-issue N` binds to an existing issue instead of opening a stub |
 | `speckit.git.worktree` | Create a worktree under the `${PROJ}.worktrees` collector directory |
 | `speckit.git.clean` | Clean up the current feature worktree, branch, issue, and uncommitted changes |
 | `speckit.git.issue` | Update the linked GitHub issue's body from `spec.md` (a manual run may also create one when none is linked) |

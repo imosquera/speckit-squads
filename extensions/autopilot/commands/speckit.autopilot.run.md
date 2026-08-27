@@ -42,6 +42,17 @@ independently.
   for with a legible record.
 - **Stop only on a hard blocker** (see [Stop conditions](#stop-conditions)). A
   wrong-but-recoverable guess is acceptable; a wrong *irreversible* action is not.
+- **Optional lifecycle hooks run by default — `optional` is not `skip`.** Every
+  registered `before_*` / `after_*` hook is part of the pipeline a human-driven run
+  would get; `optional: true` in a manifest means "may be declined", not "skip when
+  unattended". After each phase's mandatory work, **run the enabled hooks for that
+  phase's slot** (auto-commit, issue sync, knowledge-graph and agent-context
+  refreshes). Answer any confirmation `prompt:` with **yes**. Skip only when the
+  hook's tool is genuinely missing/unauthed or it plainly doesn't apply to this
+  project — and when you skip, **say which hook and why**, in the phase's issue
+  comment, the same audit-trail discipline as an auto-answered clarify. Invoke a
+  hook the way an interactive run would (its registered command / skill); never
+  reimplement its work by hand.
 - **Tracking pipeline stages with the harness task tools?** `TaskCreate` /
   `TaskUpdate` / `TaskList` are **deferred** — their schemas aren't loaded, so
   calling one cold fails with `InputValidationError` (typed params get sent as
@@ -289,27 +300,34 @@ mismatched numbering.
    something to infer here. Only `CLEAR` means proceed.
 1. Derive a slug from the issue title (kebab-case, trimmed) and the branch name
    `NNN-slug`, zero-padded to the repo's convention (e.g. `082-signup-thankyou`).
-2. Create the branch + worktree **without** creating an issue by forcing the branch
-   name — the `GIT_BRANCH_NAME` override makes `/speckit-git-feature` skip issue
-   creation entirely (per its own contract):
+2. Create the branch + worktree **without** creating an issue, and bind it to `#N`
+   in the same call. `GIT_BRANCH_NAME` makes `/speckit-git-feature` skip issue
+   creation (per its own contract); `--source-issue` tells it which existing issue
+   to link, so it writes `.specify/feature.json` itself:
    ```bash
-   GIT_BRANCH_NAME="NNN-slug" <run /speckit-git-feature>
+   GIT_BRANCH_NAME="NNN-slug" <run /speckit-git-feature --source-issue "$N">
    ```
    (Or use `/speckit-git-worktree` if a suitable branch already exists.)
-3. **Link the existing issue** by writing `source_issue` into the new worktree's
-   gitignored `.specify/feature.json` (so `/speckit-git-pr`, `/speckit-git-commit`,
-   and `/speckit-git-clean` all pick up issue `#N`):
+
+   Confirm the linkage landed before moving on — one read, no repair:
+   ```bash
+   cat "<absolute path to the new worktree>/.specify/feature.json"   # {"source_issue": N}
+   ```
+3. **If that file is missing or names a different issue** — the installed `git`
+   extension predates `--source-issue` (issue #44), or the worktree came from
+   `/speckit-git-worktree` — bind it explicitly:
    ```bash
    BIND_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/bind-feature-issue.sh"
    bash "$BIND_SCRIPT" "$N" "<absolute path to the new worktree>"
    ```
-   Do **not** write the file by hand. The script delegates to the git extension's
-   shared writer, `spec_kit_write_feature_json()`, which does two things a raw
-   `printf > .specify/feature.json` does not: it gitignores the file, and it
-   `git rm --cached`s it in a project whose older layout still tracks it. Writing
-   it raw leaves a *tracked* `feature.json`, which the next worktree cut from this
-   branch then inherits — reviving the stale-inheritance bug of issue #33 on the
-   one path that runs unattended (issue #21).
+   Do **not** write the file by hand. Both that script and `--source-issue` go
+   through the git extension's shared writer, `spec_kit_write_feature_json()`,
+   which does two things a raw `printf > .specify/feature.json` does not: it
+   gitignores the file, and it `git rm --cached`s it in a project whose older
+   layout still tracks it. Writing it raw leaves a *tracked* `feature.json`, which
+   the next worktree cut from this branch then inherits — reviving the
+   stale-inheritance bug of issue #33 on the one path that runs unattended
+   (issue #21).
 
    `source_issue` is the file's entire contents. Never add `branch_name`,
    `feature_num`, `worktree_path`, or `feature_directory` — every one of those is
@@ -338,11 +356,27 @@ what was actually asked. Let it write `spec.md` and sync the issue. If the body 
 thin, enrich the spec from the title + any linked context, but don't invent scope the
 issue didn't imply.
 
-Registered lifecycle hooks (e.g. the `progress` extension's `before_tasks` /
-`before_implement`) fire on their own when `settings.auto_execute_hooks` is true — there
-is nothing to invoke by hand here, and the `specify` CLI has no `hook` subcommand to
-invoke them with. If this project keeps a knowledge graph, refresh it with the Claude
-`/graphify` skill (not a `specify` subcommand); skip it when the project has no graph.
+Then run the `after_specify` hooks — all of them, per the Operating contract's
+lifecycle-hook policy, not just the non-optional ones:
+
+- **`speckit.git.issue`** (non-optional) — syncs the rendered spec back into the
+  linked GitHub issue.
+- **`speckit.git.commit`** (optional, prompts) — answer **yes**; the spec belongs on
+  the branch before clarify starts editing it.
+- **Knowledge-graph refresh** — if this project keeps a graph (a `graphify-out/`
+  directory, or `graphify` is on `PATH`), refresh it with the Claude `/graphify`
+  skill. It is not a `specify` subcommand.
+- **Agent-context refresh** — if the project ships one (e.g. an
+  `update-agent-context` script under `.specify/scripts/bash/`, or a preset/extension
+  command that rewrites `CLAUDE.md`-style agent context), run it so Steps 5–8 plan
+  against the new spec instead of stale context.
+
+When `settings.auto_execute_hooks` is true the registered hooks fire on their own and
+there is nothing to invoke by hand — the `specify` CLI has no `hook` subcommand, so
+when it is false, invoke each hook's registered command directly (`ls
+.specify/extensions/*/commands/` to find them). Either way, **verify** they ran:
+`git log -1` for the commit, the issue body for the sync. If one is missing, run it;
+if it can't run, note which and why in the Step 3 progress comment.
 
 ## Step 4 — Clarify (you answer the questions)
 
@@ -383,10 +417,14 @@ Also honor whatever presets are enabled: check `.specify/presets/.registry`; if
 `parse-dont-validate` is enabled, add the `## Parse Boundaries` section and run its
 scanner rather than skipping it.
 
+Run the `after_plan` hooks (the optional auto-commit — answer **yes**) per the
+lifecycle-hook policy.
+
 ## Step 6 — Tasks
 
 Run `/speckit-tasks` to generate the dependency-ordered `tasks.md`. No special
-handling — just confirm it produced tasks covering the plan's MVP.
+handling — just confirm it produced tasks covering the plan's MVP. Then run the
+`after_tasks` hooks (auto-commit — answer **yes**).
 
 ## Step 7 — Implement
 
@@ -399,6 +437,10 @@ Run `/speckit-implement`. Then, because you're unattended:
   resolve.
 - **Post a progress comment** summarizing what shipped: files added/changed, test
   counts, and any task deliberately deferred (with why).
+- **Run the `after_implement` hooks** — the auto-commit (answer **yes**), plus any
+  preset-supplied refresh (e.g. `graphify-on-implement` runs `graphify update`).
+  `speckit.review.run` is also registered here; Step 8 is that hook, so running it
+  there satisfies the slot — don't run the reviewers twice.
 
 ## Step 8 — Review
 

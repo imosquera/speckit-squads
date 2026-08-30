@@ -14,6 +14,8 @@
 #   * Headless + non-interactive — autopilot is built to run without a human, so it
 #     needs tool permissions granted up front (`--dangerously-skip-permissions`).
 #   * Fails soft on a missing CLI so launchd doesn't spin on a broken environment.
+#   * Keeps the RAW stream-json next to the decoded log (`<slug>.raw.jsonl`), so a
+#     pass can be re-decoded or re-attributed after the fact without re-running it.
 
 set -uo pipefail
 
@@ -21,6 +23,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 DECODER="$SCRIPT_DIR/stream-decode.py"
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
+
+# Where the raw stream lands. This MIRRORS autopilot-schedule.sh's slug_for/log_for
+# (deliberately duplicated: that script dispatches subcommands at load, so it can't
+# be sourced) — keep the two in step, or the raw file stops being a sibling of the
+# decoded log launchd writes. AUTOPILOT_RAW_LOG overrides it; empty disables.
+RAW_MAX_BYTES=$(( 64 * 1024 * 1024 ))
+raw_log_for() {
+  local root base hash
+  root="$( cd "$1" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null )" || root="$1"
+  [ -n "$root" ] || root="$1"
+  base="$(printf '%s' "$(basename "$root")" | tr -c 'A-Za-z0-9._-' '-')"
+  hash="$(printf '%s' "$root" | shasum | cut -c1-6)"
+  printf '%s/Library/Logs/speckit-autopilot/%s-%s.raw.jsonl' "$HOME" "$base" "$hash"
+}
 
 PROJECT="${1:?usage: autopilot-run.sh <project-dir>}"
 cd "$PROJECT" 2>/dev/null || { echo "$(ts) FATAL cannot cd into $PROJECT"; exit 1; }
@@ -135,10 +151,36 @@ PROMPT="/speckit-autopilot-run"
 # `PIPESTATUS[0]` preserves claude's real exit code (a pipe would otherwise report
 # the decoder's). If stream-json/verbose ever stops being supported, fall back to a
 # plain `claude -p "$PROMPT" --dangerously-skip-permissions`.
+#
+# The raw stream is tee'd to <slug>.raw.jsonl beside the decoded log so a finished
+# pass can be re-decoded (or re-attributed, after a decoder fix) without re-running
+# it. It APPENDS: passes are single-flight via the lock above, and each one opens
+# with its own `system/init` + fresh session_id, which is delimiter enough — no
+# separator line is injected, so the file stays parseable as plain JSONL. The one
+# impurity is stderr, folded in by `2>&1` exactly as the decoder already sees it;
+# the decoder passes non-JSON lines through, so a re-decode behaves identically.
 if [ -f "$DECODER" ]; then
-  claude -p "$PROMPT" --dangerously-skip-permissions \
-         --verbose --output-format stream-json 2>&1 \
-    | python3 "$DECODER"
+  RAW="${AUTOPILOT_RAW_LOG-$(raw_log_for "$PROJECT")}"
+  if [ -n "$RAW" ] && mkdir -p "$(dirname "$RAW")" 2>/dev/null; then
+    # Cheap rotation so an unattended repo can't fill the disk with old streams.
+    if [ -f "$RAW" ] && [ "$(wc -c <"$RAW" 2>/dev/null || echo 0)" -gt "$RAW_MAX_BYTES" ]; then
+      mv -f "$RAW" "$RAW.1" 2>/dev/null || true
+    fi
+    echo "$(ts) raw stream -> $RAW"
+  else
+    [ -n "$RAW" ] && echo "$(ts) WARNING cannot write raw stream to $RAW — decoding only"
+    RAW=""
+  fi
+  if [ -n "$RAW" ]; then
+    claude -p "$PROMPT" --dangerously-skip-permissions \
+           --verbose --output-format stream-json 2>&1 \
+      | tee -a "$RAW" \
+      | python3 "$DECODER"
+  else
+    claude -p "$PROMPT" --dangerously-skip-permissions \
+           --verbose --output-format stream-json 2>&1 \
+      | python3 "$DECODER"
+  fi
   status=${PIPESTATUS[0]}
 else
   claude -p "$PROMPT" --dangerously-skip-permissions

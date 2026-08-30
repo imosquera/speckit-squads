@@ -130,7 +130,23 @@ on first run in a project that still tracks it, so the migration is automatic.
   a stated reason (tool missing/unauthed, or plainly inapplicable) recorded in the
   phase's issue comment. Step 3 enumerates the `after_specify` slot explicitly, and
   Steps 5–7 name their own; Step 8 *is* the `after_implement` review hook, so it
-  isn't run twice. Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
+  isn't run twice.
+  **The per-repo log is timestamped and attributed from the stream, not from the
+  decoder.** `stream-decode.py` used to stamp `datetime.now()` at decode time, so a
+  buffered burst of turns minutes apart all printed on one wall-clock second and in
+  an order that implied a history that never happened — the tail once read
+  "reviews still running" as the last line of a pass that had already opened a draft
+  PR. It now stamps each line with the event's own `timestamp` (falling back to
+  now(), marked `~HH:MM:SS`, only for `result`/`system` frames that carry none), tags
+  every line with the subagent that produced it (from `parent_tool_use_id`; the main
+  session is untagged) using a `tool_use_id` -> label map built from
+  `system/task_started`, and renders `task_started`/`task_notification` so a
+  subagent's start and finish are visible. `autopilot-run.sh` tees the raw
+  stream-json to `<slug>.raw.jsonl` beside the decoded log so a finished pass can be
+  re-decoded after a decoder fix without re-running it. Deliberately NOT per-run log
+  files: passes are already single-flight under the wrapper's lock, so what was
+  missing was per-line attribution, not per-file separation.
+  Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
 - `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases. `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes `{"source_issue": N}` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)

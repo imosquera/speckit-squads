@@ -105,8 +105,10 @@ the oldest: `preflight-issues.py` orders candidates by **priority label** (`p0` 
 `p1` < `p2` < `p3`, with an unlabelled issue treated as `p2`), then **bugs before
 features** within a tier, then oldest `createdAt` as the final tiebreak. A backlog
 with no triage labels therefore behaves exactly as it used to — oldest-first —
-while a labelled one drains in the order a human actually asked for. `/speckit-git-issue`
-is what applies those labels; the picker only reads them.
+while a labelled one drains in the order a human actually asked for. The
+`frontend-mock-first` preset's `/speckit-git-feature` wrap is what applies those
+labels when it is installed; the picker only reads them, and labels an unlabelled
+backlog not at all.
 
 Compute it deterministically via the script, then show your pick before proceeding.
 The `PICK:` line carries the winning rank in brackets (e.g. `[p0, bug]`) — quote it
@@ -369,7 +371,8 @@ issue didn't imply.
 Then run the `after_specify` hooks — all of them, per the Operating contract's
 lifecycle-hook policy, not just the non-optional ones:
 
-- **`speckit.git.issue`** (non-optional) — syncs the rendered spec back into the
+- **`speckit.git.commit`** (optional) — commits the rendered spec. There is no
+  issue-body sync in this slot any more; syncing the rendered spec back into the
   linked GitHub issue.
 - **`speckit.git.commit`** (optional, prompts) — answer **yes**; the spec belongs on
   the branch before clarify starts editing it.

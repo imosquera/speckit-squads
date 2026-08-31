@@ -56,7 +56,18 @@ Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this r
 
 Plain `./install.sh <project>` treats "already installed" as a no-op success, so it will **not** propagate edits. Use `--force` whenever you have changed anything here.
 
-Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify`. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (e.g. `progress-report` wraps cycle commands *and* needs `before_*` hooks), ship it as a preset + companion extension pair.
+Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify` — the installed preset manager contains **zero** occurrences of the string `hooks`, and a probe preset declaring a brand-new command installed cleanly, copied its file into `.specify/presets/<id>/commands/`, and registered **0** skills against the 10 that were already there. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (e.g. `progress-report` wraps cycle commands *and* needs `before_*` hooks), ship it as a preset + companion extension pair.
+
+The command a preset wraps **does not have to be a core command** — it can be one an
+extension provides. `PresetResolver` tries `resolve_core(cmd_name)`, then
+`resolve_extension_command_via_manifest(cmd_name)`, then `resolve_core(short_name)`, so
+`{CORE_TEMPLATE}` in a preset resolves against an extension's command body via that
+extension's manifest. Two presets here rely on it: `progress-report` wraps
+`speckit.review.run` (the `review` extension) and `frontend-mock-first` wraps
+`speckit.git.feature` (the `git` extension). This is the escape hatch when a command must
+stay an extension — because it is standalone or hook-registered — but its *policy* should
+be optional and per-project: keep the command in the extension and put the policy, and any
+scripts only that policy needs, in a preset that wraps it.
 
 Note on composition (issue #25): a preset command template's `strategy` defaults
 to **`replace`** when omitted, and a `replace` layer kills every layer below it —
@@ -163,45 +174,20 @@ on first run in a project that still tracks it, so the migration is automatic.
   Eligibility also honours **dependencies**: an issue whose body says
   `Blocked by: #N` is skipped while any named issue is still open
   (`blocked_by()`, checked against the fetched open-issue list, so it costs no
-  `gh` calls). This is what keeps autopilot off the wire-up child of a
-  `/speckit-git-issue` layer split until its frontend and backend siblings land.
+  `gh` calls). This is what keeps autopilot off the wire-up sibling filed by the
+  `frontend-mock-first` preset until the frontend and backend issues land.
   Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
-- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases.
-  `/speckit-git-issue` also owns **triage labels**, the input side of autopilot's
-  ranked picker: `label-issue.sh` is the single writer of `p0`..`p3`,
-  `bug`/`feature` and `frontend`/`backend`/`integration`, plus the `mock-first`
-  and `epic` markers — creating any label the repo lacks and keeping each axis
-  exclusive (`--priority p1` removes the other three; `--layer backend` removes
-  the other two). Markers are independent and only ever touch themselves. The command asks the human
-  for a priority — leading with the value it would infer, marked recommended — and
-  falls back to inferring **only** when nobody is in the loop (the `after_specify`
-  hook under autopilot), saying so when it does; an existing human-set priority is
-  never re-asked or overwritten. Label failures are warnings, never errors.
-  **A full-stack feature is filed as three issues, not one, and the frontend one
-  is always a mock.** `split-issue.sh` turns the tracking issue into a parent with
-  `frontend(mock): T`, `backend: T`, and `wire-up: T` children. The frontend child
-  is `mock-first`: built against static in-repo fixtures with **no network calls at
-  all**, so it starts immediately, is reviewable on its own, and freezes the data
-  shape the backend child then implements; the wire-up child retires the fixtures.
-  Three pieces of the mechanism are load-bearing and easy to break:
-  **creation order** is frontend → backend → integration, because the picker breaks
-  equal-priority ties by age — that is the *entire* implementation of "mock first",
-  there is no rule for it in `preflight-issues.py`; the wire-up child's body carries
-  `Blocked by: #fe, #be`, which `preflight-issues.py`'s new `blocked_by()` resolves
-  against the open-issue list it already fetched (no extra `gh` calls, and a
-  dependency absent from that list counts as closed); and the parent is labelled
-  `epic`, already a member of the picker's `BLOCK` set, so autopilot works the
-  children instead of re-implementing all three from the parent in one pass.
-  The split is idempotent — the parent's `<!-- speckit:work-breakdown -->` block is
-  the registry of children, so a re-spec **edits** the existing three rather than
-  opening a second set — which means the parent body sync must run **before** the
-  split, never after, or the block is erased and the next run duplicates. Each
-  breakdown line must **lead with its layer word** (`- [ ] integration — wire-up…`);
-  the parser anchors there, and a line reading `- [ ] wire-up …` made the
-  integration child invisible to re-runs. A child is never split again: it carries a
-  layer label and a `Parent: #N` line. Single-layer specs get the layer label and no
-  split — and a frontend feature against an API that already exists is `frontend`
-  but **not** `mock-first`. `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes `{"source_issue": N}` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
+- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), clean, PR, auto-commit hooks across all phases.
+  **It no longer owns an issue-sync command.** `speckit.git.issue`, its
+  `after_specify` hook entry, and the `label-issue.sh`/`split-issue.sh` writers were
+  removed and the whole capability now ships as the `frontend-mock-first` **preset**,
+  which wraps `/speckit-git-feature` instead. Consequence to remember: the tracking
+  issue's body stays the stub `create-new-feature.sh` wrote unless a preset enriches
+  it, and nothing in this extension writes triage labels any more — so an autopilot
+  backlog is unlabelled, and therefore ranked `p2`-default and oldest-first, unless
+  that preset (or a human) labels it. `after_specify` is back to a single entry
+  (`speckit.git.commit`), so the declaration-order rule that used to be load-bearing
+  there no longer has two entries to order. `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes `{"source_issue": N}` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.
@@ -211,6 +197,26 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
 - `graphify-on-implement` — `/speckit-implement` override that always runs `graphify update` as the final mandatory step
 - `functional-constitution` — `/speckit-constitution` **wrapper** that injects and normalizes a mandatory functional-programming governance section. Stacks with `parse-dont-validate`'s constitution layer: both match their section by title (not roman numeral) and renumber all principle sections sequentially, so neither clobbers the other (issue #37)
+- `frontend-mock-first` — **`/speckit-git-feature` wrapper** owning the whole
+  layer policy, and the only home for it since the `git` extension's issue command
+  was removed. Classifies the feature *description* (there is no spec yet at this
+  point in the cycle) and, when it spans both layers, **the feature being created
+  becomes the frontend mock** — static in-repo fixtures, no network calls at all —
+  while `backend:` and `wire-up:` siblings are filed beside it. That shape is forced
+  by the seam: `/speckit-git-feature` binds one branch, worktree, and issue number
+  together, so a parent-epic-plus-three-children split would bind the worktree to a
+  container nobody implements. The frontend keeps the number the core command just
+  created, so nothing is undone. The wire-up sibling carries `Blocked by: #fe, #be`,
+  which autopilot's `blocked_by()` enforces. Self-contained: ships its own
+  `label-issue.sh` and `split-layers.sh` under `provides.scripts:`, so it needs no
+  extension beyond the one whose command it wraps.
+  Two things learned the hard way here, both verified in a scratch project:
+  **a preset can wrap a command an *extension* provides** (`PresetResolver` falls
+  back to `resolve_extension_command_via_manifest()`), which is what makes this
+  possible at all; and **a preset can NOT register a command that has no base** — a
+  probe preset declaring a brand-new command installed cleanly and produced 0 skills
+  against 10 registered, the file sitting unused in `.specify/presets/`. So a preset
+  can only ever adjust a command that already exists.
 - `spec-minimal` — one job: artifact minimalism. Wraps `/speckit-specify` to strip `## Assumptions`, `### Key Entities`, and `## Success Criteria` from `spec.md`; wraps `/speckit-plan` to hold the feature tree to `spec.md`, `plan.md`, `tasks.md`, and optional `quickstart.md` (`research.md`, `data-model.md`, `contracts/` are forbidden). Enforced by a mandatory prompt rule plus the self-healing `scripts/bash/enforce-minimal-tree.sh`, which folds any forbidden artifact into `plan.md` under a sentinel block and deletes it; unknown top-level entries only warn, so stacking is safe
 - `spec-ui-preview` — adds a GitHub-safe inline HTML UI preview to UI-touching specs (split out of `spec-minimal`)
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.

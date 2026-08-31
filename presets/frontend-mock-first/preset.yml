@@ -1,0 +1,38 @@
+schema_version: "1.0"
+
+preset:
+  id: "frontend-mock-first"
+  name: "Frontend Mock First"
+  version: "2.0.0"
+  description: "Wraps /speckit-git-feature so a full-stack feature is never started as one unit of work. Classifies the feature description by layer; when it spans both the UI and the API, the feature you are creating BECOMES the frontend mock — built against static in-repo fixtures with no network calls at all — and backend + wire-up siblings are filed beside it for later. The frontend keeps the branch, worktree, and issue number the core command just created, so nothing is undone; the wire-up sibling carries a Blocked by: line so autopilot leaves it alone until the other two close. Single-layer features get a layer label and no split. Self-contained: ships its own label and split writers, and requires no extension beyond the git extension whose command it wraps."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "label-issue.sh"
+      file: "scripts/bash/label-issue.sh"
+      executable: true
+      description: "Single writer of the triage vocabulary autopilot's picker reads: p0..p3, bug/feature, frontend/backend/integration, plus the mock-first and epic markers. Creates any label the repo lacks and keeps each axis exclusive."
+    - name: "split-layers.sh"
+      file: "scripts/bash/split-layers.sh"
+      executable: true
+      description: "Relabels the just-created feature issue as the frontend mock and files its backend and wire-up siblings, writing Blocked by: #fe, #be into the wire-up one. Idempotent via a sentinel block in the frontend issue's body."
+
+  templates:
+    - type: "command"
+      name: "speckit.git.feature"
+      file: "commands/speckit.git.feature.md"
+      description: "Appends the layer policy after the branch, worktree, and tracking issue are created: classify the description by layer, and when it spans both, make this feature the frontend mock and file the backend and wire-up siblings."
+      strategy: "wrap"
+
+tags:
+  - "frontend"
+  - "backend"
+  - "mock-first"
+  - "issues"
+  - "workflow"

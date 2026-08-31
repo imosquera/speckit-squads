@@ -37,7 +37,7 @@ untriaged bug in the backlog, inverting the point of the label.
 
 The vocabulary lives in `preflight-issues.py` (`PRIORITY_RE`, `PRIORITY_WORDS`,
 `BUG_LABELS`) and is written by the git extension's `label-issue.sh`, which
-`/speckit-git-issue` calls after every spec sync — that command is what asks the
+the `frontend-mock-first` preset's `/speckit-git-feature` wrap calls — that wrap is what asks the
 human for a priority, or infers one when nobody is there to ask. An explicit
 `/speckit-autopilot-run <N>` skips ranking entirely: a typed issue number is
 already a choice.

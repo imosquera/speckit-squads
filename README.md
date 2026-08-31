@@ -15,10 +15,8 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    and --cross-repo preflight skips issues already delivered by a PR elsewhere;
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding
-  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
-                   a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one
-                   is always mock-first (static fixtures, no network) and is created first so autopilot picks it first,
-                   while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
+  git/             Feature-branch + worktree + linked GitHub issue (numbered to match the spec), clean, PR (+ --draft), auto-commit hooks;
+                   no issue-body sync and no triage labels — that moved out entirely to the frontend-mock-first preset;
                    commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches;
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json)
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
@@ -30,6 +28,8 @@ presets/      # Spec Kit presets (template + command overrides)
   explicit-task-dependencies/   tasks-template with explicit dependency edges
   graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
+  frontend-mock-first/          git-feature wrapper: when a feature spans UI + API, the feature being created BECOMES the
+                                frontend mock (static fixtures, no network) and backend + wire-up siblings are filed beside it
   spec-minimal/                 Artifact minimalism: strips spec sections, keeps the feature tree to spec/plan/tasks
   spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
   library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
@@ -77,6 +77,7 @@ specify preset add --dev "$SQUADS/presets/claude-ask-questions"
 specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
 specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
+specify preset add --dev "$SQUADS/presets/frontend-mock-first"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/spec-ui-preview"
 specify preset add --dev "$SQUADS/presets/library-research"

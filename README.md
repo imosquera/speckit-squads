@@ -37,6 +37,7 @@ presets/      # Spec Kit presets (template + command overrides)
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes ponytail:ponytail + caveman skills before /speckit-implement starts
   parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python ast + TS Compiler API)
+  graph-first-navigation/       plan/tasks/implement wrappers + a PreToolUse hook making graph queries and the language server the default navigation instruments, grep the stated fallback
   progress-report/           wraps the 5 cycle commands to keep a per-branch status card in ~/Code/agent-os current (pair with the progress extension for tasks/implement)
 ```
 
@@ -84,6 +85,7 @@ specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 specify preset add --dev "$SQUADS/presets/implement-prelude-skills"
 specify preset add --dev "$SQUADS/presets/parse-dont-validate"
+specify preset add --dev "$SQUADS/presets/graph-first-navigation"
 specify preset add --dev "$SQUADS/presets/progress-report"
 ```
 
@@ -138,7 +140,7 @@ Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensio
 
 ### The `/speckit-implement` ordering contract
 
-Six presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
+Seven presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
 
 | Priority | Preset | Strategy | Role |
 |---|---|---|---|
@@ -147,9 +149,10 @@ Six presets target `speckit.implement`, so their install priorities are **load-b
 | 7 | `progress-report` | wrap | dashboard card |
 | 8 | `implement-prelude-skills` | wrap | prelude runs just before implementation |
 | 9 | `parse-dont-validate` | wrap | discipline + AST gate hug the implementation |
+| 12 | `graph-first-navigation` | wrap | LSP/graph scoping pass sits closest to the first edit |
 | 20 | `explicit-task-dependencies` | **replace** | the executor base, innermost |
 
-Resulting execution order: worktree `cd` → progress card → prelude skills → parse-don't-validate discipline → **implement** (wave DAG, or the stock loop when `explicit-task-dependencies` isn't installed) → AST scan gate → progress card → `graphify update`.
+Resulting execution order: worktree `cd` → progress card → prelude skills → parse-don't-validate discipline → graph/LSP scoping pass → **implement** (wave DAG, or the stock loop when `explicit-task-dependencies` isn't installed) → AST scan gate → progress card → `graphify update`.
 
 `explicit-task-dependencies` stays `replace` because it genuinely substitutes wave-DAG subagent fan-out for the stock serial loop — wrapping it would execute every task twice. It sorts last so it becomes the base rather than swallowing the wrappers.
 

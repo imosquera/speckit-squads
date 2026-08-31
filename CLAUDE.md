@@ -73,6 +73,14 @@ ordering contract is tabulated in `README.md`; keep the two in sync.
 against `specify --help`, so a command file can't ship instructions to run CLI surface
 that doesn't exist. Prose outside code fences is ignored. Run it standalone any time.
 
+Anything that must reach *outside* `specify` — the Claude Code harness
+(`.claude/settings.json`) or the project's `CLAUDE.md` — ships as
+`scripts/bash/post-install.sh <project-dir>` inside the extension or preset that
+owns it. `install.sh` runs every executable one it finds after registration, and
+`uninstall.sh` runs the matching `scripts/bash/pre-uninstall.sh` before
+de-registering. Both are auto-discovered; both must be idempotent, since
+`--force` re-runs them. `graph-first-navigation` is the first user.
+
 `uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
 
 ## Feature identity: `.specify/feature.json`
@@ -218,6 +226,40 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
 - `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a Node helper on the TS Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules)
+- `graph-first-navigation` — makes knowledge-graph queries and the TypeScript
+  language server the default navigation instruments and demotes grep to a
+  **stated** fallback. Two halves, and the harness half is the one that binds:
+  a **PreToolUse hook on `Grep|Glob`** written into the consumer's
+  `.claude/settings.json`, which fires regardless of what any agent decides,
+  plus `wrap` layers on `speckit.plan` (a mandatory `## Navigation` section
+  recording each touched module's callers and dependents *as the graph reported
+  them*), `speckit.tasks` (fold those edges into task coverage and ordering),
+  and `speckit.implement` (scope renames/signature/type changes with LSP
+  `findReferences` **before** the first edit, not by compiling in a loop).
+  Deliberately a new preset rather than an extension of
+  `implement-prelude-skills`: that one is registered against `speckit.implement`
+  alone and exists to load skills — see `presets/graph-first-navigation/README.md`
+  for the full decision.
+  **The hook is tuned not to cry wolf, because one that does gets disabled
+  within a day.** It fires only when `graphify-out/graph.json` exists, never
+  blocks (no `permissionDecision` — the search runs), and fires only on
+  identifier-shaped patterns: whitespace, a quote, or `://` in the pattern marks
+  a literal-string search and is left alone, as is any search already scoped to
+  non-code files, and Glob trips only on source extensions. It spends a budget of
+  3 reminders per session and then goes quiet, and exits 0 silently on any
+  internal error.
+  **`built_at_commit` is megabytes into `graph.json`, not at the top** — reading
+  the first 8KB finds nothing. The guard mmaps and byte-scans; `graph-freshness.sh`
+  uses `grep -m1 -oa`. Neither parses the JSON.
+  **The staleness rule is the one legitimate reason to break the rule, and it
+  resolves the other way:** a stale graph means **rebuild** (`graphify update`),
+  never fall back to grep. Every layer says so.
+  Presets cannot declare harness hooks and extension `hooks:` cover only Spec Kit
+  lifecycle phases, so the settings.json and CLAUDE.md edits ship as
+  `scripts/bash/post-install.sh` / `pre-uninstall.sh` — run by a **generic**
+  auto-discovered step in `install.sh`/`uninstall.sh` (`scripts/bash/post-install.sh`
+  in any extension or preset is run with the project dir), so there is still no
+  list to maintain
 - `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
 
 `spec-minimal` 2.0.0 is a breaking split: UI preview → `spec-ui-preview`, issue sync → the `git` extension. See the migration note in `README.md`.
@@ -226,6 +268,10 @@ on first run in a project that still tracks it, so the migration is automatic.
 
 1. Drop the new directory under `extensions/<id>/` or `presets/<id>/` with a valid manifest. The install/uninstall scripts will pick it up automatically — do **not** edit them.
 1a. **Declare every script under `provides.scripts:`** with `file:` and, when one command owns it, `command:`. This is not decoration — `check-cli-usage.sh` fails the install when a command file references a script that is undeclared or missing, and `gen-agent-index.py` builds the consumer's command→script table from these entries. An undeclared script is invisible to agents working in a consumer project.
+1b. If the item needs harness-level wiring (a `.claude/settings.json` hook, a
+    `CLAUDE.md` rule), ship it as `scripts/bash/post-install.sh` plus a
+    `scripts/bash/pre-uninstall.sh` that reverses it exactly. Declare both under
+    `provides.scripts:`.
 2. Update the **Currently shipped** list above with one bullet: `` `<id>` — one-line description ``.
 3. Update the matching list in `README.md` so the user-facing doc stays in sync.
 4. If a consumer project should pick it up, run `./install.sh --force <project>` from there.

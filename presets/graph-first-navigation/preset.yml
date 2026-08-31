@@ -1,0 +1,63 @@
+schema_version: "1.0"
+
+preset:
+  id: "graph-first-navigation"
+  name: "Graph-First Navigation"
+  version: "1.0.0"
+  description: "Makes knowledge-graph queries and the TypeScript language server the default way an agent navigates a codebase, with grep demoted to a stated fallback. Wraps /speckit-plan (records graph-derived callers and dependents per module in a mandatory ## Navigation section), /speckit-tasks (folds those edges into task coverage and ordering), and /speckit-implement (scopes renames, signature changes, and type changes with LSP findReferences before the first edit rather than by compiling in a loop). Ships the harness-level half too: a non-blocking PreToolUse hook on Grep|Glob, registered in the consumer's .claude/settings.json by post-install.sh, that fires only when graphify-out/ exists and only on structurally-shaped patterns. Every layer states the staleness rule (a stale graph means rebuild, not fall back to grep) and the exceptions where grep remains correct."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "graph-freshness.sh"
+      file: "scripts/bash/graph-freshness.sh"
+      executable: true
+      description: "Verdict on whether graphify-out/graph.json is fresh relative to the working tree: compares its built_at_commit against HEAD and checks for uncommitted changes. FRESH (exit 0) / STALE (1) / ABSENT (2). STALE means rebuild the graph, never fall back to grep."
+
+    - name: "graph_first_guard.py"
+      file: "scripts/python/graph_first_guard.py"
+      executable: true
+      description: "PreToolUse hook body. Reads the hook payload on stdin and emits a non-blocking reminder (hookSpecificOutput.additionalContext) redirecting structural Grep/Glob calls to graphify query / the LSP tool. Fires only when graphify-out/graph.json exists, only on identifier-shaped patterns (never on whitespace/quoted/URL literals or non-code file scopes), and at most 3 times per session. Any internal error exits 0 silently."
+
+    - name: "post-install.sh"
+      file: "scripts/bash/post-install.sh"
+      executable: true
+      description: "Run by install.sh after the preset is registered. Idempotently adds the Grep|Glob PreToolUse hook to the project's .claude/settings.json and the graph-first navigation rule to its CLAUDE.md (sentinel-delimited block). Presets cannot declare harness hooks, so this is the only seam for the enforcement half."
+
+    - name: "pre-uninstall.sh"
+      file: "scripts/bash/pre-uninstall.sh"
+      executable: true
+      description: "Run by uninstall.sh before the preset is removed. Reverses post-install.sh: drops the hook entry from .claude/settings.json and the sentinel block from CLAUDE.md, touching nothing else."
+
+  templates:
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      strategy: "wrap"
+      description: "Composable wrapper for /speckit-plan that queries the graph for every module the change touches and records callers, dependents, and provenance in a mandatory ## Navigation section."
+
+    - type: "command"
+      name: "speckit.tasks"
+      file: "commands/speckit.tasks.md"
+      strategy: "wrap"
+      description: "Composable wrapper for /speckit-tasks that folds the plan's graph-derived callers and dependents into task coverage and dependency ordering."
+
+    - type: "command"
+      name: "speckit.implement"
+      file: "commands/speckit.implement.md"
+      strategy: "wrap"
+      description: "Composable wrapper for /speckit-implement that requires LSP findReferences/incomingCalls to scope renames, signature changes, and type changes before the first edit."
+
+tags:
+  - "navigation"
+  - "graphify"
+  - "knowledge-graph"
+  - "lsp"
+  - "language-server"
+  - "hooks"
+  - "governance"

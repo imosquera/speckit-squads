@@ -24,9 +24,23 @@ if [[ ! -d "$PROJECT_DIR/.specify" ]]; then
   exit 1
 fi
 
+# Absolute from here on: the script cds into the project, and pre-uninstall.sh is
+# handed this path afterwards.
+PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 cd "$PROJECT_DIR"
 
 shopt -s nullglob
+
+# Harness-level wiring that install.sh's post-install step added (.claude/settings.json
+# entries, CLAUDE.md blocks) is outside `specify`'s reach, so it has to come out
+# before the item is de-registered — its script lives in the item's own tree.
+# Auto-discovered; there is no list to maintain.
+for item_dir in "$REPO_DIR"/extensions/*/ "$REPO_DIR"/presets/*/; do
+  pre="$item_dir/scripts/bash/pre-uninstall.sh"
+  [[ -x "$pre" ]] || continue
+  echo "==> pre-uninstall: $(basename "$item_dir")"
+  "$pre" "$PROJECT_DIR" || true
+done
 
 for ext_dir in "$REPO_DIR"/extensions/*/; do
   [[ -f "$ext_dir/extension.yml" ]] || continue

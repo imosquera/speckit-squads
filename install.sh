@@ -52,6 +52,9 @@ if [[ ! -d "$PROJECT_DIR/.specify" ]]; then
   exit 1
 fi
 
+# Absolute from here on: the script cds into the project, and post-install.sh is
+# handed this path afterwards.
+PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 cd "$PROJECT_DIR"
 
 # Pre-flight: every `specify <verb>` a command file tells an agent to run must exist
@@ -72,7 +75,7 @@ shopt -s nullglob
 # base is the nearest `replace` layer scanning from highest precedence down;
 # only layers above the base compose at all.
 #
-# Six presets target speckit.implement. Without explicit priorities they all sit
+# Seven presets target speckit.implement. Without explicit priorities they all sit
 # at the default 10 and the alphabetical tie-break decides, which is how
 # explicit-task-dependencies came to win outright and silently kill the other
 # five (issue #25). These numbers are therefore load-bearing, not cosmetic:
@@ -82,12 +85,15 @@ shopt -s nullglob
 #   7  progress-report             dashboard card wrap
 #   8  implement-prelude-skills    prelude runs just before implementation
 #   9  parse-dont-validate         discipline + AST gate hug the implementation
+#  12  graph-first-navigation      LSP/graph scoping pass sits closest to the first edit
+#                                  (9 is not free: parse-dont-validate's priority also
+#                                   orders the /speckit-constitution pair)
 #  20  explicit-task-dependencies  `replace` — the executor base, innermost
 #
 # explicit-task-dependencies must sort LAST so it becomes the base rather than
 # swallowing the wrappers. When it is not installed the stock core template is
 # the base (core templates are always appended as a final `replace` layer) and
-# the five wrappers still compose.
+# the six wrappers still compose.
 #
 # Anything not listed here installs at the CLI default of 10.
 preset_priority() {
@@ -97,6 +103,7 @@ preset_priority() {
     progress-report)            echo 7  ;;
     implement-prelude-skills)   echo 8  ;;
     parse-dont-validate)        echo 9  ;;
+    graph-first-navigation)     echo 12 ;;
     explicit-task-dependencies) echo 20 ;;
     *)                          echo 10 ;;
   esac
@@ -186,6 +193,20 @@ for preset_dir in "$REPO_DIR"/presets/*/; do
   prio="$(preset_priority "$name")"
   echo "==> preset: $name (priority $prio)"
   install_one preset "$name" "$preset_dir" "$prio" || EXIT=1
+done
+
+# Harness-level wiring `specify` cannot do.
+#
+# A preset/extension can register Spec Kit commands, scripts, and lifecycle hooks,
+# but nothing in its manifest reaches the Claude Code harness (.claude/settings.json)
+# or the project's CLAUDE.md. Any item that needs that ships a
+# `scripts/bash/post-install.sh <project-dir>`, run here after registration.
+# Auto-discovered — there is no list to maintain.
+for item_dir in "$REPO_DIR"/extensions/*/ "$REPO_DIR"/presets/*/; do
+  post="$item_dir/scripts/bash/post-install.sh"
+  [[ -x "$post" ]] || continue
+  echo "==> post-install: $(basename "$item_dir")"
+  "$post" "$PROJECT_DIR" || EXIT=1
 done
 
 # The installed layout does not match this repo's, and command names do not predict

@@ -92,6 +92,7 @@ Output format (callers read the first word to decide):
   SKIP: #42 parked:autopilot:claimed
   SKIP: #42 blocked — fix target is outside any git repo
   SKIP: #42 in-progress:082-fix-thing
+  SKIP: #42 blocked-by:#40,#41
   SKIP: #42 delivered — https://github.com/o/r/pull/3 (merged)
   SKIP: #42 not open or not found
 
@@ -124,6 +125,24 @@ BLOCK_SENTINEL = "AUTOPILOT-BLOCKED:"
 # resolving it would spend a `gh` call per false positive.
 PR_URL_RE = re.compile(
     r"https://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/pull/(\d+)")
+
+# ------------------------------------------------------------ dependencies ---
+# `/speckit-git-issue` splits a full-stack feature into frontend(mock), backend,
+# and wire-up children (`split-issue.sh`). The wire-up child cannot be started
+# until both siblings land, and says so in its own body:
+#
+#     Blocked by: #43, #44
+#
+# Without this check autopilot would rank that child level with its siblings and
+# could pick it first, "integrating" a frontend and a backend that do not exist
+# yet. The dependency is resolved against the open-issue list this run already
+# fetched — a dependency that is not in it is closed (or not in this repo) and
+# therefore satisfied — so the test costs no `gh` calls at all.
+#
+# The parent of a split needs no rule here: `split-issue.sh` labels it `epic`,
+# which is already in BLOCK.
+BLOCKED_BY_RE = re.compile(r"^[ \t>*-]*blocked[ _-]?by\s*:?\s*(.+)$", re.I | re.M)
+ISSUE_REF_RE = re.compile(r"#(\d+)")
 
 # A PR in these states means someone already delivered the issue. CLOSED is
 # absent on purpose — a closed, unmerged PR is abandoned work, and treating it
@@ -162,6 +181,18 @@ DEFAULT_PRIORITY = 2
 # strongest signal available.
 BUG_LABELS = {"bug", "defect", "regression", "fix", "broken", "incident", "outage"}
 BUG_TITLE_RE = re.compile(r"^\s*(?:\[[^\]]*\]\s*)?(?:bug|fix|hotfix)\b[:( ]", re.I)
+
+
+def blocked_by(issue, open_numbers):
+    """Open issues #N must close before this one starts; [] when unblocked."""
+    body = issue.get("body") or ""
+    deps = []
+    for line in BLOCKED_BY_RE.findall(body):
+        for ref in ISSUE_REF_RE.findall(line):
+            n = int(ref)
+            if n != issue.get("number") and n in open_numbers and n not in deps:
+                deps.append(n)
+    return deps
 
 
 def priority_ranks(labels):
@@ -353,7 +384,7 @@ def delivered_by(n):
     return fallback
 
 
-def eligibility_reason(i, explain=False, cross_repo=False):
+def eligibility_reason(i, explain=False, cross_repo=False, open_numbers=frozenset()):
     """Return "" if eligible, else a SKIP reason string.
 
     `explain` costs one extra `gh` call and is only worth it on the
@@ -374,6 +405,9 @@ def eligibility_reason(i, explain=False, cross_repo=False):
         return "parked:" + ",".join(sorted(blocking))
     if not (i.get("body") or "").strip():
         return "empty-body"
+    deps = blocked_by(i, open_numbers)
+    if deps:
+        return "blocked-by:" + ",".join(f"#{d}" for d in deps)
     wip = in_progress(n)
     if wip:
         return f"in-progress:{wip}"
@@ -389,7 +423,8 @@ def validate_one(issues, target, cross_repo=False):
     if match is None:
         print(f"SKIP: #{target} not open or not found")
         return
-    reason = eligibility_reason(match, explain=True, cross_repo=cross_repo)
+    reason = eligibility_reason(match, explain=True, cross_repo=cross_repo,
+                                open_numbers={i.get("number") for i in issues})
     if reason:
         print(f"SKIP: #{target} {reason}")
         if reason.startswith("delivered — "):
@@ -410,8 +445,11 @@ def auto_pick(issues, cross_repo=False):
     parked = []
     in_prog = []
     empty_body = []
+    blocked_deps = []
     delivered = []
     candidates = []
+
+    open_numbers = {i.get("number") for i in issues}
 
     for seq, i in enumerate(issues):
         n = i["number"]
@@ -424,6 +462,11 @@ def auto_pick(issues, cross_repo=False):
 
         if not (i.get("body") or "").strip():
             empty_body.append(f"#{n}")
+            continue
+
+        deps = blocked_by(i, open_numbers)
+        if deps:
+            blocked_deps.append(f"#{n}(needs {', '.join(f'#{d}' for d in deps)})")
             continue
 
         wip = in_progress(n)
@@ -459,6 +502,9 @@ def auto_pick(issues, cross_repo=False):
         parts.append(f"{len(parked)} parked")
     if empty_body:
         parts.append(f"{len(empty_body)} empty-body")
+    if blocked_deps:
+        parts.append(f"{len(blocked_deps)} blocked-by "
+                     f"({', '.join(blocked_deps[:3])}{'…' if len(blocked_deps) > 3 else ''})")
     if in_prog:
         parts.append(f"{len(in_prog)} in-progress ({', '.join(in_prog[:3])}{'…' if len(in_prog) > 3 else ''})")
     if delivered:

@@ -7,7 +7,8 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
-  autopilot/       Highest-priority eligible issue (p0..p3, bugs first, oldest last) → draft PR,
+  autopilot/       Highest-priority eligible issue (p0..p3, bugs first, oldest last; issues with an unclosed
+                   "Blocked by: #N" dependency are skipped) → draft PR,
                    driving the whole pipeline unattended (+ launchd scheduler);
                    parks hard-blocked issues with a durable autopilot:blocked label so they aren't re-picked forever;
                    bound to one repo + checkout in both directions — a fix target in another repo is a durable stop,
@@ -15,6 +16,9 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding
   git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
+                   a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one
+                   is always mock-first (static fixtures, no network) and is created first so autopilot picks it first,
+                   while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
                    commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches;
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json)
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)

@@ -8,11 +8,10 @@
 # `preflight-issues.py` orders the eligible backlog by (priority, bug-before-
 # feature, age), so an unlabelled backlog degrades to plain oldest-first and a
 # genuine P0 waits behind whatever chore happens to be older. This script is the
-# single writer of that vocabulary — it ships with the `frontend-mock-first`
-# preset and is called only from that preset's `/speckit-git-feature` wrap and
-# from `split-layers.sh` beside it, so the strings a writer emits can never drift
-# from the ones the reader matches on. Keep it in sync with `PRIORITY_RE` /
-# `BUG_LABELS` in `extensions/autopilot/scripts/bash/preflight-issues.py`.
+# single writer of that vocabulary, shared by `/speckit-git-issue` and
+# `/speckit-git-feature`, so the strings a writer emits can never drift from the
+# ones the reader matches on. Keep it in sync with `PRIORITY_RE` / `BUG_LABELS`
+# in `extensions/autopilot/scripts/bash/preflight-issues.py`.
 #
 # Priority is exclusive: setting one removes the other three, so an issue can
 # never carry `p0, p2` and leave the picker to guess (it takes the lowest, but
@@ -22,9 +21,8 @@
 # `mock-first` and `epic` are markers, not axes: they are added or removed on
 # their own and coexist with any priority/kind/layer. `epic` is deliberately a
 # member of `preflight-issues.py`'s BLOCK set — labelling the parent of a work
-# breakdown `epic` keeps autopilot off an issue that is a container rather than a
-# unit of work. This preset does not create epics — the feature issue itself
-# becomes the frontend mock — but the flag stays for hand-triaged containers.
+# breakdown `epic` is what keeps autopilot working the *children* rather than
+# re-implementing the whole feature from the parent issue.
 #
 # Usage:
 #   label-issue.sh <issue-number> [--priority p0|p1|p2|p3] [--kind bug|feature]
@@ -44,7 +42,7 @@ KINDS="bug feature"
 LAYERS="frontend backend integration"
 MARKERS="mock-first epic"
 
-die() { echo "[frontend-mock-first] error: $*" >&2; exit 1; }
+die() { echo "[speckit-git-issue] error: $*" >&2; exit 1; }
 
 # Colors/descriptions used only when the label does not exist yet; an existing
 # label is never restyled, because the repo's own choices outrank ours.
@@ -174,4 +172,4 @@ if ! OUT=$(gh "${ARGS[@]}" 2>&1); then
   fi
 fi
 
-echo "[frontend-mock-first] #$ISSUE labelled: ${ADD[*]:-(removals only)}"
+echo "[speckit-git-issue] #$ISSUE labelled: ${ADD[*]:-(removals only)}"

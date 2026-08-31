@@ -18,9 +18,9 @@ When numbering is sequential, the script:
 
 If the issue's number ends up below the next free spec number (e.g. issue #5 created while `specs/008-*` already exists), the branch is still numbered using the next free spec number and the issue title is updated to match — so the alignment stays visible.
 
-The issue body is intentionally a stub — this command runs before `/speckit-specify`, so there is no spec to render yet. Nothing in this extension replaces it later; a project that wants the stub enriched or the issue split by layer installs a preset that wraps this command (see `frontend-mock-first`).
+The issue body is intentionally a stub; `/speckit-git-issue` fills it in with the rendered spec content because `source_issue` is already set. That command runs automatically on the `after_specify` hook, so the stub is replaced as soon as the spec exists — no preset required.
 
-The stub is also left **unlabelled** on purpose: this command only knows the one-line description. Priority (`p0`..`p3`) and kind (`bug`/`feature`) are what order `/speckit-autopilot-run`'s backlog, so a project that relies on that ordering should install a preset which labels the issue here (`frontend-mock-first` does, alongside its layer labels) or label it by hand.
+The stub is also left **unlabelled** on purpose. Priority (`p0`..`p3`) and kind (`bug`/`feature`) are set by `/speckit-git-issue` on that same hook, once there is a spec to judge them from — this command only knows the one-line description, which is not enough to ask a human a useful question about. Those labels are what orders `/speckit-autopilot-run`'s backlog.
 
 Issue creation is bypassed (and numbering falls back to the normal sequential / timestamp logic) only when the caller has explicitly opted out of issue-driven numbering:
 - `--timestamp`, `--number`, or `GIT_BRANCH_NAME` is in effect

@@ -127,9 +127,9 @@ PR_URL_RE = re.compile(
     r"https://github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)/pull/(\d+)")
 
 # ------------------------------------------------------------ dependencies ---
-# The `frontend-mock-first` preset splits a full-stack feature into a frontend
-# mock plus backend and wire-up siblings (`split-layers.sh`). The wire-up issue
-# cannot be started until the other two land, and says so in its own body:
+# `/speckit-git-issue` splits a full-stack feature into frontend(mock), backend,
+# and wire-up children (`split-issue.sh`). The wire-up child cannot be started
+# until both siblings land, and says so in its own body:
 #
 #     Blocked by: #43, #44
 #
@@ -139,8 +139,8 @@ PR_URL_RE = re.compile(
 # fetched — a dependency that is not in it is closed (or not in this repo) and
 # therefore satisfied — so the test costs no `gh` calls at all.
 #
-# Nothing else is needed here: the split leaves no parent container, because the
-# feature's own issue becomes the frontend mock.
+# The parent of a split needs no rule here: `split-issue.sh` labels it `epic`,
+# which is already in BLOCK.
 BLOCKED_BY_RE = re.compile(r"^[ \t>*-]*blocked[ _-]?by\s*:?\s*(.+)$", re.I | re.M)
 ISSUE_REF_RE = re.compile(r"#(\d+)")
 

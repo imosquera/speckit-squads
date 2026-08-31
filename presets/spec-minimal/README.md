@@ -9,7 +9,7 @@ Wraps `/speckit-specify` and `/speckit-plan` to trim the generated artifacts wit
 | `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria** |
 | `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `spec.md`, `plan.md`, `tasks.md`, optionally `quickstart.md` and `research.md` — `data-model.md` and `contracts/` are forbidden |
 
-This preset does one thing: artifact minimalism. The inline HTML UI preview lives in the separate `spec-ui-preview` preset, and GitHub issue creation lives in the `git` extension (`/speckit-git-feature`).
+This preset does one thing: artifact minimalism. The inline HTML UI preview lives in the separate `spec-ui-preview` preset, and GitHub issue sync lives in the `git` extension (`/speckit-git-issue`, on the `after_specify` hook).
 
 ## How enforcement works
 

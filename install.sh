@@ -97,7 +97,6 @@ preset_priority() {
     progress-report)            echo 7  ;;
     implement-prelude-skills)   echo 8  ;;
     parse-dont-validate)        echo 9  ;;
-    frontend-mock-first)        echo 10 ;;
     explicit-task-dependencies) echo 20 ;;
     *)                          echo 10 ;;
   esac

@@ -23,6 +23,7 @@ This extension provides Git operations as an optional, self-contained module. It
 | `speckit.git.feature` | Create a feature branch with sequential or timestamp numbering; `--source-issue N` binds to an existing issue instead of opening a stub |
 | `speckit.git.worktree` | Create a worktree under the `${PROJ}.worktrees` collector directory |
 | `speckit.git.clean` | Clean up the current feature worktree, branch, issue, and uncommitted changes |
+| `speckit.git.issue` | Update the linked GitHub issue's body from `spec.md` (a manual run may also create one when none is linked) |
 | `speckit.git.commit` | Auto-commit changes (configurable per-command enable/disable and messages) |
 | `speckit.git.pr` | Open a GitHub PR for the current feature branch; `--draft` opens it as a draft and skips the archive-feature pre-step |
 
@@ -39,6 +40,7 @@ This extension provides Git operations as an optional, self-contained module. It
 | `before_analyze` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before analysis |
 | `before_taskstoissues` | `speckit.git.commit` | 10 | Yes | Commit outstanding changes before issue sync |
 | `after_constitution` | `speckit.git.commit` | 10 | Yes | Auto-commit after constitution update |
+| `after_specify` | `speckit.git.issue` | 5 | No | Update the linked GitHub issue's body from the rendered spec (no-op when no issue is linked) |
 | `after_specify` | `speckit.git.commit` | 10 | Yes | Auto-commit after specification |
 | `after_clarify` | `speckit.git.commit` | 10 | Yes | Auto-commit after clarification |
 | `after_plan` | `speckit.git.commit` | 10 | Yes | Auto-commit after planning |
@@ -48,18 +50,18 @@ This extension provides Git operations as an optional, self-contained module. It
 | `after_analyze` | `speckit.git.commit` | 10 | Yes | Auto-commit after analysis |
 | `after_taskstoissues` | `speckit.git.commit` | 10 | Yes | Auto-commit after issue sync |
 
-`after_specify` runs `speckit.git.commit`, which commits the new spec.
+`after_specify` runs two commands. The intended order is `speckit.git.issue` first — it syncs the tracking issue (and on a manual run may write `source_issue` into `.specify/feature.json`) — then `speckit.git.commit`, which picks up that change along with the new spec. The `priority` values in the manifest record that intent, but the runtime does not guarantee it: the agent-driven hook runner reads `hooks.after_specify` from `.specify/extensions.yml` and iterates the entries as registered, without sorting by priority. The order that actually holds is the manifest's **declaration order**, which is why the `after_specify` block in `extension.yml` must not be reordered.
 
 Issue sync is non-optional in the sense that the agent always runs it, but it is not always a mutation:
 
 - **A tracking issue is linked** (`source_issue` in `.specify/feature.json`) → the issue's **body** is rewritten from the spec. The title is left alone; `speckit.git.feature` owns it. If `gh` is missing, unauthenticated, or the edit fails, the hook errors rather than skipping.
 - **No tracking issue is linked** → the hook prints a one-line notice and exits successfully without creating anything. This is the normal state when `speckit.git.feature` bypassed issue creation (`--timestamp`, `--number`, `GIT_BRANCH_NAME`, `--dry-run`) or ran in a repo without `gh`, so `/speckit-specify` keeps working for non-GitHub users.
 
-Creating an issue is the job of `speckit.git.feature`, which owns the numbering contract.
+Creating an issue is the job of `speckit.git.feature`, which owns the numbering contract. Running `/speckit-git-issue` manually *may* create one when none is linked; the automatic hook path never does.
 
 ### Triage labels: priority and kind
 
-This extension no longer syncs issue bodies or writes triage labels. The tracking issue's body stays the stub `speckit.git.feature` wrote unless something else updates it, and the `frontend-mock-first` preset ships the label writer it needs.
+On both paths, `/speckit-git-issue` also keeps two triage labels current on the tracking issue: a priority (`p0`, `p1`, `p2`, `p3`) and a kind (`bug` or `feature`). They are applied by `scripts/bash/label-issue.sh`, which creates any label the repo is missing and keeps each axis exclusive (setting `p1` removes `p0`/`p2`/`p3`).
 
 This is the input side of autopilot's picker: `/speckit-autopilot-run` orders its eligible backlog by priority, then bugs before features, then age. Without labels every backlog drains oldest-first, which is why a P0 filed today can otherwise sit behind a year-old chore.
 

@@ -97,7 +97,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 
 **Extensions**
 - `archive` — archive a completed feature folder, close linked GitHub issues
-- `autopilot` — `/speckit-autopilot-run`: take the oldest eligible open issue (or a given issue number) from backlog to a reviewed **draft PR** by driving the whole pipeline unattended (specify → clarify auto-answered → plan → tasks → implement → review), binding the worktree to the existing issue and posting progress comments at every stage.
+- `autopilot` — `/speckit-autopilot-run`: take the **highest-ranked** eligible open issue (or a given issue number) from backlog to a reviewed **draft PR** by driving the whole pipeline unattended (specify → clarify auto-answered → plan → tasks → implement → review), binding the worktree to the existing issue and posting progress comments at every stage.
   A hard, non-recoverable stop writes a durable `autopilot:blocked` label plus an
   `AUTOPILOT-BLOCKED:`-tagged comment, which `preflight-issues.py` skips on and reads
   the reason back out of — without it, removing the transient `autopilot:claimed`
@@ -146,8 +146,30 @@ on first run in a project that still tracks it, so the migration is automatic.
   re-decoded after a decoder fix without re-running it. Deliberately NOT per-run log
   files: passes are already single-flight under the wrapper's lock, so what was
   missing was per-line attribution, not per-file separation.
+  **The pick is ranked, not oldest-first.** `preflight-issues.py`'s `auto_pick`
+  sorts the eligible pool by (priority label, bug-before-feature, age) instead of
+  taking the first row of an oldest-first fetch, so a `p0` filed today no longer
+  waits behind a year-old chore. `p0`/`P1`/`priority: p2`/`priority/p3` spellings
+  and the severity words (`critical`/`urgent`→p0, `high`→p1, `medium`/`normal`→p2,
+  `low`→p3) all read the same, lowest rank on the issue wins, and **an unlabelled
+  issue ranks `p2` — mid-pack, not last**, so an explicitly deprioritized `p3`
+  chore can't outrank every untriaged bug. Age stays the final tiebreak, so an
+  unlabelled backlog behaves exactly as before. The `PICK:` line carries the
+  winning rank (`[p0, bug]`); the explicit-issue path prints no rank because a
+  typed number is already a choice. `--cross-repo` now runs per candidate in rank
+  order until one is not already delivered, instead of only against the oldest.
+  The writer of this vocabulary is the git extension's `label-issue.sh` — keep
+  `PRIORITY_RE`/`PRIORITY_WORDS`/`BUG_LABELS` in sync with it.
   Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
-- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases. `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes `{"source_issue": N}` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
+- `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases.
+  `/speckit-git-issue` also owns **triage labels**, the input side of autopilot's
+  ranked picker: `label-issue.sh` is the single writer of `p0`..`p3` and
+  `bug`/`feature`, creating any label the repo lacks and keeping each axis
+  exclusive (`--priority p1` removes the other three). The command asks the human
+  for a priority — leading with the value it would infer, marked recommended — and
+  falls back to inferring **only** when nobody is in the loop (the `after_specify`
+  hook under autopilot), saying so when it does; an existing human-set priority is
+  never re-asked or overwritten. Label failures are warnings, never errors. `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes `{"source_issue": N}` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.

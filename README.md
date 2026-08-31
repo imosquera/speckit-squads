@@ -7,13 +7,14 @@ A collection of [Spec Kit](https://github.com/github/spec-kit) extensions and pr
 ```
 extensions/   # Spec Kit extensions (commands + hooks)
   archive/         Archive completed feature folders, close linked GH issues
-  autopilot/       Oldest eligible issue → draft PR, driving the whole pipeline unattended (+ launchd scheduler);
+  autopilot/       Highest-priority eligible issue (p0..p3, bugs first, oldest last) → draft PR,
+                   driving the whole pipeline unattended (+ launchd scheduler);
                    parks hard-blocked issues with a durable autopilot:blocked label so they aren't re-picked forever;
                    bound to one repo + checkout in both directions — a fix target in another repo is a durable stop,
                    and --cross-repo preflight skips issues already delivered by a PR elsewhere;
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding
-  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync), clean, PR (+ --draft), auto-commit hooks;
+  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
                    commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches;
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json)
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)

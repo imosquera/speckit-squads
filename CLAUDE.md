@@ -180,7 +180,21 @@ on first run in a project that still tracks it, so the migration is automatic.
   `bug`/`feature` and `frontend`/`backend`/`integration`, plus the `mock-first`
   and `epic` markers — creating any label the repo lacks and keeping each axis
   exclusive (`--priority p1` removes the other three; `--layer backend` removes
-  the other two). Markers are independent and only ever touch themselves. The command asks the human
+  the other two). Markers are independent and only ever touch themselves.
+  **A manual `/speckit-git-issue` with no linked issue clarifies before it
+  creates.** It runs `/speckit-clarify` first when the spec still carries
+  `[NEEDS CLARIFICATION]` markers or no `## Clarifications` session, then asks the
+  issue-shaped gaps clarify does not cover (definition of done, reproduction, what
+  is out of scope, the layer when the split is ambiguous) in **one**
+  `AskUserQuestion` call batched with the priority/kind question. Delegating to
+  clarify is not stylistic: the body is regenerated from `spec.md` on every later
+  sync, so an answer captured only in the issue body is erased by the next
+  `after_specify` run — every answer must land in `spec.md`, and the spec must be
+  re-read after clarify returns or you publish the pre-clarification copy. Never on
+  the `after_specify` hook path (it fires seconds after `/speckit-specify`, and
+  clarify is the operator's own next step) and never unattended; `--no-clarify` /
+  `--clarify` override.
+  The command asks the human
   for a priority — leading with the value it would infer, marked recommended — and
   falls back to inferring **only** when nobody is in the loop (the `after_specify`
   hook under autopilot), saying so when it does; an existing human-set priority is

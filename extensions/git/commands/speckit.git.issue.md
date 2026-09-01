@@ -1,5 +1,5 @@
 ---
-description: "Sync the linked GitHub issue's body from the current feature's spec, set its priority (p0..p3) / kind (bug|feature) / layer (frontend|backend|integration) labels, and split a full-stack feature into mock-first frontend, backend, and wire-up children (manual runs may also create the issue)"
+description: "Sync the linked GitHub issue's body from the current feature's spec, set its priority (p0..p3) / kind (bug|feature) / layer (frontend|backend|integration) labels, and split a full-stack feature into mock-first frontend, backend, and wire-up children (a manual run with no linked issue clarifies the spec with you first, then creates it)"
 ---
 
 # Sync Feature Issue
@@ -26,7 +26,7 @@ This one file drives two different entry points, and they behave **differently**
 | Mode | Trigger | No `source_issue` in `.specify/feature.json` |
 |------|---------|----------------------------------------------|
 | **Automatic hook** | the `after_specify` hook | **Skip cleanly.** Print a one-line notice and exit successfully. Create nothing. |
-| **Manual** | the user types `/speckit-git-issue` | May create a new issue, because the user asked for one explicitly. |
+| **Manual** | the user types `/speckit-git-issue` | May create a new issue, because the user asked for one explicitly — after the clarification pass below. |
 
 Assume you are on the **hook** path unless the user invoked `/speckit-git-issue` directly in this turn.
 
@@ -41,6 +41,81 @@ The skip notice should read roughly:
 ```
 
 The hook stays registered with `optional: false` in `extension.yml`: it is mandatory in the sense that the agent must always *run* it, but running it on a feature with no linked issue is a successful no-op, so it can never break `/speckit-specify` for non-GitHub users.
+
+## Clarify Before Creating
+
+An issue is only as good as the questions asked before it was filed. On a **manual**
+run that is about to open a **new** issue, resolve the spec's open questions *first*,
+so the body describes a unit of work someone can pick up without a follow-up
+conversation.
+
+| Path | Clarify pass |
+|------|--------------|
+| Manual, no `source_issue` (about to create) | **Yes** — this is the default. |
+| Manual, `source_issue` present (update) | Only when the user passes `--clarify` or asks for it in the turn. |
+| `after_specify` hook | **Never.** |
+| Non-interactive / unattended (autopilot) | **Never** — nothing here may block on a human. |
+
+`--no-clarify` skips the pass on any path; `--clarify` forces it (still a no-op when
+no human is in the loop).
+
+The hook path is excluded deliberately: `after_specify` fires seconds after the spec
+was written, and the operator's very next step in the normal flow is `/speckit-clarify`
+itself. Asking there asks twice.
+
+### How
+
+1. **Scan `spec.md` for unresolved ambiguity**: `[NEEDS CLARIFICATION: …]` markers,
+   `TBD`/`TODO`, requirements with no observable outcome, and an absent or empty
+   `## Clarifications` section.
+
+2. **If any exist, run `/speckit-clarify` and wait for it to finish.** It is the right
+   instrument, not something to reimplement here: at most 5 questions, asked one at a
+   time, and it **writes the answers back into `spec.md`** — a bullet under
+   `## Clarifications` *and* an edit to each requirement the answer changes.
+
+   Durability is the whole reason to delegate rather than ask inline: this command
+   **regenerates the issue body from `spec.md` on every later sync**, so an answer
+   captured only in the issue body is erased by the next `after_specify` run. If it
+   is not in the spec, it does not survive.
+
+   Skip this step when the spec already carries a `## Clarifications` session and no
+   markers remain — that ambiguity is already resolved.
+
+3. **Re-read `spec.md` after clarify returns.** Rendering the body from the copy
+   loaded before the pass publishes the pre-clarification spec, which is the exact
+   failure this section exists to prevent.
+
+4. **Ask the issue-shaped questions clarify does not cover.** `/speckit-clarify`
+   optimizes a spec for planning; this command is filing a unit of work, and those are
+   not the same gaps:
+
+   | Gap in the spec | Ask |
+   |---|---|
+   | No closable definition of done | What must be true for this issue to be closed? |
+   | A bug with no reproduction | The smallest steps to reproduce, and observed vs expected |
+   | Scope with no edge | What is explicitly *out* of scope for this issue |
+   | Layer genuinely ambiguous (see **Layer Split**) | frontend-only / backend-only / full-stack — it decides whether to split |
+
+   Ask only the gaps still open after step 2, and put them in a **single**
+   `AskUserQuestion` call **batched with the priority/kind question** from the next
+   section, so the user answers one picker instead of three. That tool caps a call at
+   4 questions: keep the highest-impact ones, and record anything you dropped as
+   `## Open Questions` in the issue body rather than discarding it.
+
+   Every answer is a spec change. **Write each one into `spec.md`** exactly the way
+   clarify does — a `- Q: … → A: …` bullet under today's `### Session YYYY-MM-DD`
+   heading in `## Clarifications`, plus the edit to the requirement it resolves — and
+   only then render the body. Never let an answer live only in the issue.
+
+5. **If the spec is already unambiguous, say so in one line and carry on.** A clean
+   spec is not a reason to invent questions.
+
+### Order of operations
+
+On the manual create path: **clarify → re-read `spec.md` → render body →
+`gh issue create` → labels → layer split.** The split renders its children from the
+clarified spec, so it stays last (and after the body sync — see **Layer Split**).
 
 ## GitHub Issue Integration
 
@@ -76,7 +151,7 @@ Run this on **both** paths — after creating an issue, and after updating an ex
 
 1. **Read what is already there** (`--show`). A priority the human already set is authoritative: leave it alone and do not ask again. Set only the axis that is missing.
 2. **The user supplied a priority or kind in their invocation** (e.g. `/speckit-git-issue p0 bug`, or said so in the turn) → use it verbatim, no question.
-3. **Otherwise, when a human is in the loop, ask.** Use `AskUserQuestion` with the priority options `P0 — critical`, `P1 — high`, `P2 — normal`, `P3 — low`, and lead with the one you would have inferred, marked `(Recommended)`, so accepting the default is one keystroke. Ask for the kind in the same call **only when the spec is genuinely ambiguous** — a spec describing broken behaviour is a `bug` and one describing new capability is a `feature`, and asking about the obvious wastes the user's turn.
+3. **Otherwise, when a human is in the loop, ask.** When the **Clarify Before Creating** pass is running, this question goes in the *same* `AskUserQuestion` call as the issue-shaped ones — do not open a second picker for it. Use `AskUserQuestion` with the priority options `P0 — critical`, `P1 — high`, `P2 — normal`, `P3 — low`, and lead with the one you would have inferred, marked `(Recommended)`, so accepting the default is one keystroke. Ask for the kind in the same call **only when the spec is genuinely ambiguous** — a spec describing broken behaviour is a `bug` and one describing new capability is a `feature`, and asking about the obvious wastes the user's turn.
 4. **When no human is in the loop** — the `after_specify` hook during an unattended run, or any non-interactive session — do **not** block. Infer both from the spec and apply them, then say in your output which values were inferred rather than chosen, so a human skimming the issue can correct a bad guess.
 
 Inference heuristic, used for the recommendation in (3) and the unattended path in (4):
@@ -207,10 +282,24 @@ Spec path: <feature directory>/spec.md
 
 <the spec's functional requirements>
 
+## Clarifications
+
+<the spec's Clarifications session(s), verbatim — this is where the answers from
+ the clarify pass live, and they are only here because they are in spec.md>
+
+## Open Questions
+
+<only when something was asked and left unanswered: one bullet each, so the gap is
+ recorded on the issue instead of lost>
+
 ## Notes
 
 Generated/updated by /speckit-git-issue
 ```
+
+`## Clarifications` and `## Open Questions` follow the same rule as every other
+section — render them only when there is content. `## Clarifications` comes from
+`spec.md`, never from this command's own memory of the conversation.
 
 **`## Success Criteria` is deliberately omitted.** Presets such as `spec-minimal` strip that section out of `spec.md`, so demanding it here would require inventing content that does not exist. The same reasoning applies to any other optional section: render it only if the spec has it.
 
@@ -223,6 +312,9 @@ Generated/updated by /speckit-git-issue
 | `source_issue` present, `gh` missing or unauthenticated | **Hard error** with an install / `gh auth login` hint. |
 | `source_issue` present, `gh issue edit` non-zero exit | **Hard error**, surfacing `gh`'s own message. |
 | No feature directory or no `spec.md` | **Hard error** — the command was invoked with nothing to sync. |
+| `/speckit-clarify` missing or failing on the create path | **Warn and continue.** Ask the issue-shaped questions inline instead and write the answers into `spec.md` yourself. A missing clarify command is not a reason to file nothing. |
+| Create path, no human in the loop | **Ask nothing.** Render from the spec as-is and say in the output that the issue was filed unclarified. |
+| `--no-clarify` passed | Skip the pass silently; everything downstream is unchanged. |
 | `label-issue.sh` fails or is missing | **Warn and continue.** Labels improve autopilot's ordering; they are not the sync. |
 | Spec is single-layer, or neither layer | **No split.** Label the layer if one applies and stop. |
 | Issue already carries a layer label / `Parent: #N` | **No split** — it is already a child. |

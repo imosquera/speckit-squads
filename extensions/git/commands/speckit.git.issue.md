@@ -1,5 +1,5 @@
 ---
-description: "Sync the linked GitHub issue's body from the current feature's spec, set its priority (p0..p3) / kind (bug|feature) / layer (frontend|backend|integration) labels, and split a full-stack feature into mock-first frontend, backend, and wire-up children (a manual run with no linked issue clarifies the spec with you first, then creates it)"
+description: "Sync the linked GitHub issue's body from the current feature's spec, set its priority (p0..p3) / kind (bug|feature) / layer (frontend|backend|integration) labels, and split a full-stack feature into mock-first frontend, backend, and wire-up children (a manual run with no linked issue scans for duplicates and clarifies the spec with you first, then creates it)"
 ---
 
 # Sync Feature Issue
@@ -41,6 +41,104 @@ The skip notice should read roughly:
 ```
 
 The hook stays registered with `optional: false` in `extension.yml`: it is mandatory in the sense that the agent must always *run* it, but running it on a feature with no linked issue is a successful no-op, so it can never break `/speckit-specify` for non-GitHub users.
+
+## Duplicate Scan Before Creating
+
+Nothing in this command ever looked at what the repo already had, so a feature
+specified twice in different words became two issues — both eligible for
+autopilot's picker, both worked, the second one re-implementing or reverting the
+first. On a **manual** run that is about to open a **new** issue, search the
+existing issues first, and merge into the one that already covers this work
+instead of filing a second thread.
+
+The scan runs **before** the clarify pass: there is no point resolving a spec's
+open questions for an issue you are about to merge into an existing thread that
+already answers half of them.
+
+| Path | Duplicate scan |
+|------|----------------|
+| Manual, no `source_issue` (about to create) | **Yes** — this is the default. |
+| Manual, `source_issue` present (update) | Only with `--dupe-check`; the issue already exists. |
+| `after_specify` hook | **Never** — it creates nothing, so there is nothing to duplicate. |
+| Non-interactive / unattended | **Yes, but never blocks** — see step 4. |
+
+`--no-dupe-check` skips the scan on any path.
+
+### How
+
+1. **Find candidates** with the shared script — never with a hand-rolled
+   `gh issue list --search "<the whole title>"`, which ANDs every word of a
+   sentence and reliably returns nothing:
+
+   ```bash
+   DUPES="$CLAUDE_PROJECT_DIR/.specify/extensions/git/scripts/bash/find-duplicate-issues.sh"
+   bash "$DUPES" --title "<the title this issue would get>" \
+     [--keyword <distinctive term from the spec>]... [--exclude <issue to ignore>]
+   ```
+
+   It reduces the title to its distinctive tokens, searches each one separately,
+   and prints the best candidates as
+   `score<TAB>number<TAB>state<TAB>labels<TAB>updated<TAB>title<TAB>url`, best
+   first. Add `--keyword` for terms that matter but are not in the title (an
+   error string, a filename, a component). Closed issues are included on
+   purpose: "we already fixed this" and "we already decided not to" are both
+   answers worth having before filing.
+
+   **Score ranks, it does not decide.** It counts term overlap, so a high score
+   can still be an unrelated issue about the same subsystem and a low score can
+   still be the same bug described in different words.
+
+2. **Read the candidates before judging.** `gh issue view <n>` on anything
+   plausible — the title alone is not enough to merge on. The test is *would
+   closing one of these close the other?*, not *are these about the same file?*
+   Two bugs in one module are two issues; the same bug reported twice is one.
+
+3. **If a real candidate exists, ask the user with `AskUserQuestion`** — this
+   decision is never made silently, in either direction. Name the candidate in
+   the question (`#47 — [hindsight] Autopilot worktree-isolation guard refuses…`)
+   and offer:
+
+   | Option | What you do |
+   |---|---|
+   | **Merge into #N** | Adopt `#N` as this feature's tracking issue: write `{"source_issue": N}` into `.specify/feature.json` and take the **update** path. Create nothing. |
+   | **File a new issue, cross-linked** | Create as normal, then add a `Related: #N` line to the new body and post one `gh issue comment N` pointing at the new issue. |
+   | **Stop — I will work #N instead** | Create nothing, change nothing. Say which issue to run `/speckit-git-feature --source-issue N` against. |
+
+   Lead with the option you would have chosen, marked `(Recommended)`, and put
+   the candidate's state and title in the option description so the choice can be
+   made without opening GitHub. When two or more candidates are strong, ask about
+   the strongest and list the others in the question text.
+
+   This is its own `AskUserQuestion` call, asked **before** the clarify pass — it
+   is not batched with the priority/kind picker, because every question in that
+   batch is only worth asking once "are we even filing this?" is settled.
+
+4. **When no human is in the loop** (any non-interactive session), never block
+   and never guess a merge. Run the scan, and if any candidate scores well,
+   **create nothing**: print the candidates and exit successfully, saying the
+   feature is left unlinked pending a human's call. An unlinked feature is a
+   supported configuration; a silently duplicated issue is not, and silently
+   rewriting a stranger's issue body is worse than either.
+
+5. **No candidates, or none that survive step 2** — say so in one line and carry
+   on to the clarify pass. A clean scan is not a reason to invent a relationship.
+
+### Merging into an existing issue
+
+Adopting `#N` puts it on the update path, and **the update path regenerates the
+body from `spec.md` on every later sync** — so anything the existing issue says
+that is not in the spec is erased by the next `after_specify` run.
+
+Before the first sync, fold that content into `spec.md`: reproduction steps into
+the user scenarios, stated expectations into the functional requirements, and any
+decision recorded in the thread into `## Clarifications` as a
+`- Q: … → A: …` bullet. Only then render the body. Then post one
+`gh issue comment N` saying the issue is now tracked by this feature and naming
+the spec path, so the reporter can see what happened to their report.
+
+If the existing issue's original report cannot be reduced into the spec, that is
+strong evidence it is **not** the same unit of work — go back to step 3 and file
+separately.
 
 ## Clarify Before Creating
 
@@ -113,9 +211,15 @@ itself. Asking there asks twice.
 
 ### Order of operations
 
-On the manual create path: **clarify → re-read `spec.md` → render body →
-`gh issue create` → labels → layer split.** The split renders its children from the
-clarified spec, so it stays last (and after the body sync — see **Layer Split**).
+On the manual create path: **duplicate scan → clarify → re-read `spec.md` → render
+body → `gh issue create` → labels → layer split.** The scan comes first because a
+merge means there is nothing to clarify or create; the split renders its children
+from the clarified spec, so it stays last (and after the body sync — see
+**Layer Split**).
+
+When the scan ends in a merge, the path collapses to: **fold the existing issue's
+report into `spec.md` → clarify (if the user asked) → render body → `gh issue edit`
+→ labels → layer split**, exactly as if the issue had been linked all along.
 
 ## GitHub Issue Integration
 
@@ -127,7 +231,8 @@ clarified spec, so it stays last (and after the body sync — see **Layer Split*
    Here `gh` **MUST** be installed and authenticated: a linked issue that cannot be updated is a genuinely broken state. If `gh` is missing, `gh auth status` fails, or `gh issue edit` exits non-zero, stop with a clear error — never silently skip the sync.
 3. **If there is no `source_issue`:**
    - On the **hook** path: print the skip notice above and exit successfully.
-   - On a **manual** invocation: create one with
+   - On a **manual** invocation, once the **Duplicate Scan** has cleared the create
+     (a merge takes path 2 instead, against the adopted issue): create one with
      `gh issue create --title "<title>" --body "<body>"`
      then parse the issue number out of the returned URL and persist it back into `.specify/feature.json` as a numeric `source_issue`, preserving every other key in the file. Subsequent runs then take the update path. Then apply the triage labels (see **Priority & Kind Labels** below). Use the spec's H1 as the title, prefixed with the feature number when the branch/spec is numbered (e.g. `008: User Auth`). This is the only path that may set a title.
 
@@ -312,6 +417,10 @@ section — render them only when there is content. `## Clarifications` comes fr
 | `source_issue` present, `gh` missing or unauthenticated | **Hard error** with an install / `gh auth login` hint. |
 | `source_issue` present, `gh issue edit` non-zero exit | **Hard error**, surfacing `gh`'s own message. |
 | No feature directory or no `spec.md` | **Hard error** — the command was invoked with nothing to sync. |
+| `find-duplicate-issues.sh` fails, or `gh`/`jq` is missing | **Warn and continue.** The scan is a safety net, not the sync — say in the output that the create was unscanned so a human knows to check. |
+| Duplicate scan finds candidates, no human in the loop | **Create nothing**, exit 0, print the candidates. The feature stays unlinked. |
+| User picks **Merge into #N** | Write `source_issue: N`, fold #N's report into `spec.md`, then take the normal update path. Never `gh issue create`. |
+| `--no-dupe-check` passed | Skip the scan silently; everything downstream is unchanged. |
 | `/speckit-clarify` missing or failing on the create path | **Warn and continue.** Ask the issue-shaped questions inline instead and write the answers into `spec.md` yourself. A missing clarify command is not a reason to file nothing. |
 | Create path, no human in the loop | **Ask nothing.** Render from the spec as-is and say in the output that the issue was filed unclarified. |
 | `--no-clarify` passed | Skip the pass silently; everything downstream is unchanged. |

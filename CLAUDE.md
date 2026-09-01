@@ -181,6 +181,24 @@ on first run in a project that still tracks it, so the migration is automatic.
   and `epic` markers — creating any label the repo lacks and keeping each axis
   exclusive (`--priority p1` removes the other three; `--layer backend` removes
   the other two). Markers are independent and only ever touch themselves.
+  **A manual `/speckit-git-issue` with no linked issue checks for a duplicate
+  before it creates anything.** `find-duplicate-issues.sh` is the scan: it
+  reduces the prospective title to its distinctive tokens and searches each one
+  **separately**, because GitHub ANDs the terms of a single query and a
+  full-sentence search returns nothing; candidates score one point per distinct
+  token hit plus one per token that also lands in *their* title, and closed
+  issues are in scope on purpose ("already fixed" and "already declined" are
+  both answers). The score only ranks — the agent reads the candidates and the
+  human decides, via `AskUserQuestion`, between merging into `#N`, filing
+  cross-linked, and stopping. Two rules keep the merge honest: it runs **before**
+  the clarify pass (nothing to clarify on an issue you are about to merge away),
+  and adopting `#N` means folding that issue's own report into `spec.md` first —
+  the body is regenerated from the spec on every later sync, so a reporter's
+  repro steps left only on the issue are erased by the next `after_specify` run.
+  Unattended it never merges and never files: it prints the candidates and
+  leaves the feature unlinked, since silently rewriting a stranger's issue body
+  is worse than an unlinked feature. `--no-dupe-check` skips it; `--dupe-check`
+  forces it on the update path.
   **A manual `/speckit-git-issue` with no linked issue clarifies before it
   creates.** It runs `/speckit-clarify` first when the spec still carries
   `[NEEDS CLARIFICATION]` markers or no `## Clarifications` session, then asks the

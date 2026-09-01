@@ -16,7 +16,10 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding
   git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
-                   a manual /speckit-git-issue with no linked issue runs /speckit-clarify first and asks the
+                   a manual /speckit-git-issue with no linked issue first searches the existing issues (open and
+                   closed) for one that already covers the work and asks how to proceed — merge into it, file
+                   cross-linked, or stop (--no-dupe-check skips; unattended it never merges, it just declines to file);
+                   then runs /speckit-clarify and asks the
                    issue-shaped gaps (done-condition, repro, out-of-scope, layer) before creating — answers land
                    in spec.md, since the body is re-rendered from it on every sync (--no-clarify skips);
                    a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one

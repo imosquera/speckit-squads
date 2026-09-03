@@ -1,5 +1,5 @@
 ---
-description: "Sync the linked GitHub issue's body from the current feature's spec, set its priority (p0..p3) / kind (bug|feature) / layer (frontend|backend|integration) labels, and split a full-stack feature into mock-first frontend, backend, and wire-up children (a manual run with no linked issue scans for duplicates and clarifies the spec with you first, then creates it)"
+description: "Sync the linked GitHub issue's body from the current feature's spec, set its priority (p0..p3) / kind (bug|feature) / layer (frontend|backend|integration) labels, and split a full-stack feature into mock-first frontend, backend, and wire-up children (a manual run with no linked issue and no feature spec scans for duplicates and files directly from the description you give it — no /speckit-specify or /speckit-clarify required; a manual run inside a feature scans for duplicates and clarifies the spec with you first, then creates it)"
 ---
 
 # Sync Feature Issue
@@ -17,18 +17,58 @@ Resolve the feature directory the same way the other git commands do:
 1. `$SPECIFY_FEATURE_DIRECTORY` when set.
 2. Otherwise `feature_directory` from `.specify/feature.json`.
 
-The spec is `<feature directory>/spec.md`. If neither the feature directory nor the spec file can be resolved, stop with a clear error.
+The spec is `<feature directory>/spec.md`.
 
-## Two Invocation Modes
+- On the **hook** path, if neither can be resolved, stop with a clear error — the hook only ever fires right after `/speckit-specify` wrote one.
+- On a **manual** invocation, a missing feature directory or `spec.md` is not an error — it means there is no spec to sync from, and the command falls into **Standalone Mode** below instead of failing.
 
-This one file drives two different entry points, and they behave **differently** when no issue is linked:
+## Three Invocation Modes
+
+This one file drives multiple entry points, and they behave **differently** when no issue is linked:
 
 | Mode | Trigger | No `source_issue` in `.specify/feature.json` |
 |------|---------|----------------------------------------------|
 | **Automatic hook** | the `after_specify` hook | **Skip cleanly.** Print a one-line notice and exit successfully. Create nothing. |
-| **Manual** | the user types `/speckit-git-issue` | May create a new issue, because the user asked for one explicitly — after the clarification pass below. |
+| **Manual, inside a feature** | the user types `/speckit-git-issue`, and a feature directory + `spec.md` resolve | May create a new issue, because the user asked for one explicitly — after the duplicate scan and clarification pass below. |
+| **Manual, standalone** | the user types `/speckit-git-issue` with no feature directory/`spec.md` resolvable | Files directly from the title/description given in the invocation or the turn — see **Standalone Mode**. No spec, no clarify. |
 
-Assume you are on the **hook** path unless the user invoked `/speckit-git-issue` directly in this turn.
+Assume you are on the **hook** path unless the user invoked `/speckit-git-issue` directly in this turn. Within a manual invocation, assume you are **inside a feature** only when both the feature directory and `spec.md` resolve; otherwise you are **standalone**.
+
+## Standalone Mode (No Spec)
+
+Some issues don't warrant running `/speckit-specify` first — a quick bug report, a
+one-line chore, something filed on the way to doing something else. Standalone mode
+lets `/speckit-git-issue` file directly from whatever title/description the user
+gives it, with no feature, no `spec.md`, and no `/speckit-clarify` pass.
+
+1. **Get the content.** Use the title/description the user typed with the command
+   (e.g. `/speckit-git-issue "Login button misaligned on mobile" more detail...`) or,
+   if they invoked it bare, ask them for a one-line title and a short description
+   with `AskUserQuestion` (free text) before doing anything else. Do not invent
+   content — this mode has no spec to derive it from.
+2. **Duplicate scan still runs**, exactly as in **Duplicate Scan Before Creating**
+   below, using the given title. `--no-dupe-check` still skips it.
+3. **No clarify pass.** `/speckit-clarify` operates on `spec.md`, which does not
+   exist here — do not run it and do not reimplement the issue-shaped questions from
+   **Clarify Before Creating**; the point of this mode is to file fast. If the
+   description is clearly missing a definition of done or repro steps, ask for it in
+   the same breath as the priority/kind question (one `AskUserQuestion` call), not as
+   a separate pass.
+4. **Priority & kind labels apply as normal** (see that section) — infer from the
+   description using the same heuristic table, or ask when a human is in the loop.
+5. **No layer split.** There is no spec to classify requirements by layer, so skip
+   **Layer Split** entirely: no layer label, no `frontend`/`backend`/`wire-up`
+   children. If the work later turns out to be full-stack, running
+   `/speckit-git-feature --source-issue N` against this issue and then
+   `/speckit-git-issue` from inside that feature will pick the split logic back up
+   once a spec exists.
+6. **Create the issue** with `gh issue create --title "<title>" --body "<description,
+   rendered as-is>"`. There is no `.specify/feature.json` to write back to (standalone
+   mode is not tied to a worktree), so nothing persists a `source_issue` — this is a
+   plain GitHub issue with the duplicate-scan and labeling workflow attached, not a
+   feature-tracking issue. Tell the user the issue number/URL when done.
+7. **Everything else in this document — the update path, the clarify pass, the layer
+   split — assumes a linked feature and does not apply here.**
 
 Why the hook must not create: `/speckit-git-feature` owns the numbering contract — it opens the tracking issue *before* numbering so the spec dir, branch, and issue share one identifier. It deliberately bypasses issue creation when the caller opted out (`--timestamp`, `--number`, `GIT_BRANCH_NAME`, `--dry-run`) or when `gh` is unavailable. In all of those cases `.specify/feature.json` has no `source_issue`, and creating an issue here would either override an explicit opt-out or hard-fail `/speckit-specify` in a repo with no `gh`.
 
@@ -57,8 +97,9 @@ already answers half of them.
 
 | Path | Duplicate scan |
 |------|----------------|
-| Manual, no `source_issue` (about to create) | **Yes** — this is the default. |
-| Manual, `source_issue` present (update) | Only with `--dupe-check`; the issue already exists. |
+| Manual, inside a feature, no `source_issue` (about to create) | **Yes** — this is the default. |
+| Manual, inside a feature, `source_issue` present (update) | Only with `--dupe-check`; the issue already exists. |
+| Manual, standalone (no spec) | **Yes** — same scan, run against the given title. |
 | `after_specify` hook | **Never** — it creates nothing, so there is nothing to duplicate. |
 | Non-interactive / unattended | **Yes, but never blocks** — see step 4. |
 
@@ -149,8 +190,9 @@ conversation.
 
 | Path | Clarify pass |
 |------|--------------|
-| Manual, no `source_issue` (about to create) | **Yes** — this is the default. |
-| Manual, `source_issue` present (update) | Only when the user passes `--clarify` or asks for it in the turn. |
+| Manual, inside a feature, no `source_issue` (about to create) | **Yes** — this is the default. |
+| Manual, inside a feature, `source_issue` present (update) | Only when the user passes `--clarify` or asks for it in the turn. |
+| Manual, standalone (no spec) | **Never.** There is no `spec.md` to run `/speckit-clarify` against — see **Standalone Mode**. |
 | `after_specify` hook | **Never.** |
 | Non-interactive / unattended (autopilot) | **Never** — nothing here may block on a human. |
 
@@ -222,6 +264,10 @@ report into `spec.md` → clarify (if the user asked) → render body → `gh is
 → labels → layer split**, exactly as if the issue had been linked all along.
 
 ## GitHub Issue Integration
+
+This section covers the **hook** path and **manual, inside a feature** path. On
+**manual, standalone**, skip straight to **Standalone Mode** above — there is no
+`feature.json` to read or write.
 
 1. Read `.specify/feature.json`.
 2. **If it has a numeric `source_issue` — update that issue's body only:**
@@ -416,7 +462,9 @@ section — render them only when there is content. `## Clarifications` comes fr
 | No `source_issue`, manual path | Create the issue; `gh` missing/unauthenticated/failing → hard error. |
 | `source_issue` present, `gh` missing or unauthenticated | **Hard error** with an install / `gh auth login` hint. |
 | `source_issue` present, `gh issue edit` non-zero exit | **Hard error**, surfacing `gh`'s own message. |
-| No feature directory or no `spec.md` | **Hard error** — the command was invoked with nothing to sync. |
+| No feature directory or no `spec.md`, hook path | **Hard error** — the hook only fires right after `/speckit-specify` wrote one, so its absence means something is genuinely broken. |
+| No feature directory or no `spec.md`, manual path | **Not an error.** Falls into **Standalone Mode**: file from the given/asked-for title and description, no spec, no clarify. |
+| Standalone mode, user gave no title/description and didn't answer when asked | **Create nothing.** Say the issue was not filed for lack of content. |
 | `find-duplicate-issues.sh` fails, or `gh`/`jq` is missing | **Warn and continue.** The scan is a safety net, not the sync — say in the output that the create was unscanned so a human knows to check. |
 | Duplicate scan finds candidates, no human in the loop | **Create nothing**, exit 0, print the candidates. The feature stays unlinked. |
 | User picks **Merge into #N** | Write `source_issue: N`, fold #N's report into `spec.md`, then take the normal update path. Never `gh issue create`. |

@@ -37,6 +37,7 @@ presets/      # Spec Kit presets (template + command overrides)
   graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
   spec-minimal/                 Artifact minimalism: strips spec sections, keeps the feature tree to spec/plan/tasks
+  diff-minimal/                 Minimum-diff mandate: re-derive the issue against main, then specify the smallest change; adds a mandatory Corrections + machine-checkable Scope discipline section and holds the plan to it
   spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
   library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
   portfolio-audit/              Portfolio-wide analyze override
@@ -85,6 +86,7 @@ specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
 specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
+specify preset add --dev "$SQUADS/presets/diff-minimal"
 specify preset add --dev "$SQUADS/presets/spec-ui-preview"
 specify preset add --dev "$SQUADS/presets/library-research"
 specify preset add --dev "$SQUADS/presets/portfolio-audit"

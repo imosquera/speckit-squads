@@ -252,6 +252,34 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `graphify-on-implement` — `/speckit-implement` override that always runs `graphify update` as the final mandatory step
 - `functional-constitution` — `/speckit-constitution` **wrapper** that injects and normalizes a mandatory functional-programming governance section. Stacks with `parse-dont-validate`'s constitution layer: both match their section by title (not roman numeral) and renumber all principle sections sequentially, so neither clobbers the other (issue #37)
 - `spec-minimal` — one job: artifact minimalism. Wraps `/speckit-specify` to strip `## Assumptions`, `### Key Entities`, and `## Success Criteria` from `spec.md`; wraps `/speckit-plan` to hold the feature tree to `spec.md`, `plan.md`, `tasks.md`, and optional `quickstart.md` (`research.md`, `data-model.md`, `contracts/` are forbidden). Enforced by a mandatory prompt rule plus the self-healing `scripts/bash/enforce-minimal-tree.sh`, which folds any forbidden artifact into `plan.md` under a sentinel block and deletes it; unknown top-level entries only warn, so stacking is safe
+- `diff-minimal` — sibling to `spec-minimal`, and the distinction is the whole
+  point: that one makes the **spec** shorter, this one makes the **change**
+  smaller. A spec that faithfully restates an issue's seven-file wish list yields
+  a seven-file diff because nothing ever asks whether the change needs those
+  files (seasonpass#182: a composite index for a query the database already
+  served, and a rules edit nothing evaluates — two of seven, both removable).
+  Wraps `/speckit-specify` with a minimum-diff mandate (re-derive every path and
+  precondition the issue asserts against current `main`; extend before adding;
+  every file the issue names is a hypothesis; no drive-by refactors) and makes
+  two sections mandatory: `## Corrections to the issue as filed`, which reaches
+  the tracking issue for free because `/speckit-git-issue` renders whatever
+  sections `spec.md` contains, and `## Scope discipline`, whose
+  `**MUST NOT touch:**` backticked-glob list is the machine-checkable half.
+  `check-scope-sections.sh` asserts both exist and are populated after specify —
+  `None.` is an accepted answer for either, since a spec with no corrections
+  should say so rather than invent one — and the `/speckit-plan` wrap runs
+  `check-plan-scope.sh`, which fails with `file:line` when `plan.md`/`tasks.md`
+  plan work in a forbidden path. It reads the **artifacts, not the diff**: at
+  plan time there is no diff, and the plan is the cheap moment to catch it.
+  Two exemptions keep it from crying wolf (a checker that does gets disabled
+  within a day): lines whose own text negates (`MUST NOT`, `out of scope`, …)
+  and everything under a heading matching scope/non-goals/corrections/constraints.
+  **It mandates the smallest change, not small changes** — a migration or a
+  rename is legitimately wide, and the escape hatch is an explicit
+  `**Scope justification:**` line. A sibling preset rather than an extension of
+  `spec-minimal` because that one is a pure deterministic post-processor and this
+  adds a prompt layer; both sit at the default priority 10 and compose as `wrap`
+  layers in id order, and the stripper never touches either new section
 - `spec-ui-preview` — adds a GitHub-safe inline HTML UI preview to UI-touching specs (split out of `spec-minimal`)
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override

@@ -89,7 +89,7 @@ provides:
       description: "Auto-commit changes after a Spec Kit command completes"
     - name: speckit.git.pr
       file: commands/speckit.git.pr.md
-      description: "Open a GitHub PR for the current feature branch, auto-appending Closes #N from .specify/feature.json when source_issue is set; --draft opens it as a draft and leaves the issue open"
+      description: "Open a GitHub PR for the current feature branch, auto-appending Closes #N from .specify/feature.json when source_issue is set, copying the issue's labels onto the PR and stamping the agent session that produced it; --draft opens it as a draft and leaves the issue open"
 
   config:
     - name: "git-config.yml"

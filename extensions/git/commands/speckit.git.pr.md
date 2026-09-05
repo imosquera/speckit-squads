@@ -1,10 +1,12 @@
 ---
-description: "Open a GitHub PR for the current feature branch, auto-appending Closes #N from .specify/feature.json when source_issue is set; --draft opens it as a draft and leaves the issue open"
+description: "Open a GitHub PR for the current feature branch, auto-appending Closes #N from .specify/feature.json when source_issue is set, copying the issue's labels onto the PR and stamping the agent session that produced it; --draft opens it as a draft and leaves the issue open"
 ---
 
 # Create PR for Current Feature
 
 Open a GitHub pull request from the current feature branch into `main` (or another base passed as an argument). If `.specify/feature.json` carries a `source_issue` field — written by `/speckit-git-feature` when it created or was bound to a GitHub issue — the PR body will include a `Closes #N` line so merging the PR automatically closes that issue. That is the file's only field; every other part of the feature's identity is derived from git at read time (issue #33).
+
+The PR also inherits the tracking issue's **labels** (priority, kind, layer — whatever `/speckit-git-issue` applied), minus `autopilot:*` run-state, and carries an **Agent session** footer naming the Claude Code session that produced the branch so a reviewer can resume it locally. Both are read deterministically by the script — from `gh` and from the environment — and both can be turned off in `git-config.yml`.
 
 Designed to be invoked as the `after_implement` hook (alongside the existing auto-commit hook), or directly via `/speckit-git-pr`.
 
@@ -42,6 +44,22 @@ If a command that is supposed to run is unavailable or fails, stop and return an
 5. If the branch isn't yet on `origin`, push it (`git push -u origin <branch>`). If it was already pushed and a squash happened, force-push with `--force-with-lease`.
 6. If a PR already exists for the branch, print its URL and exit. In `--draft` mode, if that existing PR is *not* a draft, also print a warning naming `gh pr ready <url> --undo` — the script does not mutate a PR it did not create.
 7. Otherwise, run `gh pr create --base <base> --head <branch> --title <derived> --body <derived>`, adding `--draft` in draft mode. The draft flag is passed to `gh pr create` directly — never create a mergeable PR and convert it afterwards with `gh pr ready --undo`.
+8. Copy the source issue's labels onto the PR with `gh pr edit --add-label` (also on the already-exists path in step 6, so a re-run backfills them). Skipped when there is no `source_issue` or `pr_copy_labels: false`. Never `gh pr create --label`: `gh` rejects the whole create call if any label is unknown to the repo, which would lose the PR over a cosmetic failure — applied afterwards it degrades to a warning, matching `label-issue.sh`'s rule that label failures are warnings, never errors. `autopilot:*` is always filtered out; those labels are picker run-state (`claimed`/`blocked`), not a description of the change, and `autopilot:blocked` on a PR that exists because the work got done would be a lie.
+
+## Agent session footer
+
+When the script runs inside a Claude Code session it appends a `<!-- speckit:agent-session -->` block to the PR body:
+
+```text
+**Agent session** — resume this work locally:
+
+    claude --resume <CLAUDE_CODE_SESSION_ID>
+
+- Author: <git user.name> <<git user.email>>
+- Web: https://claude.ai/code/<CLAUDE_CODE_BRIDGE_SESSION_ID>
+```
+
+Every value is read from the environment or from `git config` by the script. **Do not supply any of it from the agent prompt** — a model reporting its own session id is precisely the kind of value that gets hallucinated, and a wrong resume id is worse than none. `CLAUDE_CODE_SESSION_ID` is the local transcript uuid, and only resolves on the machine holding that transcript; `CLAUDE_CODE_BRIDGE_SESSION_ID` is the claude.ai slug and is absent when the session was never bridged, in which case the `Web:` line is simply omitted. The footer no-ops outside an agent session and with `pr_session_footer: false`.
 
 ## Execution
 
@@ -63,4 +81,6 @@ contract, since the script never invokes that command itself.
 - If the current branch equals the base branch: refuse.
 - If no `source_issue` is recorded: PR is created without a closing keyword (still works, just doesn't auto-close an issue).
 - If a PR already exists for this branch: prints the existing URL, does not duplicate.
+- If the issue's labels cannot be read or applied: warn and continue — the PR is already open and a missing label never fails the command.
+- If the session env vars are absent (script run by hand, not from an agent): the footer is omitted; nothing else changes.
 - If `squash_before_pr: true` but the merge-base with `<base>` cannot be computed, or the working tree has uncommitted changes: error and stop before pushing.

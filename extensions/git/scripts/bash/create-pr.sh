@@ -2,7 +2,9 @@
 # Git extension: create-pr.sh
 # Open a GitHub PR for the current feature branch. If .specify/feature.json
 # carries `source_issue`, the PR body includes `Closes #N` so merging the PR
-# automatically closes the originating GitHub issue.
+# automatically closes the originating GitHub issue, and that issue's labels are
+# copied onto the PR (minus `autopilot:*` run-state) unless `pr_copy_labels:
+# false` is set in git-config.yml.
 #
 # Usage: create-pr.sh [base_branch] [--draft]
 #   base_branch defaults to "main".
@@ -120,14 +122,93 @@ fi
 
 # Read squash_before_pr from git-config.yml
 _config_file="$REPO_ROOT/.specify/extensions/git/git-config.yml"
-_squash=false
-if [ -f "$_config_file" ]; then
-    _val=$(grep -E '^[[:space:]]*squash_before_pr:' "$_config_file" 2>/dev/null \
+
+# Read one scalar key out of git-config.yml. Prints nothing when the file or the
+# key is absent, so every caller supplies its own default.
+_config_scalar() {
+    [ -f "$_config_file" ] || return 0
+    grep -E "^[[:space:]]*$1:" "$_config_file" 2>/dev/null \
         | head -1 \
-        | sed -E 's/^[[:space:]]*squash_before_pr:[[:space:]]*//' \
+        | sed -E "s/^[[:space:]]*$1:[[:space:]]*//" \
         | tr -d '[:space:]' \
-        | tr '[:upper:]' '[:lower:]')
-    [ "$_val" = "true" ] && _squash=true
+        | tr '[:upper:]' '[:lower:]'
+}
+
+_squash=false
+[ "$(_config_scalar squash_before_pr)" = "true" ] && _squash=true
+
+# Mirror the tracking issue's labels onto the PR. Opt out with
+# `pr_copy_labels: false`; default on, since an unlabelled PR loses the triage
+# the issue already carries (priority, kind, layer).
+_copy_labels=true
+[ "$(_config_scalar pr_copy_labels)" = "false" ] && _copy_labels=false
+
+# Copy the source issue's labels onto the PR named by $1 (a branch or URL).
+#
+# Applied with `gh pr edit --add-label` AFTER the PR exists, never
+# `gh pr create --label`: gh rejects the entire create call when any label is
+# unknown to the repo, which would lose the PR over a cosmetic failure. Post-hoc
+# it degrades to a warning, matching label-issue.sh's rule that label failures
+# are warnings, never errors.
+#
+# `autopilot:*` is skipped. Those labels are picker run-state (`claimed`,
+# `blocked`), not a description of the change, and stamping `autopilot:blocked`
+# onto a PR that exists precisely because the work got done would be a lie.
+_sync_pr_labels() {
+    [ "$_copy_labels" = "true" ] || return 0
+    echo "$_source_issue" | grep -Eq '^[0-9]+$' || return 0
+
+    local _args=()
+    local _n=0
+    local _l _out
+    while IFS= read -r _l; do
+        [ -n "$_l" ] || continue
+        case "$_l" in autopilot:*) continue ;; esac
+        _args+=(--add-label "$_l")
+        _n=$((_n + 1))
+    done < <(gh issue view "$_source_issue" --json labels -q '.labels[].name' 2>/dev/null || true)
+
+    [ "$_n" -gt 0 ] || return 0
+    if _out=$(gh pr edit "$1" ${_args[@]+"${_args[@]}"} 2>&1); then
+        echo "[specify] Copied $_n label(s) from #${_source_issue} to the PR" >&2
+    else
+        echo "[specify] Warning: could not copy labels from #${_source_issue}: $_out" >&2
+    fi
+}
+
+# Append a provenance footer naming the agent session that produced the branch,
+# so a reviewer can pick the work back up locally instead of reconstructing it.
+#
+# Everything here is read from the environment and from git — no agent is asked
+# to supply it, because an agent reporting its own session id is exactly the kind
+# of value that gets hallucinated. Claude Code exports both ids to every Bash
+# call it makes:
+#   CLAUDE_CODE_SESSION_ID         local transcript uuid -> `claude --resume <id>`
+#   CLAUDE_CODE_BRIDGE_SESSION_ID  claude.ai/code session slug (absent when the
+#                                  session was never bridged to the web app)
+# Skipped entirely outside an agent session, and with `pr_session_footer: false`.
+_session_footer=false
+[ "$(_config_scalar pr_session_footer)" != "false" ] && _session_footer=true
+
+if [ "$_session_footer" = "true" ] && [ -n "${CLAUDE_CODE_SESSION_ID:-}" ]; then
+    _who=$(git config user.name 2>/dev/null || true)
+    _email=$(git config user.email 2>/dev/null || true)
+    [ -n "$_email" ] && _who="${_who:+$_who }<${_email}>"
+    _pr_body="${_pr_body}
+
+---
+
+<!-- speckit:agent-session -->
+**Agent session** — resume this work locally:
+
+\`\`\`
+claude --resume ${CLAUDE_CODE_SESSION_ID}
+\`\`\`
+"
+    [ -n "$_who" ] && _pr_body="${_pr_body}
+- Author: ${_who}"
+    [ -n "${CLAUDE_CODE_BRIDGE_SESSION_ID:-}" ] && _pr_body="${_pr_body}
+- Web: https://claude.ai/code/${CLAUDE_CODE_BRIDGE_SESSION_ID}"
 fi
 
 # Make the base branch available locally (needed to diff an excluded path
@@ -255,6 +336,7 @@ if gh pr view "$CURRENT_BRANCH" >/dev/null 2>&1; then
         [ "$(gh pr view "$CURRENT_BRANCH" --json isDraft -q .isDraft 2>/dev/null)" = "false" ]; then
         echo "[specify] Warning: existing PR is not a draft; convert it with \`gh pr ready $_url --undo\`" >&2
     fi
+    _sync_pr_labels "$CURRENT_BRANCH"
     echo "[OK] PR already exists: $_url" >&2
     exit 0
 fi
@@ -265,6 +347,7 @@ if [ "$DRAFT" = "true" ]; then
 fi
 
 _url=$(gh pr create "${_gh_args[@]}")
+_sync_pr_labels "$CURRENT_BRANCH"
 if [ "$DRAFT" = "true" ]; then
     echo "[OK] Draft PR created: $_url" >&2
 else

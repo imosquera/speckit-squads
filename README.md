@@ -16,6 +16,9 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding
   git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
+                   a PR inherits the tracking issue's labels (pr_copy_labels) and carries an agent-session
+                   footer with the `claude --resume` id, author and claude.ai link (pr_session_footer),
+                   both read by the script from gh/git/env, never supplied by the agent;
                    a manual /speckit-git-issue with no linked issue first searches the existing issues (open and
                    closed) for one that already covers the work and asks how to proceed — merge into it, file
                    cross-linked, or stop (--no-dupe-check skips; unattended it never merges, it just declines to file);

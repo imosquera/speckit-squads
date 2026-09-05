@@ -39,6 +39,7 @@ If a command that is supposed to run is unavailable or fails, stop and return an
 2. Verify `gh` is installed and the cwd is a git repo on a non-default branch.
 3. Resolve the feature:
    - The feature directory is derived from the current branch (`specs/<branch>`, honouring `SPECIFY_FEATURE_DIRECTORY`/`SPECIFY_FEATURE`) → used to derive the PR title from the spec's H1 and to mention spec/plan/tasks paths in the PR body.
+   - When a `source_issue` is present the title is prefixed `#N: `, so the PR reads as the delivery of that issue in a list view. A prefix, not a trailing `(#N)` — GitHub appends `(#<pr>)` to the subject itself on a squash merge, and a title carrying both would read as two PR numbers. Double-prefixing is guarded, so a spec H1 that already names the issue is left alone. The squashed commit subject uses the same string, keeping commit and PR titles identical.
    - `source_issue` is read from `.specify/feature.json`, its only field → if present and numeric, append `Closes #N` to the PR body.
 4. If `squash_before_pr: true` in `git-config.yml`, squash every commit between `merge-base(HEAD, <base>)` and `HEAD` into a single commit (title from the spec H1, body listing the original commit subjects). Aborts if the working tree has uncommitted changes.
 5. If the branch isn't yet on `origin`, push it (`git push -u origin <branch>`). If it was already pushed and a squash happened, force-push with `--force-with-lease`.
@@ -79,7 +80,7 @@ contract, since the script never invokes that command itself.
 - In `--draft` mode with a pre-existing non-draft PR: warn with the `gh pr ready --undo` hint and exit successfully; the existing PR is left untouched.
 - If `gh` is missing: error with install hint.
 - If the current branch equals the base branch: refuse.
-- If no `source_issue` is recorded: PR is created without a closing keyword (still works, just doesn't auto-close an issue).
+- If no `source_issue` is recorded: PR is created without a closing keyword and without the `#N: ` title prefix (still works, just doesn't auto-close an issue).
 - If a PR already exists for this branch: prints the existing URL, does not duplicate.
 - If the issue's labels cannot be read or applied: warn and continue — the PR is already open and a missing label never fails the command.
 - If the session env vars are absent (script run by hand, not from an agent): the footer is omitted; nothing else changes.

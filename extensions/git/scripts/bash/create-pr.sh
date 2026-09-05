@@ -104,6 +104,18 @@ if [ -z "$_pr_title" ]; then
     _pr_title="$CURRENT_BRANCH"
 fi
 
+# Lead the title with the tracking issue number, so the PR is identifiable as
+# the delivery of #N from a list view without opening it.
+#
+# Prefix rather than a trailing `(#N)`: GitHub itself appends `(#<pr>)` to the
+# subject on a squash merge, and a title carrying both would read as two PR
+# numbers. Guarded against double-prefixing so a re-run, or a spec H1 that
+# already names the issue, does not produce `#12: #12: ...`.
+if echo "$_source_issue" | grep -Eq '^[0-9]+$' && \
+   ! echo "$_pr_title" | grep -Eq "^#${_source_issue}([^0-9]|$)"; then
+    _pr_title="#${_source_issue}: ${_pr_title}"
+fi
+
 # Build PR body
 _pr_body=""
 if [ -n "$_feature_dir" ]; then

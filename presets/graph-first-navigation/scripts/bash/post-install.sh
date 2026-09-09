@@ -40,7 +40,7 @@ else
             ((.hooks // []) | map(.command // "") | join(" ") | contains("graph_first_guard.py")) | not
           ))
           + [{
-              matcher: "Grep|Glob",
+              matcher: "Grep|Glob|Bash|Edit|Write|MultiEdit",
               hooks: [{
                 type: "command",
                 command: $cmd,
@@ -50,7 +50,7 @@ else
             }]
         )
     ' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
-    echo "  registered PreToolUse hook (Grep|Glob) in $SETTINGS"
+    echo "  registered PreToolUse hook (Grep|Glob|Bash|Edit|Write|MultiEdit) in $SETTINGS"
   fi
 fi
 
@@ -62,47 +62,51 @@ BLOCK="$(cat <<'EOF'
 <!-- BEGIN graph-first-navigation -->
 ## Navigating this codebase
 
-When `graphify-out/` exists in this project, query the graph **before** reaching
-for Grep/Glob for any question about structure, callers, dependencies, imports,
-or file relationships. The graph was built by parsing, so it answers those
-definitively; grep is text matching and is the slower, noisier instrument for
-exactly the questions the graph exists to answer.
+**The knowledge graph is the first instrument for any question about structure,
+callers, dependencies, imports, or file relationships — in every checkout,
+including a fresh worktree that has no `graphify-out/` yet.** The graph was
+built by parsing, so it answers those definitively; grep is text matching, and
+the slower, noisier instrument for exactly the questions the graph exists to
+answer.
+
+| Question | Instrument |
+| --- | --- |
+| structure, callers, dependents, imports, "what reads this" | `graphify query "what calls <symbol>"` |
+| how two modules connect | `graphify path "<A>" "<B>"` |
+| what is this node, what does it touch | `graphify explain "<symbol>"` |
+| TypeScript rename / signature change / type change | LSP `findReferences`, `incomingCalls`, `goToDefinition` — **before the first edit**, not `tsc --noEmit` in a loop afterwards (probe for it first, below) |
+| exact string, comment/log/prose text, config value, env var name, route path, generated or vendored file | grep — correct as-is |
+
+**Missing or stale means BUILD, never grep.**
 
 ```bash
-graphify query "what calls <symbol>"    # callers, dependents, readers
-graphify path "<A>" "<B>"               # how two modules connect
-graphify explain "<symbol>"             # what a node is and what it touches
+graphify update /abs/path/to/this/checkout
 ```
 
-**For TypeScript, the language server is the instrument for exact call sites —
-when it is reachable.** The LSP tool spawns it as a bare command name, so it has
-to be on `$PATH`; a copy sitting in `node_modules/.bin` does not count. Probe
-before reaching for it:
+Always pass the path. A bare `graphify update` rebuilds whichever project the
+CWD resolves to — from a worktree that is regularly another worktree's graph.
+
+**The language server has to be reachable before it can be the instrument.** The
+LSP tool spawns `typescript-language-server` as a bare command name, so a copy in
+`node_modules/.bin` does not count and an unprobed call fails with `ENOENT`:
 
 ```bash
 command -v typescript-language-server
 ```
 
-**Found** — use the LSP tool (`findReferences`, `incomingCalls`,
-`goToDefinition`) to scope a rename, signature change, or type change **before
-the first edit**, not `tsc --noEmit` in a loop afterwards.
-
-**Not found** — do not call the LSP tool. It fails with `ENOENT` and tells you
-nothing the probe did not. Use the graph and grep instead, and record which one
-the call sites came from.
-
-To make it found, project-locally (no global `npm i -g`):
+Not found → do not call the LSP tool. Use the graph and grep, and record which
+one the call sites came from. To make it found, project-locally (never
+`npm i -g`):
 
 ```bash
-ROOT="$(git rev-parse --show-toplevel)"     # this checkout's root, from anywhere in it
-npm install --prefix "$ROOT"
-export PATH="$ROOT/node_modules/.bin:$PATH"
+cd "$(git rev-parse --show-toplevel)"
+npm install
+export PATH="$PWD/node_modules/.bin:$PATH"
 ```
 
 The `npm install` is load-bearing in a worktree, which starts with no root
 `node_modules` at all: without it even `npx typescript-language-server`
-"succeeds" only by downloading the package at run time — the global-ish install
-a pinned dev dependency exists to prevent.
+"succeeds" only by downloading the package at run time.
 
 **Staleness.** A graph is built against a commit; a feature worktree diverges
 from it. Before trusting a negative answer ("nothing else reads this"), check
@@ -112,13 +116,16 @@ freshness:
 .specify/presets/graph-first-navigation/scripts/bash/graph-freshness.sh .
 ```
 
-A stale graph means **rebuild it** (`graphify update`). It does not mean fall
-back to grep.
+STALE means rebuild. It does not mean fall back to grep.
 
-**Grep remains correct for:** literal string searches; comment, log, and prose
-text; config values and env-var names; generated, vendored, or minified files;
-file-content questions in languages or formats the graph does not model; and
-confirming an exact textual occurrence the graph pointed you at.
+A worktree's graph is local — keep it out of version control. `/speckit-git-worktree`
+and `/speckit-git-feature` build it at creation time (`seed-graph.sh`, skippable
+with `SPECKIT_SKIP_GRAPH=1`) and arrange for git not to see it, because a
+committed `graphify-out/` makes the freshness gate report STALE forever.
+
+A PreToolUse hook reminds — never blocks — when a Grep/Glob/`rg` looks
+structural, when the checkout has no graph, and on the first TypeScript edit of
+a session.
 <!-- END graph-first-navigation -->
 EOF
 )"

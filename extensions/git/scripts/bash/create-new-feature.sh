@@ -647,6 +647,12 @@ if [ "$DRY_RUN" != true ]; then
                 exit 1
             fi
         fi
+        # Seed the worktree's knowledge graph, so graph-first navigation works
+        # from the worktree's first minute instead of being switched off by a
+        # missing graphify-out/. Best effort; never fails feature creation.
+        if [ -x "$SCRIPT_DIR/seed-graph.sh" ]; then
+            "$SCRIPT_DIR/seed-graph.sh" "$WORKTREE_PATH" || true
+        fi
     else
         >&2 echo "[specify] Warning: Git repository not detected; skipped branch + worktree creation for $BRANCH_NAME"
     fi

@@ -40,6 +40,10 @@ independently.
   gate/test failures without asking — but write down *what* you decided and *why* as
   issue comments, so nothing is a black box. The right to act autonomously is paid
   for with a legible record.
+- **Ceremony is proportional to the change.** A small, unambiguous fix skips
+  spec/clarify/plan/tasks and goes straight to implementation — see
+  [Step 2.5](#step-25--is-this-small-enough-to-skip-the-ceremony). Review, commit,
+  and the draft PR are never skipped; they are the gates the fast path leans on.
 - **Stop only on a hard blocker** (see [Stop conditions](#stop-conditions)). A
   wrong-but-recoverable guess is acceptable; a wrong *irreversible* action is not.
 - **Optional lifecycle hooks run by default — `optional` is not `skip`.** Every
@@ -358,6 +362,41 @@ mismatched numbering.
    worktree** is auto-titled `#N: <issue title>`.
 6. **Post the first progress comment** on the issue: "🤖 Autopilot picked this up —
    worktree `NNN-slug` created. Starting spec."
+
+## Step 2.5 — Is this small enough to skip the ceremony?
+
+**A one-line fix does not need a spec, a plan, and a task list.** Producing four
+documents for a three-line change is the ceremony costing more than the work, and
+it buries the actual diff in a review. Decide once, here, before Step 3.
+
+**Take the fast path only when every one of these holds** — read the code first;
+this is a judgement about the change, not about the issue's word count:
+
+- one behaviour changes, in roughly **1–3 files** and on the order of **50 lines**
+- **nothing structural**: no new dependency, no schema/API/interface change, no
+  migration, no new user-facing surface, no rename with a blast radius
+- **no real ambiguity** — after reading the code you know exactly what to change;
+  there is nothing a `/speckit-clarify` round would have asked
+- the issue is not labelled `epic`
+
+Any doubt on any bullet → **full pipeline**, Steps 3–7 as written. The fast path is
+for changes that are obviously small, not for changes you hope are small.
+
+**On the fast path:**
+
+1. **Skip Steps 3–6 entirely** — no `spec.md`, `plan.md`, `tasks.md`, no clarify.
+   `create-pr.sh` falls back to the branch name when there is no spec, so nothing
+   downstream breaks.
+2. **Post the decision** as the issue comment for this phase: "🤖 Fast path — small
+   change (<what changes, which files>); skipping spec/plan/tasks." That comment is
+   the record a reviewer checks the call against.
+3. **Implement directly** in the worktree, then rejoin at **Step 8 — Review**.
+   Review, commit, and the draft PR are **not** optional on this path: they are the
+   only gates left.
+4. **Bail out to the full pipeline the moment the change stops being small.** If the
+   edit spreads past the bullets above, say so in a comment, run `/speckit-specify`
+   from where you are, and continue with Steps 3–7. Discovering the change was
+   bigger than it looked is the expected failure mode, not a stop condition.
 
 ## Step 3 — Specify
 

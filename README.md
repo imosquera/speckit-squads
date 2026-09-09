@@ -14,8 +14,10 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    bound to one repo + checkout in both directions — a fix target in another repo is a durable stop,
                    and --cross-repo preflight skips issues already delivered by a PR elsewhere;
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
-                   subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding
-  git/             Feature-branch + worktree + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
+                   subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding;
+                   a small, unambiguous change skips spec/clarify/plan/tasks and goes straight to implementation
+                   (Step 2.5), keeping review + draft PR as the gates
+  git/             Feature-branch + worktree (graph seeded at creation via seed-graph.sh) + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
                    a PR is titled "#N: <spec H1>" and inherits the tracking issue's labels (pr_copy_labels) and carries an agent-session
                    footer with the `claude --resume` id, author and claude.ai link (pr_session_footer),
                    both read by the script from gh/git/env, never supplied by the agent;

@@ -119,6 +119,11 @@ if [[ $RC -ne 0 ]]; then
     exit 1
 fi
 
+# Seed the worktree's knowledge graph, so graph-first navigation is available
+# from its first minute rather than being switched off by a missing graphify-out/.
+SEED_GRAPH="$(dirname "${BASH_SOURCE[0]}")/seed-graph.sh"
+[[ -x "$SEED_GRAPH" ]] && "$SEED_GRAPH" "$WORKTREE_PATH" || true
+
 echo "BRANCH_NAME: $BRANCH_NAME"
 echo "WORKTREE_PATH: $WORKTREE_PATH"
 printf '# NEXT STEP: cd %q\n' "$WORKTREE_PATH"

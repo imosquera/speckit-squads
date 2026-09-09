@@ -29,6 +29,9 @@ provides:
       file: scripts/bash/worktree-add.sh
       executable: true
       command: speckit.git.worktree
+    - name: seed-graph.sh
+      file: scripts/bash/seed-graph.sh
+      executable: true
     - name: clean.sh
       file: scripts/bash/clean.sh
       executable: true

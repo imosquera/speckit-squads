@@ -136,7 +136,9 @@ def message(tool: str, pattern: str, note: str) -> str:
         '  graphify path "<A>" "<B>"              — how two modules connect\n'
         '  graphify explain "<symbol>"            — what a node is and touches\n'
         "  the LSP tool (findReferences / incomingCalls / goToDefinition) for exact\n"
-        "  TypeScript call sites before a rename or signature change.\n"
+        "  TypeScript call sites before a rename or signature change — but only\n"
+        "  once `command -v typescript-language-server` finds it; unprobed, that\n"
+        "  call fails with ENOENT. See CLAUDE.md for the project-local bootstrap.\n"
         "\n"
         "Grep is still the right tool for: literal strings, comment/log text, config\n"
         "values, generated or vendored files, and anything the graph does not model."

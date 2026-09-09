@@ -8,9 +8,9 @@ strategy: "wrap"
 This preset wraps `/speckit-implement`. It adds one obligation, before any
 implementation work starts: renames, signature changes, and type changes are
 scoped with the **language server**, not discovered afterwards by compiling in
-a loop. `functions/package.json` exists in part to satisfy the constitution's
-Language Server clause — the project already has a position on this; align with
-it rather than inventing one.
+a loop. The language server has to be **reachable** for that to be a real
+obligation rather than a slogan, so step 2 probes for it and names the fallback
+when it is absent.
 
 ## User Input
 
@@ -30,13 +30,24 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    A feature worktree diverges from the commit the graph was built at, so this
    check is load-bearing here more than anywhere else. `STALE` → rebuild
-   (`graphify update`) and re-check. `ABSENT` → no graph in this project; use
-   the language server alone and say so.
+   (`graphify update`) and re-check. `ABSENT` → no graph in this project; fall
+   back to the language server if the probe in step 2 finds it, and to grep if
+   it does not — and say which.
 
 2. **Enumerate the blast radius of every identity-changing edit** — every
    rename, signature change, type change, moved export, or deleted symbol the
-   tasks call for. Where an LSP tool is available it is the **required**
-   instrument:
+   tasks call for.
+
+   **Establish availability with the probe, not with a failed call:**
+
+   ```bash
+   command -v typescript-language-server
+   ```
+
+   Not found → do not call the LSP tool; it fails with `ENOENT`. Use the graph
+   and grep, and record that provenance. `CLAUDE.md` has the project-local
+   bootstrap that makes the probe succeed. Found → the LSP tool is the
+   **required** instrument:
 
    - `findReferences` — every reference to the symbol
    - `incomingCalls` — every caller of the function

@@ -95,6 +95,12 @@ wrong. Grep is the right instrument for:
 - confirming an exact textual occurrence at a site the graph or LSP already
   identified
 - any project with no `graphify-out/` at all
+- any checkout where `command -v typescript-language-server` comes up empty:
+  the LSP tool spawns a bare command name, so an unprobed call fails with
+  `ENOENT` rather than answering. Probe, then either bootstrap it locally
+  (`npm install --prefix "$(git rev-parse --show-toplevel)"` +
+  `node_modules/.bin` on `$PATH`) or fall back and record which instrument
+  the call sites came from
 
 ## Composition
 

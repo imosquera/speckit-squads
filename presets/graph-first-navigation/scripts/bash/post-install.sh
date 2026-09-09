@@ -74,10 +74,35 @@ graphify path "<A>" "<B>"               # how two modules connect
 graphify explain "<symbol>"             # what a node is and what it touches
 ```
 
-For TypeScript, the language server is the instrument for exact call sites:
-use the LSP tool (`findReferences`, `incomingCalls`, `goToDefinition`) to scope
-a rename, signature change, or type change **before the first edit** — not
-`tsc --noEmit` in a loop afterwards.
+**For TypeScript, the language server is the instrument for exact call sites —
+when it is reachable.** The LSP tool spawns it as a bare command name, so it has
+to be on `$PATH`; a copy sitting in `node_modules/.bin` does not count. Probe
+before reaching for it:
+
+```bash
+command -v typescript-language-server
+```
+
+**Found** — use the LSP tool (`findReferences`, `incomingCalls`,
+`goToDefinition`) to scope a rename, signature change, or type change **before
+the first edit**, not `tsc --noEmit` in a loop afterwards.
+
+**Not found** — do not call the LSP tool. It fails with `ENOENT` and tells you
+nothing the probe did not. Use the graph and grep instead, and record which one
+the call sites came from.
+
+To make it found, project-locally (no global `npm i -g`):
+
+```bash
+ROOT="$(git rev-parse --show-toplevel)"     # this checkout's root, from anywhere in it
+npm install --prefix "$ROOT"
+export PATH="$ROOT/node_modules/.bin:$PATH"
+```
+
+The `npm install` is load-bearing in a worktree, which starts with no root
+`node_modules` at all: without it even `npx typescript-language-server`
+"succeeds" only by downloading the package at run time — the global-ish install
+a pinned dev dependency exists to prevent.
 
 **Staleness.** A graph is built against a commit; a feature worktree diverges
 from it. Before trusting a negative answer ("nothing else reads this"), check

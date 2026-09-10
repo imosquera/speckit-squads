@@ -183,6 +183,28 @@ means the whole backlog is unworkable right now — say so and stop; that's succ
 not failure, unless the script reported a hard failure (couldn't parse issues),
 which is a Stop condition.
 
+`STALE: #N <branch> — <evidence>` is the one verdict that is **not** a refusal. It
+appears only on the explicit-issue path in an attended session, and it means: a
+branch or worktree for `#N` exists, but the evidence says nothing is working on it
+(clean tree, last commit older than the live window, no open PR). The two lines
+after it are the choice, verbatim from the script:
+
+```
+STALE: #237 237-contacts — commit abc1234, clean, last commit 3d ago, 4/12 tasks done, no open PR
+RESUME: 237 237-contacts /path/to/worktree
+CLEAN: 237 git worktree remove /path/to/worktree && git branch -D 237-contacts
+```
+
+Relay all three to the operator and **ask which** — resuming someone's abandoned
+half-finished worktree and deleting it are both irreversible-ish, and the operator
+is the one who knows whether that spec was theirs. Never pick for them. Before
+issue #60 this same situation printed `SKIP: #237 in-progress:237-contacts` and
+nothing else, so an operator who had *just* created that worktree in the previous
+session was refused with nothing to act on, seven times in fifty days. Under
+`autopilot-run.sh` the verdict never appears — the wrapper exports
+`SPECKIT_AUTOPILOT_UNATTENDED=1` and the hard `SKIP:` stands, because there is
+nobody to answer and a live sibling run must never be reaped.
+
 `SKIP: #N delivered — <url> (<state>)` needs one extra write before you stop.
 Preflight only *reads*; without a durable mark the next tick re-derives the same
 answer and the issue keeps cycling — the exact re-pick loop `autopilot:blocked`
@@ -212,36 +234,6 @@ that already carries `autopilot:blocked` is left alone rather than re-commented.
 **Report the pick** to the user in one line (number, title, why it was chosen over
 older ones that were skipped) before you start building.
 
-### Claim it immediately — before any other action
-
-The moment you have a `PICK:` result, claim the issue **before** doing anything
-else (before Step 2's worktree work, before writing any file). This is the one and
-only place that applies the `autopilot:claimed` label — the wrapper script
-(`autopilot-run.sh`) no longer claims on your behalf; it only decides whether to
-launch you and which issue to hand you. That split matters: if the wrapper claimed
-*and* the skill claimed, a session could see its own wrapper-applied claim during
-its eligibility check and mistake it for a competing run (the "self-starve" bug).
-Because claiming now happens exactly once, per run, inside the skill, that
-confusion can't happen — you always know the claim on your picked issue is yours.
-
-```bash
-gh label create "autopilot:claimed" --color "0075ca" \
-  --description "Autopilot is actively working this issue" 2>/dev/null || true
-gh issue edit "$N" --add-label "autopilot:claimed" \
-  || { echo "claim failed on #$N — stopping rather than risk a collision"; exit 1; }
-```
-
-Labeling isn't a perfect distributed lock (no compare-and-swap), so treat it as one
-layer of a defense-in-depth: the local single-flight lock in `autopilot-run.sh`
-serializes same-machine ticks, this label serializes cross-machine/manual runs, and
-Step 2's fresh liveness re-check catches the residual race window. Remember to
-**remove this label on every exit path** — success (end of Step 9) or any Stop
-condition (see [Stop conditions](#stop-conditions)):
-
-```bash
-gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
-```
-
 ## Step 1.5 — Confirm the fix belongs in THIS repo
 
 **An autopilot run is bound to exactly one repository and one checkout.**
@@ -257,8 +249,27 @@ same issue up again (issue #34). The pre-existing "fix target outside any git re
 stop condition did not catch it, because that target was inside a perfectly good
 repo — just not ours.
 
-So, before any spec, branch, or worktree: read the issue and list every file path it
-asks you to change or create, then hand them all to the guard in one call:
+**This runs before the claim, not after it.** It used to sit after Step 1's claim
+block, so a run that discovered the target was undeliverable had already written
+`autopilot:claimed` onto an issue in a shared backlog and had to unwind it — the
+recovery was correct but the claim should never have existed (issue #48). The guard
+is read-only and takes a second; the claim is a write other runs can see, so the
+cheap deterministic check goes first.
+
+Putting a read-only step ahead of the claim does widen the unclaimed window, and
+`gh issue edit --add-label` is not a compare-and-swap, so two runs that pass Step 1
+together could both reach the claim (PR #98 review). The window is closed where it
+can actually be closed — **after** the write, not by ordering: the claim block below
+compares the issue's `labeled` timeline event before and against after its own edit,
+and a run whose edit produced no new event is looking at somebody else's claim and
+yields. That check works at any ordering, which is why the ordering can stay the one
+that never claims an undeliverable issue. Underneath it, `autopilot-run.sh`'s
+single-flight lock still serializes this machine's ticks and Step 2.0's liveness
+re-check still catches a sibling that got as far as a branch or worktree.
+
+So, before the claim — and before any spec, branch, or worktree: read the issue and
+list every file path it asks you to change or create, then hand them all to the
+guard in one call:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
@@ -278,8 +289,9 @@ Pass paths you are reasonably confident about. If the issue names no file at all
 skip the guard rather than inventing targets — the check is a scope guard, not a
 substitute for reading the issue.
 
-**On a non-zero exit, stop.** This is a *Durable* stop: park the issue and release
-the claim, exactly as [Stop conditions](#stop-conditions) prescribes.
+**On a non-zero exit, stop.** This is a *Durable* stop: park the issue, exactly as
+[Stop conditions](#stop-conditions) prescribes. There is no claim to release yet —
+that is the point of running the guard here.
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
@@ -287,11 +299,69 @@ PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.
 bash "$PARK_SCRIPT" "$N" \
   "fix target <path> lives in <other-repo>; this autopilot run is bound to <this-repo> — move the issue to that repo, or clear autopilot:blocked if it can be fixed here" \
   --title "📍 **Wrong repository**"
-gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
 ```
 
 Say plainly in the final report which repo the fix belongs in, so a human can move
 the issue rather than guess why it was parked.
+
+### Claim it — right after the locality guard, before anything else
+
+The moment the guard above says the fix belongs here, claim the issue — **before**
+doing anything else (before Step 2's worktree work, before writing any file). The
+locality guard is the only thing that precedes the claim, and it precedes it because
+it is read-only, deterministic, and can rule the issue out entirely (issue #48);
+everything else waits, and the read-after-write check below is what keeps that
+ordering safe rather than merely cheap. This is the one and
+only place that applies the `autopilot:claimed` label — the wrapper script
+(`autopilot-run.sh`) no longer claims on your behalf; it only decides whether to
+launch you and which issue to hand you. That split matters: if the wrapper claimed
+*and* the skill claimed, a session could see its own wrapper-applied claim during
+its eligibility check and mistake it for a competing run (the "self-starve" bug).
+Because claiming now happens exactly once, per run, inside the skill, that
+confusion can't happen — you always know the claim on your picked issue is yours.
+
+**Verify the claim is yours** — adding a label that is already there is a silent
+no-op, so a successful `gh issue edit` proves nothing on its own. GitHub records a
+`labeled` timeline event only when the label was actually *added*, so read the
+newest one before and after your edit: if it did not change, your add was the no-op
+and the standing claim belongs to another run.
+
+```bash
+claim_event() {   # newest `labeled autopilot:claimed` event, "" when unreadable
+  gh api "repos/{owner}/{repo}/issues/$N/timeline" --paginate \
+    --jq '[.[] | select(.event=="labeled" and .label.name=="autopilot:claimed")
+           | .created_at] | last // empty' 2>/dev/null | tail -1
+}
+gh label create "autopilot:claimed" --color "0075ca" \
+  --description "Autopilot is actively working this issue" 2>/dev/null || true
+BEFORE="$(claim_event)"
+gh issue edit "$N" --add-label "autopilot:claimed" \
+  || { echo "claim failed on #$N — stopping rather than risk a collision"; exit 1; }
+AFTER="$(claim_event)"
+if [ -n "$AFTER" ] && [ "$AFTER" = "$BEFORE" ]; then
+  echo "#$N was already claimed by another run at $AFTER — yielding"
+  exit 1
+fi
+```
+
+Two rules make that check safe to act on. **When you yield, do not remove the
+label** — it is the other run's claim, and the cleanup snippets below apply only to
+a claim you won. And when both reads come back empty (the timeline call failed, no
+network, a token without the scope), **proceed**: the verification is an added
+layer, and losing it leaves you exactly where every run stood before it existed,
+not somewhere worse.
+
+Labeling still isn't a distributed lock, so treat the whole thing as
+defense-in-depth: the local single-flight lock in `autopilot-run.sh` serializes
+same-machine ticks, the label plus this read-after-write serializes
+cross-machine/manual runs, and Step 2's fresh liveness re-check catches whatever
+gets past both. Remember to
+**remove this label on every exit path** — success (end of Step 9) or any Stop
+condition (see [Stop conditions](#stop-conditions)):
+
+```bash
+gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
+```
 
 ## Step 2 — Bind a worktree to the EXISTING issue (avoid the duplicate-issue trap)
 
@@ -311,17 +381,23 @@ mismatched numbering.
    ```bash
    python3 "$PREFLIGHT_SCRIPT" --worktree-check "$N"
    ```
-   If this reports `LIVE:` (a branch, worktree, or PR for `#N` now exists — e.g. a
-   sibling run created one in the interim), **do not resume it — stop and report it
-   as a collision**, same as a Step 1 SKIP, and remove your own claim first (see the
-   cleanup snippet above). There is no automatic resume path in this skill: an
-   existing branch or worktree for `#N` is always treated as another run's
-   in-progress work, never as something to pick back up, because a live sibling and
-   a crashed leftover look identical at a glance (this ambiguity — an empty
-   just-created worktree mistaken for an abandoned one — is exactly how two runs
-   collided on issue #150; see issue #19). If a human wants to actually resume a
-   dead worktree, that's a deliberate manual action outside this skill, not
-   something to infer here. Only `CLEAR` means proceed.
+   **Only `CLEAR` means proceed.** Anything else — `LIVE:` or `STALE:` — is a
+   collision: a branch, worktree, or PR for `#N` now exists that did not exist a
+   moment ago, so a sibling run created it in the interim. Stop and report it, same
+   as a Step 1 SKIP, and remove your own claim first (see the cleanup snippet
+   above). There is no automatic resume path in this skill; an existing branch or
+   worktree for `#N` is never something to pick back up here (that ambiguity — an
+   empty just-created worktree mistaken for an abandoned one — is exactly how two
+   runs collided on issue #150; see issue #19).
+
+   The verdict now carries its evidence (`STALE: 237-contacts — commit abc1234,
+   clean, last commit 3d ago, no open PR`), and issue #60 is why: quote it in the
+   report so the human deciding whether to clean the leftover up has the facts
+   without re-deriving them. `STALE` here still does **not** license you to reap it
+   — a thing that appeared in the seconds since Step 1 is far more likely to be a
+   sibling that has not committed yet than genuine abandonment, and the classifier
+   resolves every unknown toward `LIVE` precisely because reaping is the
+   unrecoverable direction.
 1. Derive a slug from the issue title (kebab-case, trimmed) and the branch name
    `NNN-slug`, zero-padded to the repo's convention (e.g. `082-signup-thankyou`).
 2. Create the branch + worktree **without** creating an issue, and bind it to `#N`

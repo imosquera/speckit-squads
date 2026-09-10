@@ -133,6 +133,14 @@ if [ -n "$PICKED_ISSUE" ]; then
   trap 'gh issue edit "$PICKED_ISSUE" --remove-label "autopilot:claimed" 2>/dev/null || true; rmdir "$lock" 2>/dev/null' EXIT
 fi
 
+# Tell the session nobody is reading it. `preflight-issues.py` uses this to
+# decide what a STALE branch/worktree means on the explicit-issue path: a human
+# who typed the number is offered resume-or-clean (issue #60), while a scheduled
+# tick keeps the hard SKIP, because there is nobody to make that choice and
+# reaping a sibling run's worktree is unrecoverable. Both arrive as the same
+# `preflight-issues.py <file> <N>` call, so the environment is the only seam.
+export SPECKIT_AUTOPILOT_UNATTENDED=1
+
 echo "$(ts) === autopilot pass start :: $PROJECT ==="
 # The slash command drives the speckit-autopilot-run skill; the flag lets the
 # unattended session use git/gh/file tools without an interactive prompt.

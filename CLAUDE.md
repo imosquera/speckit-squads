@@ -93,6 +93,21 @@ it. Our tooling never reads `feature_directory`: branch, feature number, worktre
 and spec directory are resolved at read time by `spec_kit_resolve_feature()` in
 `extensions/git/scripts/bash/git-common.sh`.
 
+**Our writers merge; core's does not, so `source_issue` is mirrored to a sidecar.**
+`spec_kit_write_feature_json()` is the only writer here and it preserves the keys it
+was not given. Core's `_persist_feature_json` (core `common.sh`, reached from
+`setup-plan` and every `get_feature_paths()` call) writes `feature_directory` with a
+plain `>` redirect, dropping `source_issue` mid-pipeline — the PR then opened with no
+`Closes #N` and the tracking issue stayed open after the merge (issue #78). Since core's
+writer is not ours to fix, the linkage is mirrored to
+`<worktree git dir>/speckit-source-issue`: private to the worktree, never shared, never
+committed, unreachable by core. `spec_kit_feature_source_issue()` recovers from it,
+heals the file, and warns on stderr; `auto-commit.sh` reads through that helper on every
+`after_*` phase, so the heal lands before the readers that still inline the `sed`
+(archive, session-title). `create-pr.sh` refuses to open a PR when the sidecar says the
+worktree was linked but the issue cannot be recovered. `./test-feature-json.sh` is the
+check.
+
 Never reintroduce `branch_name`, `feature_num`, or `worktree_path` into that file, and
 never read a feature's paths out of it. Because the file used to be
 tracked, every new worktree inherited the *previous* feature's copy from the base branch,

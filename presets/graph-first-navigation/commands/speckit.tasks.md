@@ -37,8 +37,12 @@ You **MUST** consider the user input before proceeding (if not empty).
    .specify/presets/graph-first-navigation/scripts/bash/graph-freshness.sh .
    ```
 
-   `STALE` means rebuild (`graphify update`) and re-query — not fall back to
-   grep. `ABSENT` means this project has no graph; skip this pass and say so.
+   `STALE` means rebuild and re-query — not fall back to grep — using the
+   command the verdict printed, path included (`graphify update <this
+   checkout>`); a bare `graphify update` rebuilds whichever project the CWD
+   resolves to. `UNKNOWN` means freshness is unanswerable, not failed: carry on
+   and treat only negative findings as unverified. `ABSENT` means this project
+   has no graph; skip this pass and say so.
 
 3. **Fold callers and dependents into the task list.** Every caller or dependent
    the graph named for a module a task modifies must be covered by a task —

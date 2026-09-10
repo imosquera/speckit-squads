@@ -79,9 +79,30 @@ Before trusting a negative answer — "nothing else reads this" — run:
 .specify/presets/graph-first-navigation/scripts/bash/graph-freshness.sh .
 ```
 
-`FRESH` (exit 0), `STALE` (1), `ABSENT` (2). **A stale graph means rebuild it
-(`graphify update`), not fall back to grep.** Every wrapper says so, and the
-hook prints the built-commit / HEAD divergence when it detects one.
+`FRESH` (exit 0), `STALE` (1), `ABSENT` (2), `UNKNOWN` (3). **A stale graph
+means rebuild it, not fall back to grep.** Every wrapper says so, and the hook
+prints the built-commit / HEAD divergence when it detects one.
+
+Two things keep the gate from crying wolf, which matters because it opens the
+plan phase of every unattended run and a gate that always cries stale is one
+people route around:
+
+- **No provenance is `UNKNOWN`, not `STALE`.** A graph built before graphify
+  recorded `built_at_commit` cannot be compared to anything; that is an
+  unanswerable question, not a failed one. It bought a full rebuild at the top
+  of every run for nothing. `UNKNOWN` says to carry on and treat only
+  *negative* findings as unverified.
+- **The remedy always carries the path** — `graphify update <checkout>`, never
+  a bare `graphify update`, which rebuilds whichever project the CWD resolves
+  to and has already rebuilt the wrong worktree.
+
+And a committed `graphify-out/` is reported as its own condition rather than as
+staleness, because it is stale by construction — every commit moves HEAD past
+the graph's `built_at_commit`, and the rebuild then dirties the tree, which is
+where the per-run hand-scrubbing came from. `post-install.sh` heads that off:
+it adds `graphify-out/` to the repo's `info/exclude` and marks any already-
+tracked graph files `skip-worktree` in this checkout. `pre-uninstall.sh`
+reverses both.
 
 ## When grep remains correct
 

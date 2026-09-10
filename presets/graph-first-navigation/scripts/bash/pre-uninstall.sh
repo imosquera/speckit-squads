@@ -41,6 +41,32 @@ PYEOF
   echo "  removed the graph-first navigation block from CLAUDE.md"
 fi
 
+# Undo the graphify-out exclusion: our own info/exclude stanza, and the
+# skip-worktree bits we set on files the repo tracks. A half-reversal (dropping
+# the exclude but leaving files invisible to `git status`) is worse than none.
+COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+if [[ -n "$COMMON_DIR" ]]; then
+  case "$COMMON_DIR" in /*) ;; *) COMMON_DIR="$(cd "$COMMON_DIR" && pwd)" ;; esac
+  EXCLUDE="$COMMON_DIR/info/exclude"
+  if [[ -f "$EXCLUDE" ]] && grep -qxF 'graphify-out/' "$EXCLUDE"; then
+    python3 - "$EXCLUDE" <<'PYEOF'
+import re, sys, pathlib
+p = pathlib.Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+p.write_text(re.sub(
+    r"\n*# Local knowledge graph.*?\n# A committed graph makes the freshness gate report STALE forever\.\ngraphify-out/\n",
+    "\n", t, flags=re.S), encoding="utf-8")
+PYEOF
+    echo "  removed the graphify-out/ exclusion from $EXCLUDE"
+  fi
+  SKIPPED="$(git ls-files -v -- graphify-out 2>/dev/null | sed -n 's/^S //p')"
+  if [[ -n "$SKIPPED" ]]; then
+    printf '%s\n' "$SKIPPED" | tr '\n' '\0' \
+      | xargs -0 git update-index --no-skip-worktree -- 2>/dev/null \
+      && echo "  cleared skip-worktree on the tracked graphify-out files"
+  fi
+fi
+
 # The typescript-language-server shim is machine-level and shared by every
 # project that installed this preset, so one project's uninstall must not remove
 # it. Say where it is instead.

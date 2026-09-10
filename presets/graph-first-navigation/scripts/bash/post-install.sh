@@ -57,10 +57,51 @@ else
   fi
 fi
 
+# ------------------------------------------------- keep graphify-out out of git
+# The graph is local, per-checkout, and rebuilt constantly. Committed, it is
+# stale by construction (every commit moves HEAD past its built_at_commit) and
+# every rebuild dirties the tree, which is exactly the hand-scrub the freshness
+# gate kept demanding. Excluding it here makes the rebuild free.
+#   * untracked output      -> the repo's info/exclude (shared by every worktree)
+#   * already-tracked files -> skip-worktree in this checkout's index
+# Best effort: a project that deliberately commits its graph is not our call to
+# break, and neither failure is worth aborting an install over.
+COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+if [[ -n "$COMMON_DIR" ]]; then
+  case "$COMMON_DIR" in
+    /*) ;;
+    *) COMMON_DIR="$(cd "$COMMON_DIR" && pwd)" ;;
+  esac
+  EXCLUDE="$COMMON_DIR/info/exclude"
+  mkdir -p "$COMMON_DIR/info" 2>/dev/null || true
+  if ! grep -qxF 'graphify-out/' "$EXCLUDE" 2>/dev/null; then
+    {
+      echo ''
+      echo '# Local knowledge graph — rebuilt per checkout, never committed.'
+      echo '# A committed graph makes the freshness gate report STALE forever.'
+      echo 'graphify-out/'
+    } >> "$EXCLUDE" 2>/dev/null && echo "  excluded graphify-out/ in $EXCLUDE"
+  fi
+
+  TRACKED="$(git ls-files -- graphify-out 2>/dev/null)"
+  if [[ -n "$TRACKED" ]]; then
+    if printf '%s\n' "$TRACKED" | tr '\n' '\0' \
+         | xargs -0 git update-index --skip-worktree -- 2>/dev/null; then
+      echo "  skip-worktree'd $(printf '%s\n' "$TRACKED" | wc -l | tr -d ' ') tracked graphify-out files"
+      echo "        (they are still committed — \`git rm -r --cached graphify-out\` to finish the job)"
+    else
+      echo "  warn: could not skip-worktree the tracked graphify-out files" >&2
+    fi
+  fi
+fi
+
 # ---------------------------------------------------------------- CLAUDE.md
 BEGIN="<!-- BEGIN graph-first-navigation -->"
 END="<!-- END graph-first-navigation -->"
 
+# NOTE: this heredoc sits inside $( ), where bash still scans the body for
+# quotes — keep the apostrophes in the prose below EVEN in number, or the
+# parser reports a syntax error a hundred lines further down.
 BLOCK="$(cat <<'EOF'
 <!-- BEGIN graph-first-navigation -->
 ## Navigating this codebase
@@ -137,12 +178,27 @@ freshness:
 .specify/presets/graph-first-navigation/scripts/bash/graph-freshness.sh .
 ```
 
-STALE means rebuild. It does not mean fall back to grep.
+Four verdicts, and only one of them is a demand:
 
-A worktree's graph is local — keep it out of version control. `/speckit-git-worktree`
-and `/speckit-git-feature` build it at creation time (`seed-graph.sh`, skippable
-with `SPECKIT_SKIP_GRAPH=1`) and arrange for git not to see it, because a
-committed `graphify-out/` makes the freshness gate report STALE forever.
+| Verdict | Exit | Means |
+| --- | --- | --- |
+| `FRESH` | 0 | the graph matches HEAD and the tree is clean — trust it |
+| `STALE` | 1 | provably behind — **rebuild**, never fall back to grep |
+| `ABSENT` | 2 | no graph here — build one; grep only until you do |
+| `UNKNOWN` | 3 | freshness is *unanswerable*, not failed — an older build recording no `built_at_commit`, or no HEAD to compare against. The graph may well be current; rebuild to get a comparable one, and until then treat only **negative** answers as unverified |
+
+Every verdict prints the remedy with its path (`graphify update <checkout>`).
+Run it exactly as printed: a bare `graphify update` rebuilds whichever project
+the CWD resolves to, which from a worktree has already been the wrong one.
+
+A graph is local to its checkout — keep it out of version control. Installing this
+preset excludes `graphify-out/` in the repo's `info/exclude` and, if the repo
+already tracks a graph, marks those files `skip-worktree` in this checkout, so a
+rebuild costs nothing and never has to be hand-scrubbed before a commit. A
+committed `graphify-out/` is stale by construction: every commit moves HEAD past
+its `built_at_commit`. `/speckit-git-worktree` and `/speckit-git-feature` do the
+same at worktree creation and build the graph there (`seed-graph.sh`, skippable
+with `SPECKIT_SKIP_GRAPH=1`).
 
 A PreToolUse hook reminds — never blocks — when a Grep/Glob/`rg` looks
 structural, when the checkout has no graph, and on the first TypeScript edit of

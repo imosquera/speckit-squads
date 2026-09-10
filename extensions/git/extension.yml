@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: git
   name: "Git Branching Workflow"
-  version: "1.7.0"
+  version: "1.8.0"
   description: "Feature branch creation, worktree management, feature cleanup, auto-commit hooks, and PR creation"
   author: spec-kit-core
   repository: https://github.com/github/spec-kit
@@ -19,10 +19,6 @@ provides:
   scripts:
     - name: create-new-feature.sh
       file: scripts/bash/create-new-feature.sh
-      executable: true
-      command: speckit.git.feature
-    - name: create-new-feature.ps1
-      file: scripts/powershell/create-new-feature.ps1
       executable: true
       command: speckit.git.feature
     - name: worktree-add.sh
@@ -43,10 +39,6 @@ provides:
       file: scripts/bash/auto-commit.sh
       executable: true
       command: speckit.git.commit
-    - name: auto-commit.ps1
-      file: scripts/powershell/auto-commit.ps1
-      executable: true
-      command: speckit.git.commit
     - name: create-pr.sh
       file: scripts/bash/create-pr.sh
       executable: true
@@ -59,6 +51,11 @@ provides:
       file: scripts/bash/split-issue.sh
       executable: true
       command: speckit.git.issue
+    # The one handler for `commit_exclude` churn; called by auto-commit.sh,
+    # create-pr.sh and clean.sh, and runnable on its own (issues #62, #55).
+    - name: scrub-commit-exclude.sh
+      file: scripts/bash/scrub-commit-exclude.sh
+      executable: true
     - name: selftest-split-issue.sh
       file: scripts/bash/selftest-split-issue.sh
       executable: true
@@ -70,14 +67,8 @@ provides:
     - name: git-common.sh
       file: scripts/bash/git-common.sh
       executable: false
-    - name: git-common.ps1
-      file: scripts/powershell/git-common.ps1
-      executable: false
     - name: initialize-repo.sh
       file: scripts/bash/initialize-repo.sh
-      executable: true
-    - name: initialize-repo.ps1
-      file: scripts/powershell/initialize-repo.ps1
       executable: true
 
   commands:

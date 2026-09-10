@@ -6,6 +6,10 @@
 # Section boundary rule: a section starts at its heading line and ends at the
 # next heading of the same-or-shallower level, or EOF.
 #
+# Heading matching tolerates the template's trailing parentheticals, e.g.
+# `## Success Criteria *(mandatory)*` — anchoring at `$` silently stripped
+# nothing while still reporting success (issue #58).
+#
 # Usage: strip-spec-sections.sh <spec.md>
 
 set -e
@@ -24,28 +28,27 @@ python3 - "$SPEC" <<'PY'
 import re, sys, pathlib
 
 path = pathlib.Path(sys.argv[1])
-text = path.read_text()
-lines = text.splitlines(keepends=True)
+lines = path.read_text().splitlines(keepends=True)
 
-# (heading_level, heading_text_regex)
+# (heading_level, name, heading_text_regex) — `.*` absorbs the template's
+# `*(mandatory)*` / `*(include if ...)*` suffixes.
 TARGETS = [
-    (2, re.compile(r'^##\s+Assumptions\s*$')),
-    (3, re.compile(r'^###\s+Key Entities\s*$')),
-    (2, re.compile(r'^##\s+Success Criteria\s*$')),
+    (2, 'Assumptions', re.compile(r'^##\s+Assumptions\b.*$')),
+    (3, 'Key Entities', re.compile(r'^###\s+Key Entities\b.*$')),
+    (2, 'Success Criteria', re.compile(r'^##\s+Success Criteria\b.*$')),
 ]
 
 def heading_level(line):
     m = re.match(r'^(#{1,6})\s+\S', line)
     return len(m.group(1)) if m else None
 
+removed = []
 out = []
 i = 0
 while i < len(lines):
     line = lines[i]
-    matched = False
-    for level, pat in TARGETS:
+    for level, name, pat in TARGETS:
         if pat.match(line):
-            # skip from here until next heading of <= level
             j = i + 1
             while j < len(lines):
                 lvl = heading_level(lines[j])
@@ -53,13 +56,19 @@ while i < len(lines):
                     break
                 j += 1
             i = j
-            matched = True
+            removed.append(name)
             break
-    if not matched:
+    else:
         out.append(line)
         i += 1
 
 path.write_text(''.join(out))
-PY
 
-echo "ok: stripped Assumptions / Key Entities / Success Criteria from $SPEC"
+absent = [name for _, name, _ in TARGETS if name not in removed]
+parts = []
+if removed:
+    parts.append("stripped " + " / ".join(removed))
+if absent:
+    parts.append("not present: " + " / ".join(absent))
+print("ok: " + "; ".join(parts) + " (%s)" % path)
+PY

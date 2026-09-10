@@ -40,3 +40,11 @@ p.write_text(new, encoding="utf-8")
 PYEOF
   echo "  removed the graph-first navigation block from CLAUDE.md"
 fi
+
+# The typescript-language-server shim is machine-level and shared by every
+# project that installed this preset, so one project's uninstall must not remove
+# it. Say where it is instead.
+if shim="$(command -v typescript-language-server 2>/dev/null)" && \
+   grep -qF "speckit:graph-first-navigation:lsp-shim" "$shim" 2>/dev/null; then
+  echo "  note: the language-server shim at $shim is shared across projects — left in place (rm it yourself if nothing else uses it)"
+fi

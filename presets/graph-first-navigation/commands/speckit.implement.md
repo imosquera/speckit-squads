@@ -46,9 +46,10 @@ You **MUST** consider the user input before proceeding (if not empty).
 
    Not found → do not call the LSP tool; it fails with `ENOENT`. Use the graph
    and grep, and record that provenance. `CLAUDE.md` has the bootstrap that makes
-   the probe succeed — a symlink into a directory already on `PATH`, because an
-   `export PATH=…` from a shell tool never reaches the agent process the LSP tool
-   spawns from. Found → the LSP tool is the **required** instrument:
+   the probe succeed — this preset's `post-install.sh` puts a resolver shim under
+   that name on `PATH`; an `export PATH=…` from a shell tool never reaches the
+   agent process the LSP tool spawns from. Found → the LSP tool is the
+   **required** instrument:
 
    - `findReferences` — every reference to the symbol
    - `incomingCalls` — every caller of the function

@@ -98,9 +98,8 @@ wrong. Grep is the right instrument for:
 - any checkout where `command -v typescript-language-server` comes up empty:
   the LSP tool spawns a bare command name **from the agent process**, so an
   unprobed call fails with `ENOENT` rather than answering. Probe, then either
-  link the project-local copy onto that `PATH`
-  (`ln -sf "$(git rev-parse --show-toplevel)/node_modules/typescript-language-server/lib/cli.mjs" ~/.local/bin/`)
-  or fall back and record which instrument the call sites came from. An
+  re-run `post-install.sh` (it installs the resolver shim on `PATH`) or fall
+  back and record which instrument the call sites came from. An
   `export PATH=…` in a shell tool does **not** work: shell state does not
   persist between tool calls, and the agent process's own `PATH` is fixed at
   startup

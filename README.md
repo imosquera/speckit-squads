@@ -49,7 +49,7 @@ presets/      # Spec Kit presets (template + command overrides)
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes the ponytail:ponytail skill before /speckit-implement starts
-  parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python ast + TS Compiler API); the gate is one command, `scan --new-only`
+  parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python ast + TS Compiler API); the gate is one command, `scan --new-only`, and a scan that examined zero files exits 2/3/4 rather than looking clean
   graph-first-navigation/       plan/tasks/implement wrappers + a PreToolUse hook making graph queries and the language server the default navigation instruments, grep the stated fallback
   progress-report/           wraps the 5 cycle commands to keep a per-branch status card in ~/Code/agent-os current (pair with the progress extension for tasks/implement)
 ```

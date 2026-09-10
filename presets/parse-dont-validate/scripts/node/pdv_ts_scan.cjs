@@ -12,9 +12,11 @@
  *     { "findings": [ { "rule": "PDV004", "path": "src/user.ts", "line": 12 }, ... ] }
  *
  * Waiver comments and result presentation are handled by the Python driver;
- * this helper only reports structural findings. Exits non-zero (with a message
- * on stderr) when the TypeScript compiler cannot be loaded — the caller treats
- * that as a hard failure, never a silent downgrade.
+ * this helper only reports structural findings. It never prints an empty
+ * findings list for an input it could not use: a missing/empty/malformed job,
+ * file arguments (which it ignores), an unreadable source, or a TypeScript
+ * compiler it cannot load all exit non-zero with a message on stderr. An empty
+ * result and an empty input must not look alike.
  */
 'use strict';
 
@@ -22,10 +24,17 @@ const fs = require('fs');
 const path = require('path');
 const { createRequire } = require('module');
 
-function loadTypeScript() {
-  // Resolve `typescript` from the target project first (its node_modules),
-  // then from this helper's own location as a fallback resolution base.
-  for (const base of [process.cwd(), __dirname]) {
+function fail(code, msg) {
+  process.stderr.write(msg + '\n');
+  process.exit(code);
+}
+
+function loadTypeScript(bases) {
+  // Resolve `typescript` from the directory of each file being scanned first —
+  // Node walks up from there, so a monorepo package that carries its own
+  // `node_modules/typescript` is found even though the driver runs from the
+  // repo root (it must, for git paths). Then the cwd, then this helper.
+  for (const base of bases) {
     try {
       const req = createRequire(path.join(base, '__pdv_resolve__.cjs'));
       return req('typescript');
@@ -34,14 +43,7 @@ function loadTypeScript() {
   try { return require('typescript'); } catch (_) { return null; }
 }
 
-const ts = loadTypeScript();
-if (!ts) {
-  process.stderr.write(
-    'cannot scan TypeScript — the `typescript` package is not installed in ' +
-    'this project. Add it (e.g. `npm i -D typescript`) so the parser can ' +
-    'build an AST.\n');
-  process.exit(3);
-}
+let ts = null;
 
 // Casts to these types are ordinary structural narrowing (built-ins, DOM/BOM,
 // standard-library globals), NOT domain-brand forging — PDV004 ignores them.
@@ -69,8 +71,10 @@ function scanFile(file, findings) {
   let text;
   try {
     text = fs.readFileSync(file.path, 'utf8');
-  } catch (_) {
-    return;
+  } catch (e) {
+    // Never skip silently: an unread file would drop out of the results and
+    // read as a file with no findings.
+    fail(3, 'pdv_ts_scan: cannot read ' + file.path + ': ' + e.message);
   }
   const sf = ts.createSourceFile(
     file.path, text, ts.ScriptTarget.Latest, /* setParentNodes */ true);
@@ -136,15 +140,60 @@ function scanFile(file, findings) {
   visit(sf);
 }
 
+const STDIN_HINT =
+  'pdv_ts_scan reads a JSON job on stdin — {"files":[{"path":"src/a.ts",' +
+  '"isParser":false}]} — and ignores file arguments. It is not the entry ' +
+  'point: run `parse_dont_validate.py scan` instead.';
+
 function main() {
+  // Every path out of here that examined nothing exits non-zero. Printing
+  // {"findings":[]} for a mis-invocation is what made a wrong call read
+  // exactly like a clean scan.
+  if (process.argv.length > 2) fail(2, STDIN_HINT);
+  if (process.stdin.isTTY) fail(2, STDIN_HINT);
+
+  let raw;
+  try {
+    raw = fs.readFileSync(0, 'utf8');
+  } catch (e) {
+    fail(2, 'pdv_ts_scan: cannot read stdin: ' + e.message + '\n' + STDIN_HINT);
+  }
+  if (!raw.trim()) fail(2, 'pdv_ts_scan: empty stdin.\n' + STDIN_HINT);
+
   let job;
   try {
-    job = JSON.parse(fs.readFileSync(0, 'utf8') || '{}');
-  } catch (_) {
-    job = {};
+    job = JSON.parse(raw);
+  } catch (e) {
+    fail(2, 'pdv_ts_scan: malformed JSON job on stdin: ' + e.message + '\n' +
+            STDIN_HINT);
   }
+  const files = Array.isArray(job.files) ? job.files : null;
+  if (!files) fail(2, 'pdv_ts_scan: JSON job has no "files" array.\n' + STDIN_HINT);
+  if (files.length === 0) {
+    fail(2, 'pdv_ts_scan: JSON job listed zero files — nothing was examined, ' +
+            'which is not the same as a clean scan.');
+  }
+
+  const bases = [];
+  for (const file of files) {
+    if (!file || typeof file.path !== 'string') {
+      fail(2, 'pdv_ts_scan: every entry of "files" needs a string "path".');
+    }
+    const dir = path.dirname(path.resolve(file.path));
+    if (!bases.includes(dir)) bases.push(dir);
+  }
+  bases.push(process.cwd(), __dirname);
+
+  ts = loadTypeScript(bases);
+  if (!ts) {
+    fail(3,
+      'cannot scan TypeScript — the `typescript` package is not installed in ' +
+      'this project. Add it (e.g. `npm i -D typescript`) so the parser can ' +
+      'build an AST.');
+  }
+
   const findings = [];
-  for (const file of job.files || []) scanFile(file, findings);
+  for (const file of files) scanFile(file, findings);
   process.stdout.write(JSON.stringify({ findings }));
 }
 

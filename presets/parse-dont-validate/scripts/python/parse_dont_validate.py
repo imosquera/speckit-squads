@@ -44,6 +44,12 @@ Subcommands
       started from a subdirectory sees the whole diff rather than the untracked
       files below it.
 
+      Exit codes: 0 clean, 1 findings, 2 bad invocation (unknown option, or
+      `--base` with no ref), 3 the scan could not run (missing tool, given
+      paths resolved to nothing, not a git worktree), 4 nothing was scanned
+      because the change set holds no TypeScript/Python. A scan that examined
+      zero files never exits 0 — an empty input is not a clean result.
+
 Waivers
 -------
 Any finding can be suppressed with a trailing or preceding line comment
@@ -91,6 +97,9 @@ CHECKLIST = [
      "sanctioned lie — confine them to the parser at the boundary. A cast "
      "elsewhere forges trust the type system never granted."),
 ]
+
+USAGE = ("usage: parse_dont_validate.py scan [--base <ref>] [--new-only] "
+         "[paths ...]")
 
 WAIVER_RE = re.compile(r"parse-dont-validate:\s*allow\s+(PDV\d{3})", re.IGNORECASE)
 
@@ -392,18 +401,60 @@ def cmd_scan(argv: List[str]) -> int:
     it = iter(argv)
     for arg in it:
         if arg == "--base":
+            # The next token is only a ref if it looks like one. `--base
+            # --new-only` used to swallow the flag as the ref: the scan then ran
+            # without --new-only against a ref git cannot resolve, so a branch
+            # whose files were already committed found no change set and exited
+            # 4 — an empty-input answer to what is really a usage error.
             base = next(it, None)
+            if not base or base.startswith("-"):
+                print("parse-dont-validate: --base needs a ref argument"
+                      + (f", got {base!r}.\n" if base else ".\n") + USAGE,
+                      file=sys.stderr)
+                return 2
         elif arg.startswith("--base="):
             base = arg.split("=", 1)[1]
+            if not base:
+                print(f"parse-dont-validate: --base needs a ref argument.\n{USAGE}",
+                      file=sys.stderr)
+                return 2
         elif arg == "--new-only":
             new_only = True
+        elif arg.startswith("-"):
+            # An unrecognised flag used to fall through into `paths`, where it
+            # resolved to no files and the scan printed a clean, empty run — a
+            # typo in the invocation was indistinguishable from a passing gate.
+            print(f"parse-dont-validate: unknown option {arg!r}.\n{USAGE}",
+                  file=sys.stderr)
+            return 2
         else:
             paths.append(arg)
 
-    targets = sorted(set(_expand(paths) if paths else _changed_files(base)))
-    if not targets:
-        print("parse-dont-validate: no TypeScript/Python files to scan.")
-        return 0
+    # Zero files examined is never reported as a clean pass: an empty *result*
+    # and an empty *input* are different answers and exit differently.
+    if paths:
+        targets = sorted(set(_expand(paths)))
+        if not targets:
+            print("parse-dont-validate: none of the given paths resolved to a "
+                  f"TypeScript/Python file: {', '.join(paths)}\n"
+                  "Nothing was examined — this is NOT a clean scan.",
+                  file=sys.stderr)
+            return 3
+    elif _git_root() is None:
+        print("parse-dont-validate: no paths given and this is not a git "
+              "worktree, so there is no change set to scan.\n"
+              "Nothing was examined — this is NOT a clean scan.",
+              file=sys.stderr)
+        return 3
+    else:
+        targets = sorted(set(_changed_files(base)))
+        if not targets:
+            print("parse-dont-validate: nothing scanned — the change set holds "
+                  "no TypeScript/Python files.\nThis is an empty input, not a "
+                  "clean scan. It is the expected outcome only when this run "
+                  "genuinely wrote no TypeScript or Python; otherwise the "
+                  "invocation is wrong.", file=sys.stderr)
+            return 4
 
     try:
         findings = _scan(targets)

@@ -312,6 +312,32 @@ on first run in a project that still tracks it, so the migration is automatic.
   resolves to, and it keeps the rebuild out of version control (`info/exclude` plus
   `skip-worktree` on any already-tracked `graphify-out` files), since a committed
   graph makes the freshness gate report STALE forever.
+  `install-deps.sh` is its sibling on the same two creation sites (same
+  best-effort contract, skippable with `SPECKIT_SKIP_INSTALL=1`): a linked
+  worktree gets the tracked files and nothing else, so six autopilot runs in
+  three days each rediscovered the empty `node_modules` **mid-implement**,
+  through a `tsx: not found` after the code was already written (issue #51).
+  The install was never the cost — the interrupt and the diagnosis were.
+  **The base checkout is the oracle, not a hard-coded list:** a directory is
+  installed only when the same directory in the main worktree already carries
+  the ecosystem's installed marker (`node_modules/`, `.venv/`), which is what
+  makes one script right for a three-workspace monorepo *and* a silent no-op
+  for a docs repo without a config schema. Manifests come from `git ls-files`
+  (so vendored trees are never walked), the package manager is read off the
+  lockfile rather than assumed to be npm (`bun`/`pnpm`/`yarn`/`npm ci`, plus
+  `uv sync`/`poetry install`), the installs run concurrently, and every path
+  exits 0 — a worktree without dependencies is a worse worktree, a worktree
+  that failed to be created is no worktree at all.
+  **A workspace child is installed by its root, never on its own.** A pnpm/npm
+  workspace keeps one lockfile at the top, so a child package matched the
+  no-lockfile fallback and got `npm install` — running concurrently with the
+  root's `pnpm install`, writing a `package-lock.json` into a tree pnpm was
+  mid-install on. Each node manifest now resolves to the nearest ancestor
+  carrying a lockfile and the plan is deduplicated by that directory. The base
+  checkout's path is likewise read whole out of `git worktree list --porcelain`
+  rather than as an awk field: split on the space, `~/My Code/repo` resolved to
+  `~/My` and every install was silently skipped for that repo.
+  `./test-worktree-deps.sh` is the check.
   `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.sh` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr).

@@ -32,6 +32,9 @@ provides:
     - name: seed-graph.sh
       file: scripts/bash/seed-graph.sh
       executable: true
+    - name: install-deps.sh
+      file: scripts/bash/install-deps.sh
+      executable: true
     - name: clean.sh
       file: scripts/bash/clean.sh
       executable: true

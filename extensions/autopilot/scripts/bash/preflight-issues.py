@@ -85,9 +85,18 @@ those into LIVE or STALE. An operator who pasted an issue URL and got
 by hand — in seven sessions over fifty days.
 
 The classification is deliberately asymmetric: **ambiguity resolves to LIVE.** A
-tree whose state could not be read, or a tip with no readable date, counts as
-live. Reaping a running sibling's worktree is unrecoverable; refusing a dead one
-costs a human one command, which the STALE output now prints for them.
+tree whose state could not be read, a tip with no readable date, a checkout with
+no readable creation stamp, and a `gh pr list` that errored all count as live.
+Reaping a running sibling's worktree is unrecoverable; refusing a dead one costs
+a human one command, which the STALE output now prints for them.
+
+**Age is the age of the work, not of the commit it started from.** A worktree
+created seconds ago off a base commit from months back inherits that old date,
+is clean, and has no PR yet — three quarters of a STALE verdict for a checkout
+a sibling is still setting up (PR #98 review). `worktree_touched()` supplies the
+missing signal from the checkout's own git dir mtime and the branch ref's newest
+reflog entry, and `classify()` takes the **most recent** of the two ages, so only
+a worktree that is both old and untouched is ever called stale.
 
 STALE downgrades the verdict on exactly one path: an **attended** explicit-issue
 run, where a human typed the number and is owed resume-or-clean rather than a
@@ -122,6 +131,8 @@ Plus, after the verdict line, zero or more machine-readable follow-ups:
 `--worktree-check` prints one of:
   CLEAR
   LIVE: 082-fix-thing — uncommitted changes, last commit 4m ago, no open PR
+  LIVE: 082-fix-thing — commit abc1234, clean, last commit 40d ago, worktree
+        touched just now, no open PR
   STALE: 082-fix-thing — commit abc1234, clean, last commit 3d ago, no open PR
 """
 import glob
@@ -381,13 +392,23 @@ def unattended():
 
 
 def has_open_pr(n):
-    out = sh("gh", "pr", "list", "--state", "open",
-             "--search", f"{n} in:title,body",
-             "--json", "number,headRefName")
+    """True / False / None — None when the lookup itself could not answer.
+
+    Mirrors `is_dirty`: `gh` failing on auth, network, or an API error is not
+    evidence that no PR exists, and handing that `False` to `classify()` as if
+    it were would let a worktree with an open PR be reported STALE and offered
+    for deletion — the one direction that is unrecoverable. Ambiguity votes LIVE
+    (PR #98 review), so the failure has to survive as its own state.
+    """
+    rc, out = sh_rc("gh", "pr", "list", "--state", "open",
+                    "--search", f"{n} in:title,body",
+                    "--json", "number,headRefName")
+    if rc != 0:
+        return None
     try:
         return bool(json.loads(out)) if out else False
     except Exception:
-        return False
+        return None
 
 
 def worktrees():
@@ -476,6 +497,40 @@ def task_progress(name, path):
     return ""
 
 
+def worktree_touched(path, ref):
+    """Unix ts of the newest signal that the *work* — not its base commit — moved.
+
+    A worktree created seconds ago from a base commit that is months old
+    inherits that old commit date. With a clean tree and no PR yet, tip-commit
+    age alone therefore classifies a sibling's brand-new checkout as STALE and
+    the attended path offers it for deletion before the sibling makes its first
+    edit (PR #98 review). Two signals date the checkout itself:
+
+      * the worktree's own git dir — written at creation (`HEAD`, `index`,
+        `logs/HEAD`) and rewritten by every checkout, commit, and index update;
+      * the branch ref's reflog, whose newest entry is the branch's own
+        creation when nothing has happened since.
+
+    Returns 0 when neither can be read, which the caller turns into "unknown" —
+    and unknown votes LIVE, exactly as everything else ambiguous here does.
+    """
+    stamps = []
+    if path and os.path.isdir(path):
+        rc, gitdir = sh_rc("git", "-C", path, "rev-parse", "--absolute-git-dir")
+        if rc == 0 and gitdir and os.path.isdir(gitdir):
+            for cand in (gitdir, *(os.path.join(gitdir, f)
+                                   for f in ("HEAD", "index", "logs/HEAD"))):
+                try:
+                    stamps.append(int(os.stat(cand).st_mtime))
+                except OSError:
+                    pass
+    if ref:
+        out = sh("git", "log", "-g", "-1", "--format=%ct", ref)
+        if out.isdigit():
+            stamps.append(int(out))
+    return max(stamps) if stamps else 0
+
+
 def age_words(age_sec):
     if age_sec is None:
         return "commit date unknown"
@@ -486,12 +541,32 @@ def age_words(age_sec):
     return f"last commit {age_sec // 86400}d ago"
 
 
-def classify(dirty, age_sec, open_pr, tasks="", window_sec=None):
+def touch_words(sec):
+    if sec is None:
+        return "worktree age unknown"
+    if sec < 120:
+        return "worktree touched just now"
+    if sec < 90 * 60:
+        return f"worktree touched {sec // 60}m ago"
+    if sec < 36 * 3600:
+        return f"worktree touched {sec // 3600}h ago"
+    return f"worktree touched {sec // 86400}d ago"
+
+
+def classify(dirty, age_sec, open_pr, tasks="", window_sec=None, touched_sec=None):
     """(state, evidence) for work that exists — "LIVE" or "STALE".
 
     Pure by construction so the rule is testable without a repo, and so the
     evidence string and the verdict are built from the same inputs and can
-    never disagree. Every unknown votes LIVE (see the module docstring).
+    never disagree. Every unknown votes LIVE (see the module docstring), and
+    that now includes both of the signals a caller may fail to obtain:
+    `open_pr=None` (the `gh` lookup failed) and `touched_sec=None` (no
+    creation/heartbeat stamp for the checkout). `touched_sec` defaults to None
+    on purpose: a caller that does not measure it gets LIVE, never STALE.
+
+    The two ages are read as "most recent evidence wins" — a months-old tip
+    commit under a checkout created a minute ago is a run that has not committed
+    yet, not an abandoned worktree.
     """
     window = LIVE_WINDOW_SEC if window_sec is None else window_sec
     live = False
@@ -505,9 +580,19 @@ def classify(dirty, age_sec, open_pr, tasks="", window_sec=None):
     else:
         bits.append("clean")
     bits.append(age_words(age_sec))
-    if age_sec is None or age_sec < window:
+    # The touch stamp is only worth printing when it says something the commit
+    # age does not: a checkout younger than its own tip commit, or no stamp at
+    # all. A worktree touched when it was last committed to adds no evidence.
+    if touched_sec is None or age_sec is None or age_sec - touched_sec >= 60:
+        bits.append(touch_words(touched_sec))
+    if age_sec is None or touched_sec is None:
         live = True
-    if open_pr:
+    elif min(age_sec, touched_sec) < window:
+        live = True
+    if open_pr is None:
+        bits.append("PR lookup failed")
+        live = True
+    elif open_pr:
         bits.append("open PR")
         live = True
     else:
@@ -529,14 +614,25 @@ def liveness(n):
     if n in _LIVE_CACHE:
         return _LIVE_CACHE[n]
     name, path, ref = locate(n)
+    now = int(time.time())
     if not name:
-        result = ("LIVE", f"PR referencing #{n}", "open PR, no branch or worktree") \
-            if has_open_pr(n) else ("", "", "")
+        # A failed lookup (None) is not "no PR": with nothing else to go on it
+        # is the only signal there is, so it counts as work-in-flight rather
+        # than as a clear field.
+        pr = has_open_pr(n)
+        if pr is None:
+            result = ("LIVE", f"#{n}", "PR lookup failed, no branch or worktree")
+        elif pr:
+            result = ("LIVE", f"PR referencing #{n}", "open PR, no branch or worktree")
+        else:
+            result = ("", "", "")
     else:
         sha, ts = tip_commit(ref or name)
-        age = max(0, int(time.time()) - ts) if ts else None
+        age = max(0, now - ts) if ts else None
+        touched_ts = worktree_touched(path, ref or name)
+        touched = max(0, now - touched_ts) if touched_ts else None
         state, ev = classify(is_dirty(path), age, has_open_pr(n),
-                             task_progress(name, path))
+                             task_progress(name, path), touched_sec=touched)
         head = f"commit {sha}" if sha else "no commit"
         result = (state, name, f"{head}, {ev}")
     _LIVE_CACHE[n] = result
@@ -903,14 +999,54 @@ def selftest():
 
     # issue #60: stale vs live is decided from evidence, and ambiguity is live.
     DAY = 86400
-    assert classify(False, 3 * DAY, False)[0] == "STALE"
-    assert classify(True, 3 * DAY, False)[0] == "LIVE"      # dirty tree
-    assert classify(False, 60, False)[0] == "LIVE"          # committed a minute ago
-    assert classify(False, 3 * DAY, True)[0] == "LIVE"      # open PR
-    assert classify(None, 3 * DAY, False)[0] == "LIVE"      # tree unreadable
-    assert classify(False, None, False)[0] == "LIVE"        # commit date unreadable
-    assert "4/12 tasks done" in classify(False, 3 * DAY, False, "4/12")[1]
-    assert "no open PR" in classify(False, 3 * DAY, False)[1]
+
+    def cls(dirty, age, pr, tasks="", touched="same"):
+        # Most cases predate the touch signal and mean "the checkout is as old
+        # as its commit"; `touched=None` is the distinct "could not measure".
+        return classify(dirty, age, pr, tasks,
+                        touched_sec=age if touched == "same" else touched)
+
+    assert cls(False, 3 * DAY, False)[0] == "STALE"
+    assert cls(True, 3 * DAY, False)[0] == "LIVE"           # dirty tree
+    assert cls(False, 60, False)[0] == "LIVE"               # committed a minute ago
+    assert cls(False, 3 * DAY, True)[0] == "LIVE"           # open PR
+    assert cls(None, 3 * DAY, False)[0] == "LIVE"           # tree unreadable
+    assert cls(False, None, False)[0] == "LIVE"             # commit date unreadable
+    assert "4/12 tasks done" in cls(False, 3 * DAY, False, "4/12")[1]
+    assert "no open PR" in cls(False, 3 * DAY, False)[1]
+
+    # PR #98 review, P1: a worktree created seconds ago off an old base commit
+    # is clean, has no PR, and inherits the old commit date. Age alone called it
+    # STALE and the attended path offered to delete a sibling's live checkout.
+    assert cls(False, 90 * DAY, False, touched=30)[0] == "LIVE"
+    assert "worktree touched just now" in cls(False, 90 * DAY, False, touched=30)[1]
+    # An unmeasurable checkout age is an unknown, and unknowns vote LIVE.
+    assert cls(False, 90 * DAY, False, touched=None)[0] == "LIVE"
+    assert "worktree age unknown" in cls(False, 90 * DAY, False, touched=None)[1]
+    # A genuinely abandoned worktree — old commit AND untouched since — is still
+    # STALE, so the fix does not simply disable the classification.
+    assert cls(False, 3 * DAY, False, touched=3 * DAY)[0] == "STALE"
+    assert cls(False, 3 * DAY, False, touched=2 * DAY)[0] == "STALE"
+    # A touch signal is never *only* read: a fresh commit under an old gitdir
+    # mtime (impossible in practice, but the rule is "most recent wins") is live.
+    assert cls(False, 60, False, touched=90 * DAY)[0] == "LIVE"
+
+    # PR #98 review, P2: a failed `gh pr list` is not evidence of "no PR".
+    real_sh_rc = sh_rc
+    try:
+        globals()["sh_rc"] = lambda *a: (1, "")           # gh could not answer
+        assert has_open_pr(7) is None
+        globals()["sh_rc"] = lambda *a: (0, "[]")         # answered: none open
+        assert has_open_pr(7) is False
+        globals()["sh_rc"] = lambda *a: (0, '[{"number":3}]')
+        assert has_open_pr(7) is True
+        globals()["sh_rc"] = lambda *a: (0, "not json")   # answered nonsense
+        assert has_open_pr(7) is None
+    finally:
+        globals()["sh_rc"] = real_sh_rc
+    assert cls(False, 3 * DAY, None, touched=3 * DAY)[0] == "LIVE"
+    assert "PR lookup failed" in cls(False, 3 * DAY, None, touched=3 * DAY)[1]
+    assert "no open PR" not in cls(False, 3 * DAY, None, touched=3 * DAY)[1]
 
     # …and the verdict it produces on the explicit-issue path depends on who is
     # reading. This is the whole of issue #60: the operator pasted an issue URL

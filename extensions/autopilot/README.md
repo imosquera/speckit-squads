@@ -103,8 +103,13 @@ the claim. It used to run after, so a run that discovered the target was
 undeliverable had already written `autopilot:claimed` onto an issue in a shared
 backlog and then had to unwind it (issue #48). The guard is read-only and
 deterministic; the claim is a write other runs can see, so the cheap check goes
-first. Collision safety is unaffected — the single-flight lock still serializes this
-machine's ticks and Step 2.0's liveness re-check still closes the residual window.
+first. The unclaimed window that widens is closed after the write instead of by
+ordering: `gh issue edit --add-label` is not a compare-and-swap, but adding a label
+that is already there emits no `labeled` timeline event, so the claim block compares
+the newest such event before and after its own edit and yields — leaving the label
+in place, since it is the other run's — when they match. Beneath that, the
+single-flight lock still serializes this machine's ticks and Step 2.0's liveness
+re-check still closes the residual window.
 
 ```
 $ check-target-repo.sh hindsight.py README.md
@@ -143,12 +148,28 @@ $ preflight-issues.py --worktree-check 237
 STALE: 237-contacts — commit abc1234, clean, last commit 3d ago, 4/12 tasks done, no open PR
 ```
 
-- **LIVE** — the tree is dirty, the tip commit is inside the live window
+- **LIVE** — the tree is dirty, the work moved inside the live window
   (`SPECKIT_AUTOPILOT_LIVE_WINDOW_MIN`, default 120), or a PR is open.
-- **STALE** — clean, older than the window, no open PR.
+- **STALE** — clean, untouched for longer than the window, no open PR.
 - **Every unknown votes LIVE.** A tree git could not read, a tip with no readable
-  date: ambiguity is live. Reaping a running sibling's worktree is unrecoverable;
+  date, a checkout with no readable creation stamp, a `gh pr list` that errored:
+  ambiguity is live. Reaping a running sibling's worktree is unrecoverable;
   refusing a dead one costs a human one command, which the STALE output prints.
+
+**"Older than the window" means the work, not the commit it branched from.** A
+worktree created seconds ago off a base commit from months back inherits that old
+date, is clean, and has no PR yet — three quarters of a STALE verdict for a checkout
+a sibling is still setting up, and on the attended path that printed a `CLEAN:`
+command for live work. `worktree_touched()` adds the missing signal from the
+checkout's own git dir (`HEAD`, `index`, `logs/HEAD`, written at creation and on
+every checkout and commit) and the branch ref's newest reflog entry, which is the
+branch's creation when nothing has happened since. `classify()` takes the **most
+recent** of commit age and touch age, so a worktree is stale only when it is old by
+both. No stamp at all is an unknown, and unknowns are LIVE.
+
+The same rule made `has_open_pr()` tri-state: `None` when `gh` could not answer at
+all. Collapsing that failure to `False` handed `classify()` "definitely no PR" as
+evidence, which is how a worktree *with* an open PR could be offered for deletion.
 
 STALE changes the verdict on exactly one path — an **attended** explicit-issue run,
 where the operator typed the number and gets `RESUME:` and `CLEAN:` lines to choose

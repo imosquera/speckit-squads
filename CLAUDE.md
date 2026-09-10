@@ -165,8 +165,14 @@ on first run in a project that still tracks it, so the migration is automatic.
   claimed an issue in a shared backlog and had to unwind it — the recovery was right,
   the claim should never have existed (issue #48). The guard is read-only and
   deterministic; the claim is a write other runs can see, so the cheap check goes
-  first, and collision safety is unchanged (the wrapper's single-flight lock plus
-  Step 2.0's re-check still cover the window).
+  first. The wider unclaimed window that buys is closed **after** the write rather
+  than by ordering, because `gh issue edit --add-label` is not a compare-and-swap:
+  adding a label that is already present emits no `labeled` timeline event, so the
+  claim block reads the newest such event before and after its own edit and yields
+  (leaving the label alone — it is the winner's) when the two match. Unreadable
+  timeline means proceed, since a missing extra layer is not worse than the state
+  before it existed. Under it, the wrapper's single-flight lock and Step 2.0's
+  re-check still cover the rest.
   **An existing branch or worktree is reported with evidence, not as a bare
   verdict.** `SKIP: #N in-progress:<branch>` gave an operator who had just created
   that worktree himself nothing to act on, and staleness had to be judged by hand in
@@ -183,6 +189,16 @@ on first run in a project that still tracks it, so the migration is automatic.
   SKIP; that variable is the only seam between a human and a scheduled tick, since
   both reach the script as the same `preflight-issues.py <file> <N>` call. Autopilot
   still never resumes or deletes work by itself.
+  **Age means the age of the work, never of the commit it started from.** A worktree
+  created seconds ago off a months-old base commit inherits that commit's date, is
+  clean, and has no PR yet — enough for STALE, so the attended path offered to delete
+  a sibling's checkout before it made its first edit. `worktree_touched()` supplies
+  the missing creation/heartbeat stamp (the checkout's own git dir mtime plus the
+  branch ref's newest reflog entry) and `classify()` takes the **most recent** of the
+  two ages, so only a worktree that is both old *and* untouched is called stale.
+  `has_open_pr()` is tri-state for the same reason: a `gh pr list` that failed on
+  auth or network returns `None`, not `False` — collapsing it would have let a
+  worktree with an open PR be offered for deletion, and every unknown votes LIVE.
   `preflight-issues.py --cross-repo` (passed by both the skill and the wrapper) is the
   cleanup net for deliveries that already exist — it scans an issue's own thread for
   PR links, resolves them with `gh pr view --repo`, and skips an issue already

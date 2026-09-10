@@ -14,9 +14,12 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    bound to one repo + checkout in both directions — a fix target in another repo is a durable stop,
                    checked before the claim rather than after it, and --cross-repo preflight skips issues already
                    delivered by a PR elsewhere;
-                   an existing branch/worktree for an issue is reported with evidence (dirty tree, tip-commit age,
-                   tasks done, open PR) as LIVE or STALE — a STALE one offers resume-or-clean when a human named the
-                   issue, and keeps the hard skip unattended, with every unknown resolving to LIVE;
+                   an existing branch/worktree for an issue is reported with evidence (dirty tree, how recently the
+                   checkout itself was touched, tip-commit age, tasks done, open PR) as LIVE or STALE — a STALE one
+                   offers resume-or-clean when a human named the issue, and keeps the hard skip unattended, with
+                   every unknown resolving to LIVE;
+                   the claim label is verified read-after-write against the issue's labeled timeline event, so a run
+                   that only re-added a claim another run already holds yields instead of colliding;
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding;
                    a small, unambiguous change skips spec/clarify/plan/tasks and goes straight to implementation

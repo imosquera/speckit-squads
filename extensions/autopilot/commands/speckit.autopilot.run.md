@@ -254,9 +254,18 @@ block, so a run that discovered the target was undeliverable had already written
 `autopilot:claimed` onto an issue in a shared backlog and had to unwind it — the
 recovery was correct but the claim should never have existed (issue #48). The guard
 is read-only and takes a second; the claim is a write other runs can see, so the
-cheap deterministic check goes first. This costs nothing in collision safety:
-`autopilot-run.sh`'s single-flight lock still serializes this machine's ticks, and
-Step 2.0's liveness re-check still closes the residual window.
+cheap deterministic check goes first.
+
+Putting a read-only step ahead of the claim does widen the unclaimed window, and
+`gh issue edit --add-label` is not a compare-and-swap, so two runs that pass Step 1
+together could both reach the claim (PR #98 review). The window is closed where it
+can actually be closed — **after** the write, not by ordering: the claim block below
+compares the issue's `labeled` timeline event before and against after its own edit,
+and a run whose edit produced no new event is looking at somebody else's claim and
+yields. That check works at any ordering, which is why the ordering can stay the one
+that never claims an undeliverable issue. Underneath it, `autopilot-run.sh`'s
+single-flight lock still serializes this machine's ticks and Step 2.0's liveness
+re-check still catches a sibling that got as far as a branch or worktree.
 
 So, before the claim — and before any spec, branch, or worktree: read the issue and
 list every file path it asks you to change or create, then hand them all to the
@@ -301,7 +310,8 @@ The moment the guard above says the fix belongs here, claim the issue — **befo
 doing anything else (before Step 2's worktree work, before writing any file). The
 locality guard is the only thing that precedes the claim, and it precedes it because
 it is read-only, deterministic, and can rule the issue out entirely (issue #48);
-everything else waits. This is the one and
+everything else waits, and the read-after-write check below is what keeps that
+ordering safe rather than merely cheap. This is the one and
 only place that applies the `autopilot:claimed` label — the wrapper script
 (`autopilot-run.sh`) no longer claims on your behalf; it only decides whether to
 launch you and which issue to hand you. That split matters: if the wrapper claimed
@@ -310,17 +320,42 @@ its eligibility check and mistake it for a competing run (the "self-starve" bug)
 Because claiming now happens exactly once, per run, inside the skill, that
 confusion can't happen — you always know the claim on your picked issue is yours.
 
+**Verify the claim is yours** — adding a label that is already there is a silent
+no-op, so a successful `gh issue edit` proves nothing on its own. GitHub records a
+`labeled` timeline event only when the label was actually *added*, so read the
+newest one before and after your edit: if it did not change, your add was the no-op
+and the standing claim belongs to another run.
+
 ```bash
+claim_event() {   # newest `labeled autopilot:claimed` event, "" when unreadable
+  gh api "repos/{owner}/{repo}/issues/$N/timeline" --paginate \
+    --jq '[.[] | select(.event=="labeled" and .label.name=="autopilot:claimed")
+           | .created_at] | last // empty' 2>/dev/null | tail -1
+}
 gh label create "autopilot:claimed" --color "0075ca" \
   --description "Autopilot is actively working this issue" 2>/dev/null || true
+BEFORE="$(claim_event)"
 gh issue edit "$N" --add-label "autopilot:claimed" \
   || { echo "claim failed on #$N — stopping rather than risk a collision"; exit 1; }
+AFTER="$(claim_event)"
+if [ -n "$AFTER" ] && [ "$AFTER" = "$BEFORE" ]; then
+  echo "#$N was already claimed by another run at $AFTER — yielding"
+  exit 1
+fi
 ```
 
-Labeling isn't a perfect distributed lock (no compare-and-swap), so treat it as one
-layer of a defense-in-depth: the local single-flight lock in `autopilot-run.sh`
-serializes same-machine ticks, this label serializes cross-machine/manual runs, and
-Step 2's fresh liveness re-check catches the residual race window. Remember to
+Two rules make that check safe to act on. **When you yield, do not remove the
+label** — it is the other run's claim, and the cleanup snippets below apply only to
+a claim you won. And when both reads come back empty (the timeline call failed, no
+network, a token without the scope), **proceed**: the verification is an added
+layer, and losing it leaves you exactly where every run stood before it existed,
+not somewhere worse.
+
+Labeling still isn't a distributed lock, so treat the whole thing as
+defense-in-depth: the local single-flight lock in `autopilot-run.sh` serializes
+same-machine ticks, the label plus this read-after-write serializes
+cross-machine/manual runs, and Step 2's fresh liveness re-check catches whatever
+gets past both. Remember to
 **remove this label on every exit path** — success (end of Step 9) or any Stop
 condition (see [Stop conditions](#stop-conditions)):
 

@@ -5,9 +5,11 @@ Compares spec.md/tasks.md staleness for the active feature directory, resolved
 with the same priority core Spec Kit uses (.specify/scripts/bash/common.sh
 get_feature_paths()): the SPECIFY_FEATURE_DIRECTORY env var first (an explicit
 override for the run), then SPECIFY_FEATURE, then the current git branch name.
-`.specify/feature.json` is not consulted: it holds only `source_issue`, and its
-old "feature_directory" key named the previous feature in a fresh worktree
-(issue #33). A clean (committed, non-dirty) file's git commit time
+`.specify/feature.json` is not consulted: the only key of ours in it is
+`source_issue`, and its "feature_directory" key is written solely for core Spec
+Kit's own get_feature_paths(). We never resolve a path from that file — back when
+it was tracked, the recorded directory named the *previous* feature in any fresh
+worktree (issue #33). A clean (committed, non-dirty) file's git commit time
 is used instead of its filesystem mtime, since `git checkout`/clone resets
 mtimes for every file to checkout time regardless of true edit history —
 which would otherwise silently defeat the comparison in a fresh worktree.
@@ -61,10 +63,12 @@ def resolve_feature_dir() -> str | None:
     """Resolve the feature directory from the environment, then from git.
 
     `.specify/feature.json` is deliberately NOT consulted: it is per-worktree
-    state carrying only `source_issue`, and its old `feature_directory` field
-    named the *previous* feature in any fresh worktree (issue #33). The branch
-    is the authoritative source, matching spec_kit_resolve_feature in the git
-    extension's git-common.sh.
+    state whose only key of ours is `source_issue`, and whose `feature_directory`
+    field exists solely for core Spec Kit's own get_feature_paths(). A feature's
+    paths are never resolved from that file — while it was tracked, the recorded
+    directory named the *previous* feature in any fresh worktree (issue #33). The
+    branch is the authoritative source, matching spec_kit_resolve_feature in the
+    git extension's git-common.sh.
     """
     env_dir = os.environ.get("SPECIFY_FEATURE_DIRECTORY")
     if env_dir:

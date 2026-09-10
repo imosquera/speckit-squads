@@ -119,6 +119,24 @@ if [[ $RC -ne 0 ]]; then
     exit 1
 fi
 
+# Write `feature_directory` into the new worktree's .specify/feature.json.
+# Core Spec Kit's get_feature_paths() resolves the feature directory out of that
+# key and hard-errors without it, so a worktree created here (rather than by
+# create-new-feature.sh) failed the moment /speckit-plan ran in it. Only the
+# directory: this script is handed a branch, never an issue, and inventing a
+# source_issue would link the worktree to whatever issue happened to be there.
+# The shared writer merges, so an existing source_issue survives, and it also
+# gitignores/untracks the file (issue #33).
+GIT_COMMON="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/git-common.sh"
+if [[ -f "$GIT_COMMON" ]]; then
+    # shellcheck source=./git-common.sh
+    source "$GIT_COMMON"
+    spec_kit_write_feature_directory "$WORKTREE_PATH" \
+        "specs/$(spec_kit_effective_branch_name "$BRANCH_NAME")"
+else
+    echo "[specify] Warning: git-common.sh not found; skipped .specify/feature.json" >&2
+fi
+
 # Seed the worktree's knowledge graph, so graph-first navigation is available
 # from its first minute rather than being switched off by a missing graphify-out/.
 SEED_GRAPH="$(dirname "${BASH_SOURCE[0]}")/seed-graph.sh"

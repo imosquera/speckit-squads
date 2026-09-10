@@ -45,8 +45,10 @@ FEATURE_JSON="$REPO_ROOT/.specify/feature.json"
 SOURCE_ISSUE=""
 
 # Derive the slug from the branch, not from a file. `.specify/feature.json` is
-# per-worktree state carrying only `source_issue`; its old `feature_directory`
-# field named the *previous* feature in any fresh worktree (issue #33).
+# per-worktree state; the only key we read from it is `source_issue`, and its
+# `feature_directory` field is written for core Spec Kit's own resolver, never
+# ours. Back when the file was tracked, that recorded directory named the
+# *previous* feature in any fresh worktree (issue #33).
 # This mirrors spec_kit_resolve_feature in the git extension's git-common.sh,
 # inlined so the archive extension does not depend on the git extension.
 if [ -z "$FEATURE_SLUG" ]; then

@@ -325,7 +325,7 @@ mismatched numbering.
 
    Confirm the linkage landed before moving on — one read, no repair:
    ```bash
-   cat "<absolute path to the new worktree>/.specify/feature.json"   # {"source_issue": N}
+   cat "<absolute path to the new worktree>/.specify/feature.json"   # source_issue must be N
    ```
 3. **If that file is missing or names a different issue** — the installed `git`
    extension predates `--source-issue` (issue #44), or the worktree came from
@@ -343,10 +343,13 @@ mismatched numbering.
    stale-inheritance bug of issue #33 on the one path that runs unattended
    (issue #21).
 
-   `source_issue` is the file's entire contents. Never add `branch_name`,
-   `feature_num`, `worktree_path`, or `feature_directory` — every one of those is
-   derived from git at read time precisely so it cannot go stale, and writing them
-   is what used to point `/speckit-git-clean` and `/speckit-git-pr` at the previous
+   `source_issue` is the only key you ever write or read here. The file also
+   carries a `feature_directory` written once by `create-new-feature.sh` purely
+   for core Spec Kit's own `get_feature_paths()` — leave it alone, and never
+   resolve a path from it. Never add `branch_name`, `feature_num`, or
+   `worktree_path`: every part of a feature's identity is derived from git at
+   read time precisely so it cannot go stale, and recording paths in this file is
+   what used to point `/speckit-git-clean` and `/speckit-git-pr` at the previous
    feature (issue #33).
 4. **`cd` into the worktree** and run everything below from there. Speckit resolves
    paths from the worktree root; running from the main checkout drifts the cwd and

@@ -15,7 +15,11 @@ This command is idempotent: re-running it rewrites the same issue body from the 
 Resolve the feature directory the same way the other git commands do:
 
 1. `$SPECIFY_FEATURE_DIRECTORY` when set.
-2. Otherwise `feature_directory` from `.specify/feature.json`.
+2. Otherwise `$SPECIFY_FEATURE`, else `specs/<branch>` derived from the current git
+   branch. Never read the path out of `.specify/feature.json` — its
+   `feature_directory` key is written for core Spec Kit's own resolver, and paths
+   recorded in that file are how the git commands used to end up pointed at the
+   *previous* feature (issue #33).
 
 The spec is `<feature directory>/spec.md`.
 
@@ -141,7 +145,7 @@ already answers half of them.
 
    | Option | What you do |
    |---|---|
-   | **Merge into #N** | Adopt `#N` as this feature's tracking issue: write `{"source_issue": N}` into `.specify/feature.json` and take the **update** path. Create nothing. |
+   | **Merge into #N** | Adopt `#N` as this feature's tracking issue: set `source_issue` to `N` in `.specify/feature.json` (preserving every other key in the file) and take the **update** path. Create nothing. |
    | **File a new issue, cross-linked** | Create as normal, then add a `Related: #N` line to the new body and post one `gh issue comment N` pointing at the new issue. |
    | **Stop — I will work #N instead** | Create nothing, change nothing. Say which issue to run `/speckit-git-feature --source-issue N` against. |
 

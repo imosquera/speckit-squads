@@ -8,12 +8,19 @@
 # content into plan.md inside an idempotent sentinel block, then removes the
 # path.
 #
-# ALLOWED top-level entries:  spec.md, plan.md, tasks.md, quickstart.md, research.md
+# ALLOWED top-level entries:  spec.md, plan.md, tasks.md, quickstart.md,
+#                             research.md, checklists (dir)
 # FORBIDDEN (any form):       data-model.md, contracts (file or dir)
+#
+# `checklists/` is allowed, not merely tolerated: core Spec Kit's own
+# /speckit-specify mandates writing checklists/requirements.md, so warning about
+# it fired on every single run. A warning that always fires is noise that gets
+# ignored, which is worse than no warning at all. It is only in ALLOWED (never
+# FORBIDDEN), so nothing about it is removed or folded into plan.md.
 #
 # Anything else at the top level is UNKNOWN: warned about on stderr and left
 # alone. Dotfiles are ignored entirely. Other stacked presets legitimately write
-# files here (checklists/, …), so unknown entries must never fail the run.
+# files here, so unknown entries must never fail the run.
 #
 # ---------------------------------------------------------------------------
 # SAFETY INVARIANTS (this script deletes files — read before editing)
@@ -94,7 +101,11 @@ from pathlib import Path
 
 feature_dir = Path(sys.argv[1])
 
-ALLOWED = ("spec.md", "plan.md", "tasks.md", "quickstart.md", "research.md")
+ALLOWED = (
+    "spec.md", "plan.md", "tasks.md", "quickstart.md", "research.md",
+    # Core Spec Kit's /speckit-specify mandates checklists/requirements.md.
+    "checklists",
+)
 # Deterministic processing order — keeps plan.md stable across runs.
 FORBIDDEN = ("data-model.md", "contracts")
 

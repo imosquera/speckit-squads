@@ -369,6 +369,9 @@ def main(argv: List[str]) -> int:
         print(__doc__)
         return 2
     cmd, rest = argv[0], argv[1:]
+    if cmd in ("--help", "-h", "help") or "--help" in rest or "-h" in rest:
+        print(__doc__)
+        return 0
     if cmd == "checklist":
         return cmd_checklist()
     if cmd == "scan":

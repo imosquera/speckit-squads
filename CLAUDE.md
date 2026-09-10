@@ -364,7 +364,22 @@ on first run in a project that still tracks it, so the migration is automatic.
   one-file scan reads exactly like a clean gate — and `--new-only` re-scans the
   base ref's copy of the same files and subtracts what reproduces there, replacing
   the hand-diff against `main`. Findings are matched by (file, rule, source text),
-  never line number, so shifted code stays pre-existing. `./test-pdv-changeset.sh`
+  never line number, so shifted code stays pre-existing.
+  **A scan that examined zero files never exits like a clean pass** (issue #50).
+  Every path that ends in "nothing was examined" now has its own loud exit: an
+  unknown option or a `--base` with no ref is `2`, paths that resolve to no file
+  or a cwd outside any git worktree is `3`, and an empty change set is `4` — the
+  one non-zero the implement gate may proceed past, and only for a run that truly
+  wrote no TypeScript or Python. They all used to print
+  `no TypeScript/Python files to scan` and exit `0`, so a typo in the flag was
+  indistinguishable from a passing gate. The Node helper is the same defect one
+  layer down: it reads a JSON job on **stdin** and ignores file arguments, and a
+  direct call with filenames printed `{"findings":[]}` — it now refuses file
+  arguments, empty/malformed stdin and a zero-file job, and an unreadable source
+  is an error rather than a silent skip. It also resolves `typescript` from each
+  scanned file's own directory before the cwd, so a monorepo package with its own
+  `node_modules` scans while the driver stays anchored at the repo root for git
+  paths — no `NODE_PATH` bridging. `./test-pdv-changeset.sh`
   is the check
 - `graph-first-navigation` — makes knowledge-graph queries and the TypeScript
   language server the default navigation instruments and demotes grep to a

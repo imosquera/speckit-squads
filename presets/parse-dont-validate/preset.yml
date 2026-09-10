@@ -17,11 +17,11 @@ provides:
     - name: "parse_dont_validate.py"
       file: "scripts/python/parse_dont_validate.py"
       executable: true
-      description: "checklist + scan for parse-don't-validate anti-patterns in changed TypeScript and Python (any/Any / stray JSON.parse & json.loads / boolean validators / narrowing casts outside parser modules), with line-comment waivers. `scan` anchors change-set detection at the git worktree root (never the cwd) and `--new-only` subtracts findings that already reproduce on the base ref. Real ASTs, no regex: Python via the stdlib `ast` module, TypeScript by shelling out to the Node helper. Stdlib-only Python 3."
+      description: "checklist + scan for parse-don't-validate anti-patterns in changed TypeScript and Python (any/Any / stray JSON.parse & json.loads / boolean validators / narrowing casts outside parser modules), with line-comment waivers. `scan` anchors change-set detection at the git worktree root (never the cwd) and `--new-only` subtracts findings that already reproduce on the base ref. A scan that examined zero files never exits zero: an unknown option exits 2, unresolvable paths or a non-repo cwd exit 3, and an empty change set exits 4. Real ASTs, no regex: Python via the stdlib `ast` module, TypeScript by shelling out to the Node helper. Stdlib-only Python 3."
     - name: "pdv_ts_scan.cjs"
       file: "scripts/node/pdv_ts_scan.cjs"
       executable: true
-      description: "Node helper that walks TypeScript sources with the project's TypeScript Compiler API and emits findings as JSON. Requires `node` on PATH and `typescript` installed in the project; the Python driver hard-fails (no regex fallback) if either is missing."
+      description: "Node helper that walks TypeScript sources with the project's TypeScript Compiler API and emits findings as JSON. Resolves `typescript` from the scanned files' own directories first, so a monorepo package with its own `node_modules` works while the driver runs from the repo root. Requires `node` on PATH and `typescript` installed; the Python driver hard-fails (no regex fallback) if either is missing. Never prints an empty findings list for a job it could not use — file arguments, empty/malformed stdin and a zero-file job all exit non-zero."
 
   templates:
     - type: "command"

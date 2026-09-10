@@ -94,6 +94,15 @@ TypeScript/Python changed during this run:
    Drop `--new-only` to see the pre-existing findings too — informative, but
    never a reason to hold up this feature.
 
+   **A scan that examined nothing never exits zero.** Exit `2` is a bad
+   invocation (an unknown option, `--base` with no ref); exit `3` is a scan that
+   could not run (missing `node`/`typescript`, paths that resolved to no file,
+   a cwd outside any git worktree); exit `4` is an empty *input* — the change
+   set holds no TypeScript or Python. Read the message and fix the call. Never
+   invoke `scripts/node/pdv_ts_scan.cjs` yourself: it takes a JSON job on stdin
+   and ignores file arguments, so a direct call with filenames used to print an
+   empty findings list that read exactly like a pass.
+
    Both languages are analysed as real ASTs. Scanning **TypeScript** requires
    `node` on PATH and `typescript` installed in the project (the Node helper
    uses the TypeScript Compiler API). If the scanner exits `3` with a message
@@ -113,13 +122,19 @@ TypeScript/Python changed during this run:
    Re-run `scan --new-only` until it exits zero. **Do not report completion while it exits
    non-zero.**
 
-If the run produced no TypeScript or Python, `scan` reports nothing to check and
-exits zero — proceed normally.
+If the run produced no TypeScript or Python, `scan` exits `4` saying nothing was
+scanned. That is the one non-zero exit you may proceed past — and only after
+confirming this run really wrote no TypeScript or Python; say so in the
+completion report.
 
 ## Failure Policy
 
 - A non-zero exit from `parse_dont_validate.py scan --new-only` is a hard stop on reporting
-  completion. Fix the flagged code or add a boundary waiver, then re-scan.
+  completion. Exit `1` means findings: fix the flagged code or add a boundary
+  waiver, then re-scan. Exits `2`/`3` mean the gate never ran — fix the
+  invocation or the environment and run it; they are not a pass. Exit `4` means
+  nothing was scanned, which is a pass only for a run with no TypeScript or
+  Python in it.
 - Do not silence a finding by deleting the offending line's functionality, by
   widening a type to escape the regex, or by waiving outside a parser module.
   The point is a real parser at the boundary, not a green scan.

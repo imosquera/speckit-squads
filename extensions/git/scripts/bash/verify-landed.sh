@@ -113,7 +113,13 @@ resolve_base() {
     if [ "$DO_FETCH" -eq 1 ] && g remote get-url origin >/dev/null 2>&1; then
         g fetch --quiet origin "${BASE#origin/}" >/dev/null 2>&1 || true
     fi
-    for candidate in "$BASE" "origin/${BASE#origin/}" "refs/remotes/origin/${BASE#origin/}"; do
+    # The remote-tracking ref first, the local branch only as a fallback. A
+    # GitHub squash merge updates origin/main and leaves the local `main` at the
+    # pre-merge commit; resolving the local branch first compares a landed
+    # feature against a base that predates its own squash, reports NOT-LANDED,
+    # and pushes the operator onto --force — the one path this gate exists to
+    # keep them off.
+    for candidate in "origin/${BASE#origin/}" "refs/remotes/origin/${BASE#origin/}" "$BASE"; do
         if g rev-parse --verify --quiet "$candidate^{commit}" >/dev/null 2>&1; then
             printf '%s\n' "$candidate"
             return 0
@@ -177,7 +183,21 @@ fi
 MERGE_BASE="$(g merge-base "$BASE_SHA" "$BRANCH_SHA" 2>/dev/null || true)"
 
 if [ -n "$MERGE_BASE" ]; then
-    CHANGED="$(g diff --name-only "$MERGE_BASE" "$BRANCH_SHA" "${PATHSPEC[@]}" 2>/dev/null)"
+    # Every path any commit on the branch touched, not just the paths whose
+    # final content differs from the fork point. The endpoint tree diff misses a
+    # path the branch changed and later changed back: squash-merge a branch that
+    # edited f and g, then push a commit reverting f to its fork-point content,
+    # and the endpoint diff reports only g — which matches the squash, so the
+    # gate says LANDED and cleanup deletes the unmerged revert of f. The history
+    # remembers f; the endpoint tree does not.
+    #
+    # `log --name-only` skips merge commits, so the endpoint diff is unioned in
+    # rather than replaced: it is the cheap cover for anything a merge brought
+    # in. Over-collecting a path only costs an extra blob comparison, which is
+    # the safe direction.
+    CHANGED="$( { g log --format= --name-only "$MERGE_BASE..$BRANCH_SHA" "${PATHSPEC[@]}" 2>/dev/null
+                  g diff --name-only "$MERGE_BASE" "$BRANCH_SHA" "${PATHSPEC[@]}" 2>/dev/null
+                } | sed '/^$/d' | sort -u)"
     if [ -z "$CHANGED" ]; then
         [ "$JSON" -eq 1 ] || echo "LANDED: $BRANCH (${BRANCH_SHA:0:8}) introduces no changes over its fork point — nothing to lose"
         emit LANDED empty 0

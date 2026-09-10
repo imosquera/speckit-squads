@@ -42,7 +42,9 @@ Targets may be a worktree path, a spec directory, or an issue number.
 
 Refuses to clean unless verify-landed.sh proves the branch's work is on the
 base (default main) — a squash merge leaves no ancestry, so content is what is
-checked. --force overrides, discarding whatever the branch still holds.
+checked. A detached HEAD is verified by its commit sha; if the check cannot run
+at all (no resolvable HEAD, or no executable verify-landed.sh) it refuses too.
+--force overrides, discarding whatever the branch still holds.
 EOF
       exit 0
       ;;
@@ -198,18 +200,44 @@ fi
 # leaves no ancestry, so `git branch -d` / `--merged` / `--is-ancestor` all
 # report "not merged" for work that is safely on main; the script handles that.
 # UNKNOWN is a refusal, never a pass.
-if [[ -n "$BRANCH_NAME" && -x "$SCRIPT_DIR/verify-landed.sh" ]]; then
-  VERIFY_ARGS=("$BRANCH_NAME" --repo "$WORKTREE_ROOT")
+#
+# The gate must fail closed. A detached HEAD leaves BRANCH_NAME empty and a
+# missing or non-executable verifier makes the check unrunnable — and a
+# condition that silently *skips* on both turns exactly those cases into an
+# unverified delete. So: verify the detached HEAD by sha when there is no branch
+# name, and refuse outright when nothing can be verified.
+VERIFY_TARGET="$BRANCH_NAME"
+VERIFY_WHAT="branch '$BRANCH_NAME'"
+if [[ -z "$VERIFY_TARGET" ]]; then
+  VERIFY_TARGET="$(git -C "$WORKTREE_ROOT" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
+  VERIFY_WHAT="detached HEAD ${VERIFY_TARGET:0:8}"
+fi
+
+VERIFY_BLOCKED=""
+if [[ -z "$VERIFY_TARGET" ]]; then
+  VERIFY_BLOCKED="no branch and no resolvable HEAD in $WORKTREE_ROOT"
+elif [[ ! -x "$SCRIPT_DIR/verify-landed.sh" ]]; then
+  VERIFY_BLOCKED="verify-landed.sh is missing or not executable at $SCRIPT_DIR/verify-landed.sh"
+fi
+
+if [[ -n "$VERIFY_BLOCKED" ]]; then
+  if [[ "$FORCE" -ne 1 ]]; then
+    echo "[clean] refusing to clean $WORKTREE_ROOT: $VERIFY_BLOCKED — the landed check cannot run, so nothing proves this work is on ${BASE_BRANCH:-main} (use --force to override)" >&2
+    exit 1
+  fi
+  echo "[clean] --force: $VERIFY_BLOCKED; cleaning without the landed check" >&2
+else
+  VERIFY_ARGS=("$VERIFY_TARGET" --repo "$WORKTREE_ROOT")
   [[ -n "$BASE_BRANCH" ]] && VERIFY_ARGS+=(--base "$BASE_BRANCH")
   if VERIFY_OUT="$("$SCRIPT_DIR/verify-landed.sh" "${VERIFY_ARGS[@]}" 2>&1)"; then
     printf '%s\n' "$VERIFY_OUT" | sed 's/^/[clean] /'
   else
     printf '%s\n' "$VERIFY_OUT" | sed 's/^/[clean] /' >&2
     if [[ "$FORCE" -ne 1 ]]; then
-      echo "[clean] refusing to clean '$BRANCH_NAME': its work is not provably on ${BASE_BRANCH:-main} (use --force to override)" >&2
+      echo "[clean] refusing to clean $VERIFY_WHAT: its work is not provably on ${BASE_BRANCH:-main} (use --force to override)" >&2
       exit 1
     fi
-    echo "[clean] --force: cleaning '$BRANCH_NAME' anyway; the work above is being discarded" >&2
+    echo "[clean] --force: cleaning $VERIFY_WHAT anyway; the work above is being discarded" >&2
   fi
 fi
 

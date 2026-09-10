@@ -307,14 +307,27 @@ on first run in a project that still tracks it, so the migration is automatic.
   list — `functions web infra` one run, `functions web specs .github` the next —
   and a run that omits a path deletes a branch holding work in it (issue #49).
   The path list is the defect, so the script takes none: it compares **the
-  branch's own touched paths, derived from the fork point**, minus only the
-  exclusions `commit_exclude` already declares. Not the two whole trees — that
+  branch's own touched paths, derived from its commit history**, minus only the
+  exclusions `commit_exclude` already declares. The *history*, not the endpoint
+  tree diff against the fork point — that diff forgets a path the branch changed
+  and later changed back, so a branch squash-merged and then given a commit
+  reverting one file to its fork-point content read as LANDED off the paths that
+  still differed, and cleanup would have deleted the unmerged revert. Not the two
+  whole trees either — that
   flags every unrelated commit the base has taken on since, and a gate that
   cries wolf on a moving `main` is one nobody reads. Ancestry is still tried
   first (a true merge answers cheaply); content equivalence is the squash and
-  rebase case. **`UNKNOWN` is a refusal, never a pass**: an unresolvable base or
-  an unknown branch exits 2 and the branch stays. `./test-verify-landed.sh` is
-  the check.
+  rebase case. The base is resolved **remote-tracking ref first**, local branch
+  only as a fallback: a GitHub squash merge moves `origin/main` and leaves the
+  local `main` where it was, so preferring the local branch compares a landed
+  feature against a base that predates its own merge and forces the operator onto
+  `--force`. **`UNKNOWN` is a refusal, never a pass**: an unresolvable base or
+  an unknown branch exits 2 and the branch stays — and so is an *unrunnable*
+  check. `clean.sh` fails closed rather than skipping: a detached HEAD (no branch
+  name) is verified by its commit sha, and no resolvable HEAD or a missing /
+  non-executable `verify-landed.sh` refuses unless `--force`. A condition that
+  silently skips on those turns exactly the unverifiable cases into an unverified
+  delete. `./test-verify-landed.sh` is the check.
   `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.sh` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)

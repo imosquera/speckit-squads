@@ -18,10 +18,11 @@
 # `Blocked by:` line so `preflight-issues.py` keeps autopilot off it until its
 # dependencies close.
 #
-# ORDER OF CREATION IS LOAD-BEARING. Children are created frontend → backend →
-# integration. Autopilot's ranking breaks ties by age, so with equal priority
-# labels the frontend child is picked first — the mock-first policy falls out of
-# creation order rather than needing a rule in the picker.
+# Children are created frontend → backend → integration, but the ORDER IS NOT
+# what makes autopilot work the mock first: `preflight-issues.py`'s `rank_key`
+# carries an explicit layer term reading the `frontend`/`backend`/`integration`
+# labels applied below, so the frontend child outranks its backend sibling at
+# equal priority and kind however the two were created or relabelled (#56).
 #
 # Usage:
 #   split-issue.sh <parent-issue> --title "<feature title>" \

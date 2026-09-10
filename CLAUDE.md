@@ -179,13 +179,16 @@ on first run in a project that still tracks it, so the migration is automatic.
   and the severity words (`critical`/`urgent`→p0, `high`→p1, `medium`/`normal`→p2,
   `low`→p3) all read the same, lowest rank on the issue wins, and **an unlabelled
   issue ranks `p2` — mid-pack, not last**, so an explicitly deprioritized `p3`
-  chore can't outrank every untriaged bug. Age stays the final tiebreak, so an
-  unlabelled backlog behaves exactly as before. The `PICK:` line carries the
-  winning rank (`[p0, bug]`); the explicit-issue path prints no rank because a
+  chore can't outrank every untriaged bug. Below the kind term sits the **layer** term —
+  `frontend` before `backend` before `integration`, unlabelled level with
+  `backend` — which is what makes the mock-first split's frontend child win
+  without relying on creation order (issue #56). Age stays the final tiebreak,
+  so an unlabelled backlog behaves exactly as before. The `PICK:` line carries
+  the winning rank (`[p0, bug, frontend]`); the explicit-issue path prints no rank because a
   typed number is already a choice. `--cross-repo` now runs per candidate in rank
   order until one is not already delivered, instead of only against the oldest.
   The writer of this vocabulary is the git extension's `label-issue.sh` — keep
-  `PRIORITY_RE`/`PRIORITY_WORDS`/`BUG_LABELS` in sync with it.
+  `PRIORITY_RE`/`PRIORITY_WORDS`/`BUG_LABELS`/`LAYER_RANKS` in sync with it.
   Eligibility also honours **dependencies**: an issue whose body says
   `Blocked by: #N` is skipped while any named issue is still open
   (`blocked_by()`, checked against the fetched open-issue list, so it costs no
@@ -258,9 +261,13 @@ on first run in a project that still tracks it, so the migration is automatic.
   all**, so it starts immediately, is reviewable on its own, and freezes the data
   shape the backend child then implements; the wire-up child retires the fixtures.
   Three pieces of the mechanism are load-bearing and easy to break:
-  **creation order** is frontend → backend → integration, because the picker breaks
-  equal-priority ties by age — that is the *entire* implementation of "mock first",
-  there is no rule for it in `preflight-issues.py`; the wire-up child's body carries
+  the **layer term** in `preflight-issues.py`'s `rank_key`, which ranks
+  `frontend` < `backend` < `integration` (and an unlabelled issue level with
+  `backend`) between the bug/feature term and the age tiebreak — that is the
+  implementation of "mock first". It used to fall out of `split-issue.sh`'s
+  creation order via the age tiebreak, which silently inverted the moment
+  anyone raised the backend child's priority, titled it `fix: …`, or let
+  `upsert` adopt an older backend issue (issue #56); the wire-up child's body carries
   `Blocked by: #fe, #be`, which `preflight-issues.py`'s new `blocked_by()` resolves
   against the open-issue list it already fetched (no extra `gh` calls, and a
   dependency absent from that list counts as closed); and the parent is labelled

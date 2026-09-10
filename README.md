@@ -28,7 +28,7 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    issue-shaped gaps (done-condition, repro, out-of-scope, layer) before creating — answers land
                    in spec.md, since the body is re-rendered from it on every sync (--no-clarify skips);
                    a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one
-                   is always mock-first (static fixtures, no network) and is created first so autopilot picks it first,
+                   is always mock-first (static fixtures, no network) and outranks its backend sibling in autopilot's picker,
                    while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
                    commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches;
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json)

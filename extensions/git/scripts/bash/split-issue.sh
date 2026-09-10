@@ -77,11 +77,27 @@ PARENT_BODY="$(gh issue view "$PARENT" --json body --jq .body 2>/dev/null)" \
 # ------------------------------------------------------- existing children ---
 # The parent's own body is the registry. Nothing else survives a re-clone, and
 # searching GitHub for "issues that mention #N" matches every passing reference.
+#
+# The block is prose, and prose wraps: a bullet whose text runs long carries its
+# `#N` on a continuation line, where a physical-line grep can't see it. So fold
+# continuations onto their bullet first (same rule as diff-minimal's
+# `logical_lines()` — only a bullet accepts a continuation), then match. Take
+# the *last* `#N` on the folded bullet, which is where the generator writes the
+# child: a "supersedes #12" in the bullet text would otherwise win.
 child_of() {
   printf '%s\n' "$PARENT_BODY" \
     | sed -n "\|$BEGIN|,\|$END|p" \
+    | awk '
+        function flush() { if (b != "") { print b; b = "" } }
+        /^- \[[ xX]\]/                              { flush(); b = $0; next }
+        b != "" && /^[[:space:]]+[^[:space:]]/ \
+                && !/^[[:space:]]*-[[:space:]]\[/    { line = $0
+                                                       sub(/^[[:space:]]+/, " ", line)
+                                                       b = b line; next }
+                                                     { flush() }
+        END                                          { flush() }' \
     | grep -iE "^- \[[ x]\] $1\b" \
-    | grep -oE '#[0-9]+' | head -1 | tr -d '#'
+    | grep -oE '#[0-9]+' | tail -1 | tr -d '#'
 }
 
 FE="$(child_of frontend)"; BE="$(child_of backend)"; INT="$(child_of integration)"

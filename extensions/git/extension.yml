@@ -56,6 +56,9 @@ provides:
       file: scripts/bash/split-issue.sh
       executable: true
       command: speckit.git.issue
+    - name: selftest-split-issue.sh
+      file: scripts/bash/selftest-split-issue.sh
+      executable: true
     - name: find-duplicate-issues.sh
       file: scripts/bash/find-duplicate-issues.sh
       executable: true

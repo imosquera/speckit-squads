@@ -90,6 +90,10 @@ fi
 #   2. every script path a command file tells an agent to run resolves to a real file
 #   3. every extension/preset script a command file references is declared in its manifest
 #   4. no command file references `.specify/scripts/bash/<subdir>/…` — the core tree is flat
+#   5. no bash block uses a bare `$CLAUDE_PROJECT_DIR` — it is empty in an ordinary
+#      interactive session, so the path starts at `/` and the call dies with exit 127
+#      (issue #59). Use `${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}`, and
+#      re-derive it in every block: each bash call is its own shell.
 # Runs with or without the `specify` CLI on PATH.
 # ---------------------------------------------------------------------------
 python3 - <<'PYEOF' || fail=1
@@ -145,6 +149,21 @@ for cf in cmd_files:
                         f"{cf}:{lineno}: `.specify/scripts/{m.group(4)}/` is the FLAT core "
                         f"tree — it has no '{tail.split('/')[0]}/' subdirectory. Extension "
                         f"scripts live at .specify/extensions/<id>/scripts/{m.group(4)}/")
+
+BARE_CPD = re.compile(r'\$(?:CLAUDE_PROJECT_DIR\b|\{CLAUDE_PROJECT_DIR\})')
+for cf in cmd_files:
+    in_bash = False
+    for lineno, line in enumerate(open(cf), 1):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_bash = stripped[3:].strip() == "bash" if not in_bash else False
+            continue
+        if in_bash and BARE_CPD.search(line):
+            problems.append(
+                f"{cf}:{lineno}: bare $CLAUDE_PROJECT_DIR in a bash block — it is empty "
+                f"in an interactive session (issue #59). Use "
+                f"PROJECT_DIR=\"${{CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}}\" "
+                f"in this block and reference $PROJECT_DIR")
 
 for p in problems:
     print(p, file=sys.stderr)

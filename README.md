@@ -118,7 +118,11 @@ invented path. It verifies every `specify <verb>` a command file tells an agent 
 against the installed CLI's actual verbs, and it resolves every **script path** a command
 file names: each must exist on disk, be declared under its manifest's `provides.scripts:`,
 and never point into `.specify/scripts/bash/<subdir>/` — that tree is core Spec Kit's and
-is flat.
+is flat. It also rejects a bare `$CLAUDE_PROJECT_DIR` in a bash block: the variable is
+empty in an ordinary interactive session, so the path starts at `/` and the call dies with
+`exit 127` (issue #59). Each block resolves the root itself with
+`PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"` — per block,
+because each bash call is its own shell.
 
 After installing, `install.sh` runs `gen-agent-index.py`, which writes the command→script
 mapping into the consumer as `.specify/extensions/AGENTS.md` plus a breadcrumb at

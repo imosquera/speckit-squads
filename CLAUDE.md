@@ -73,6 +73,13 @@ ordering contract is tabulated in `README.md`; keep the two in sync.
 against `specify --help`, so a command file can't ship instructions to run CLI surface
 that doesn't exist. Prose outside code fences is ignored. Run it standalone any time.
 
+A command file's bash blocks must never use a bare `$CLAUDE_PROJECT_DIR`: it is empty in
+an ordinary interactive session, so the path starts at `/` and the call dies with
+`exit 127` — six sessions over 50 days paid that tax before it was caught (issue #59).
+Each block resolves the root itself with
+`PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"`, per block because
+each bash call is its own shell. `check-cli-usage.sh` fails the install on a bare use.
+
 Anything that must reach *outside* `specify` — the Claude Code harness
 (`.claude/settings.json`) or the project's `CLAUDE.md` — ships as
 `scripts/bash/post-install.sh <project-dir>` inside the extension or preset that

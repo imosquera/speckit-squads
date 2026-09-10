@@ -21,11 +21,13 @@ All of these are thin wrappers over the script — run it, don't reimplement lau
 by hand:
 
 ```bash
-BIN="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+BIN="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
 ```
 
-(If `$CLAUDE_PROJECT_DIR` isn't set, resolve the repo root with
-`git rev-parse --show-toplevel` and use `<root>/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh`.)
+Every block below re-derives `PROJECT_DIR` itself: each bash call is its own shell,
+and `$CLAUDE_PROJECT_DIR` is empty in an ordinary interactive session — using it
+bare yields a path starting at `/` and an `exit 127` (issue #59).
 
 ## What to do
 
@@ -37,16 +39,19 @@ BIN="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-sc
    a worktree too:
 
    ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   BIN="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
+
    # schedule every 2h (default)
-   "$BIN" install --project "$CLAUDE_PROJECT_DIR"
+   "$BIN" install --project "$PROJECT_DIR"
 
    # schedule every N hours
-   "$BIN" install --interval-hours N --project "$CLAUDE_PROJECT_DIR"
+   "$BIN" install --interval-hours N --project "$PROJECT_DIR"
 
    # check / stop / run once
-   "$BIN" status    --project "$CLAUDE_PROJECT_DIR"
-   "$BIN" uninstall --project "$CLAUDE_PROJECT_DIR"
-   "$BIN" run-now   --project "$CLAUDE_PROJECT_DIR"
+   "$BIN" status    --project "$PROJECT_DIR"
+   "$BIN" uninstall --project "$PROJECT_DIR"
+   "$BIN" run-now   --project "$PROJECT_DIR"
    ```
 
 3. **Report back** what the script printed — the label, cadence, plist path, and log

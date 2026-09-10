@@ -121,6 +121,12 @@ answer.
 | TypeScript rename / signature change / type change | LSP `findReferences`, `incomingCalls`, `goToDefinition` — **before the first edit**, not `tsc --noEmit` in a loop afterwards (probe for it first, below) |
 | exact string, comment/log/prose text, config value, env var name, route path, generated or vendored file | grep — correct as-is |
 
+**Grep locating a literal is the start of the answer, not the end.** The graph
+indexes config files and their keys but not their *values*, and env-var names
+are not nodes at all — so grep is the only way to find an exact string. The
+moment it names a file or a symbol, hand off to the graph for what depends on
+it: a config value found in one file is rarely read in only that file.
+
 **Missing or stale means BUILD, never grep.**
 
 ```bash

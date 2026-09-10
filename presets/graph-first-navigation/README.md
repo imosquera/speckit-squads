@@ -129,6 +129,19 @@ wrong. Grep is the right instrument for:
   Warm it with a query in the target file, and cross-check "nothing else uses
   this" against the graph
 
+Those are real gaps, not a hedge. Measured against a built graph: a config
+file is a node and so are its *keys* (`dependencies` at `web/package.json:L19`),
+but **values are not**, and neither are env-var names — every
+`import.meta.env.VITE_*` name in that repo resolves to zero nodes, because
+property access off `process.env` is not an edge the parser records. There is
+no graph query for "where is this exact string".
+
+**But grep locating a literal is the start of the answer, not the end.** Once
+it names a file or a symbol, hand off to the graph for what depends on it: a
+config value found in one file is rarely read in only that file. The
+grep -> graph handoff is the one this table used to describe in only one
+direction (graph finds the site, grep confirms the text); it runs both ways.
+
 ## Composition
 
 `speckit.implement` is targeted by six other presets; the ordering contract

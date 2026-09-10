@@ -90,8 +90,28 @@ if type spec_kit_resolve_feature >/dev/null 2>&1 && spec_kit_resolve_feature "$R
 else
     _feature_dir="specs/${CURRENT_BRANCH##*/}"
     [ -d "$REPO_ROOT/$_feature_dir" ] || _feature_dir=""
-    _source_issue=$(sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
-        "$REPO_ROOT/.specify/feature.json" 2>/dev/null | head -1)
+    if type spec_kit_feature_source_issue >/dev/null 2>&1; then
+        _source_issue=$(spec_kit_feature_source_issue "$REPO_ROOT")
+    else
+        _source_issue=$(sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
+            "$REPO_ROOT/.specify/feature.json" 2>/dev/null | head -1)
+    fi
+fi
+
+# Last gate before the PR exists: a worktree that was linked at creation but has
+# no source_issue now would open a PR with no `Closes #N`, leaving the issue open
+# after the merge (issue #78). spec_kit_feature_source_issue already recovers
+# from the sidecar and warns; if even that came back empty while a sidecar
+# exists, say so rather than opening a silently-detached PR.
+if ! echo "$_source_issue" | grep -Eq '^[0-9]+$' \
+   && type spec_kit_source_issue_sidecar >/dev/null 2>&1; then
+    _sidecar=$(spec_kit_source_issue_sidecar "$REPO_ROOT" 2>/dev/null || true)
+    if [ -n "$_sidecar" ] && [ -s "$_sidecar" ]; then
+        echo "[specify] Error: this worktree was linked to issue #$(cat "$_sidecar") at creation," >&2
+        echo "[specify]   but .specify/feature.json no longer carries source_issue and it could not" >&2
+        echo "[specify]   be recovered. Refusing to open a PR that closes nothing." >&2
+        exit 1
+    fi
 fi
 
 # Build PR title from the spec.md H1 if available, otherwise from branch name

@@ -146,10 +146,18 @@ fi
 # source_issue is the only field read from that file — everything else about the
 # feature is derived from git by spec_kit_resolve_feature (git-common.sh), never
 # from the file, so there is no stale identity to inherit here (issue #33).
-_feature_json="$REPO_ROOT/.specify/feature.json"
-if [ "$_phase" = "after" ] && [ -f "$_feature_json" ]; then
-    _source_issue=$(sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
-        "$_feature_json" 2>/dev/null | head -1)
+#
+# Read it through the helper rather than inline: this hook runs after every
+# phase, so it is also where a feature.json that core Spec Kit's setup-plan
+# overwrote gets recovered from the sidecar and healed, ahead of the readers
+# that still inline the sed (issue #78).
+if [ "$_phase" = "after" ]; then
+    if type spec_kit_feature_source_issue >/dev/null 2>&1; then
+        _source_issue=$(spec_kit_feature_source_issue "$REPO_ROOT")
+    else
+        _source_issue=$(sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' \
+            "$REPO_ROOT/.specify/feature.json" 2>/dev/null | head -1)
+    fi
     if echo "$_source_issue" | grep -Eq '^[0-9]+$'; then
         if ! echo "$_commit_msg" | grep -Eqi "(closes|fixes|resolves)[[:space:]]+#${_source_issue}\b"; then
             _commit_msg="${_commit_msg}

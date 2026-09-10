@@ -70,14 +70,64 @@ check_feature_branch() {
 # identity from the base branch (issue #33).
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# The sidecar: a copy of `source_issue` that a foreign writer cannot reach.
+#
+# spec_kit_write_feature_json below merges, so OUR writers never lose a key.
+# Core Spec Kit's does not: `_persist_feature_json` (core common.sh, reached
+# from setup-plan and every get_feature_dir call) writes
+# `{"feature_directory":...}` with a plain `>` redirect. Running /speckit-plan
+# therefore dropped `source_issue` mid-pipeline, /speckit-git-pr found nothing
+# to append, and the PR opened with no `Closes #N` — so the tracking issue
+# stayed open after the merge (issue #78).
+#
+# We cannot fix core's writer, so we keep a copy where it cannot write: the
+# worktree's own private git dir (`.git/worktrees/<name>/` in a linked
+# worktree). Never shared between worktrees, never committed, invisible to core.
+# A read that finds the key gone recovers from the sidecar, heals the file, and
+# says so on stderr.
+# ---------------------------------------------------------------------------
+
+# Path of the clobber-proof copy of source_issue for a worktree. Fails (prints
+# nothing) outside a git worktree.
+spec_kit_source_issue_sidecar() {
+    local root="${1:-$(pwd)}" gitdir
+    gitdir=$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null) || return 1
+    printf '%s/speckit-source-issue\n' "$gitdir"
+}
+
 # Read `source_issue` from a worktree's feature.json. Prints nothing when the
-# file is absent or carries no issue. Deliberately dependency-free (no jq) so
-# every extension can inline the same two lines when it cannot source this file.
+# file is absent or carries no issue. The read itself is dependency-free (no jq)
+# so every extension can inline the same two lines when it cannot source this
+# file — an inlined reader still gets the right answer, because the recovery
+# below runs from auto-commit.sh on every `after_*` phase, well before archive
+# or session-title look.
 spec_kit_feature_source_issue() {
     local root="${1:-$(pwd)}"
     local json="$root/.specify/feature.json"
-    [ -f "$json" ] || return 0
-    sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$json" | head -1
+    local issue=""
+
+    if [ -f "$json" ]; then
+        issue=$(sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$json" | head -1)
+    fi
+    if [ -n "$issue" ]; then
+        printf '%s\n' "$issue"
+        return 0
+    fi
+
+    # Gone. If the sidecar says this worktree WAS linked, a foreign writer
+    # dropped the key — recover loudly rather than opening a PR that closes
+    # nothing.
+    local sidecar
+    sidecar=$(spec_kit_source_issue_sidecar "$root") || return 0
+    [ -f "$sidecar" ] || return 0
+    issue=$(sed -nE 's/^[[:space:]]*([0-9]+).*/\1/p' "$sidecar" | head -1)
+    [ -n "$issue" ] || return 0
+
+    >&2 echo "[specify] Warning: .specify/feature.json lost its source_issue (#${issue});"
+    >&2 echo "[specify]   another writer overwrote the file. Restoring it from ${sidecar}."
+    _spec_kit_merge_feature_json "$root" "$issue" ""
+    printf '%s\n' "$issue"
 }
 
 # Read `feature_directory` from a worktree's feature.json, still JSON-escaped
@@ -222,6 +272,19 @@ spec_kit_write_feature_json() {
 
     if [ -n "$source_issue" ] || [ -n "$feature_dir" ]; then
         _spec_kit_merge_feature_json "$worktree" "$source_issue" "$feature_dir"
+    fi
+
+    # Mirror the linkage where core Spec Kit's overwrite cannot reach it.
+    local sidecar
+    if sidecar=$(spec_kit_source_issue_sidecar "$worktree"); then
+        if [ -n "$source_issue" ]; then
+            printf '%s\n' "$source_issue" > "$sidecar"
+        elif [ ! -f "$json" ]; then
+            # The inherited-file purge above removed the linkage; the sidecar
+            # must not outlive it, or the next read would restore an issue this
+            # worktree was never bound to.
+            rm -f "$sidecar"
+        fi
     fi
 
     spec_kit_ignore_feature_json "$worktree"

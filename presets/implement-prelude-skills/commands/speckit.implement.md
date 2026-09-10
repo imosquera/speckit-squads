@@ -17,7 +17,7 @@ $ARGUMENTS
 
 You **MUST** consider the user input before proceeding (if not empty).
 
-### Prelude — activate review/lens skills (MANDATORY — FIRST STEP)
+### Prelude — activate implementation-discipline skills (MANDATORY — FIRST STEP)
 
 Before the core flow below begins, check the host's available-skills list and
 invoke the following via the Skill tool if listed:

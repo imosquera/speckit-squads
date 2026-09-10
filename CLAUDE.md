@@ -314,7 +314,28 @@ on first run in a project that still tracks it, so the migration is automatic.
   graph makes the freshness gate report STALE forever.
   `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.sh` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`): `auto-commit.sh` holds them out of `git add` via `:(exclude)` pathspecs, and `create-pr.sh` resets them to the base before opening the PR — both the working tree (otherwise the squash path aborts on a dirty tree) and any divergence already committed on the branch. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
-- `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
+- `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr).
+  **The coordinator hands each reviewer its scope; it never lets one infer it.** A
+  subagent inherits the session cwd — regularly the main checkout on `main`, not the
+  feature worktree — so a reviewer once produced confident findings about an unrelated
+  working tree, and a review of the wrong tree reads exactly like a review that passed
+  (issue #52). `detect-changed-files.sh` therefore emits `repo_root` (absolute) and
+  `diff_base` (the merge-base, empty in Mode B) alongside the file list, and
+  step 6a of `run.md` requires both verbatim in every reviewer prompt, with a
+  `SCOPE ERROR:` refusal — not a review of whatever was lying around — when the branch
+  or the range doesn't check out. Two turn-burners are named in the same step: 6b
+  forbids status-only turns after dispatch (the model already knows not to poll and
+  polls anyway — eleven consecutive no-op turns in one run), and 6c gives the hang its
+  recovery (no output and no elapsed-time movement for 10 min → `TaskStop`, run that
+  aspect inline, and report it as `degraded`, never as a clean pass).
+  **A base, not a `base...HEAD` range, and the file list — not the diff — is the
+  authoritative scope.** Three-dot compares two commits, so it drops the staged and
+  unstaged work the detector lists in the same breath; and no diff of any shape shows
+  an untracked file, in either mode. A reviewer handed only a commit range silently
+  reviews the committed half of the change and calls it a pass. The PowerShell twin
+  was deleted rather than kept in sync: nothing here runs on Windows, and a second
+  copy of this logic is a second place for it to drift.
+  `./test-review-scope.sh` is the check
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.
 
 **Presets**

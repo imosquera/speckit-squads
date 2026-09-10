@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: "review"
   name: "Review Extension"
-  version: "1.2.0"
+  version: "1.3.0"
   description: "Code review extension combining a GitHub PR-oriented 4-pass review (architecture, implementation, testing/security, simplicity) with specialized post-implementation agents for code quality, comments, tests, error handling, type design, and simplification. The PR review will additionally invoke the `ponytail` skill (DietrichGebert/ponytail marketplace) when it is available locally. Use /speckit-review-run for local-changes review across all agents, or /speckit-review-pr for a synthesized review of a GitHub PR."
   author: "beadbits"
   repository: "local"
@@ -31,9 +31,6 @@ provides:
   scripts:
     - name: "detect-changed-files.sh"
       file: "scripts/bash/detect-changed-files.sh"
-      executable: true
-    - name: "detect-changed-files.ps1"
-      file: "scripts/powershell/detect-changed-files.ps1"
       executable: true
 
   commands:

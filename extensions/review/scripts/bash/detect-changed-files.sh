@@ -21,13 +21,16 @@
 #   Text mode:
 #     BRANCH: <current-branch>
 #     DEFAULT_BRANCH: <default-branch>
+#     REPO_ROOT: <absolute worktree root>
+#     DIFF_BASE: <merge-base>  (empty in Mode B; `git diff <base>` covers
+#                             committed + staged + unstaged)
 #     MODE: <detection mode description>
 #     CHANGED_FILES:
 #       file1
 #       file2
 #
 #   JSON mode:
-#     {"branch":"...","default_branch":"...","mode":"...","changed_files":["..."]}
+#     {"branch":"...","default_branch":"...","repo_root":"...","diff_base":"...","mode":"...","changed_files":["..."]}
 
 set -e
 
@@ -109,6 +112,17 @@ fi
 # Get current branch (empty string if detached HEAD)
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
 
+# Absolute root of THIS worktree — reviewers are dispatched against it explicitly
+# so a subagent can't inherit the session cwd and review another checkout.
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+
+# Base the reviewers must diff AGAINST (Mode A only; empty in Mode B).
+# A base, not a `base...HEAD` range: two-dot `git diff <base>` reaches the working
+# tree, so it covers the staged and unstaged work the detector also lists. A
+# three-dot range compares two commits and would silently drop it.
+DIFF_BASE=""
+
+
 # Determine default branch
 DEFAULT_BRANCH=""
 
@@ -182,6 +196,7 @@ if [[ -n "$CURRENT_BRANCH" && -n "$DEFAULT_BRANCH" && "$CURRENT_BRANCH" != "$DEF
             fi
         done
 
+        DIFF_BASE="${MERGE_BASE}"
         MODE="Feature branch diff (${DEFAULT_BRANCH}...HEAD) + uncommitted changes (staged + unstaged + untracked)"
     else
         # merge-base failed — fall through to Mode B
@@ -230,8 +245,9 @@ fi
 # --- 1d. Validate Changed Files ---
 if [[ ${#CHANGED_FILES[@]} -eq 0 ]]; then
     if $JSON_MODE; then
-        printf '{"branch":"%s","default_branch":"%s","mode":"%s","changed_files":[],"message":"No changes detected. Nothing to review."}\n' \
-            "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$DEFAULT_BRANCH")" "$(json_escape "$MODE")"
+        printf '{"branch":"%s","default_branch":"%s","repo_root":"%s","diff_base":"%s","mode":"%s","changed_files":[],"message":"No changes detected. Nothing to review."}\n' \
+            "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$DEFAULT_BRANCH")" \
+            "$(json_escape "$REPO_ROOT")" "$(json_escape "$DIFF_BASE")" "$(json_escape "$MODE")"
     else
         echo "No changes detected. Nothing to review."
     fi
@@ -240,11 +256,15 @@ fi
 
 # --- Output ---
 if $JSON_MODE; then
-    printf '{"branch":"%s","default_branch":"%s","mode":"%s","changed_files":%s}\n' \
-        "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$DEFAULT_BRANCH")" "$(json_escape "$MODE")" "$(fmt_array "${CHANGED_FILES[@]}")"
+    printf '{"branch":"%s","default_branch":"%s","repo_root":"%s","diff_base":"%s","mode":"%s","changed_files":%s}\n' \
+        "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$DEFAULT_BRANCH")" \
+        "$(json_escape "$REPO_ROOT")" "$(json_escape "$DIFF_BASE")" \
+        "$(json_escape "$MODE")" "$(fmt_array "${CHANGED_FILES[@]}")"
 else
     echo "BRANCH: $CURRENT_BRANCH"
     echo "DEFAULT_BRANCH: $DEFAULT_BRANCH"
+    echo "REPO_ROOT: $REPO_ROOT"
+    echo "DIFF_BASE: $DIFF_BASE"
     echo "MODE: $MODE"
     echo "CHANGED_FILES:"
     for f in "${CHANGED_FILES[@]}"; do

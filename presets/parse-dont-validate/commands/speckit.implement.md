@@ -73,15 +73,26 @@ TypeScript/Python changed during this run:
    python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py checklist
    ```
 
-2. **Scan the changed files** (no paths → the script inspects the git change
-   set: working-tree changes **plus** work already committed on the current
-   branch, so the gate still fires even if a post-implement hook has committed
-   the implementation. Pass explicit paths/dirs to narrow, or `--base <ref>` to
-   pin the branch base):
+2. **Scan the changed files.** This is the whole invocation — one command, from
+   anywhere in the checkout:
 
    ```sh
-   python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py scan
+   python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py scan --new-only
    ```
+
+   With no paths the script inspects the git change set — working-tree changes
+   **plus** work already committed on the current branch, so the gate still
+   fires even if a post-implement hook has committed the implementation. It
+   anchors at the git worktree root itself, so it cannot silently scan one file
+   because you started in a subdirectory. `--new-only` re-scans the base ref's
+   copy of the same files and subtracts every finding that reproduces there, so
+   what you get back is what *this run* introduced — do not hand-verify findings
+   against `main` yourself. Pass explicit paths/dirs to narrow, or `--base
+   <ref>` to pin the branch base (needed only when the base cannot be
+   auto-detected; `--new-only` exits `3` and says so).
+
+   Drop `--new-only` to see the pre-existing findings too — informative, but
+   never a reason to hold up this feature.
 
    Both languages are analysed as real ASTs. Scanning **TypeScript** requires
    `node` on PATH and `typescript` installed in the project (the Node helper
@@ -99,7 +110,7 @@ TypeScript/Python changed during this run:
      for TypeScript, `#` for Python). Waive only at the trusted parser boundary;
      a waiver anywhere else is the bug this preset exists to catch.
 
-   Re-run `scan` until it exits zero. **Do not report completion while it exits
+   Re-run `scan --new-only` until it exits zero. **Do not report completion while it exits
    non-zero.**
 
 If the run produced no TypeScript or Python, `scan` reports nothing to check and
@@ -107,7 +118,7 @@ exits zero — proceed normally.
 
 ## Failure Policy
 
-- A non-zero exit from `parse_dont_validate.py scan` is a hard stop on reporting
+- A non-zero exit from `parse_dont_validate.py scan --new-only` is a hard stop on reporting
   completion. Fix the flagged code or add a boundary waiver, then re-scan.
 - Do not silence a finding by deleting the offending line's functionality, by
   widening a type to escape the regex, or by waiving outside a parser module.

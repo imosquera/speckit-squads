@@ -17,7 +17,7 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding;
                    a small, unambiguous change skips spec/clarify/plan/tasks and goes straight to implementation
                    (Step 2.5), keeping review + draft PR as the gates
-  git/             Feature-branch + worktree (graph seeded at creation via seed-graph.sh) + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
+  git/             Feature-branch + worktree (graph seeded at creation via seed-graph.sh, dependencies installed via install-deps.sh) + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
                    a PR is titled "#N: <spec H1>" and inherits the tracking issue's labels (pr_copy_labels) and carries an agent-session
                    footer with the `claude --resume` id, author and claude.ai link (pr_session_footer),
                    both read by the script from gh/git/env, never supplied by the agent;
@@ -30,11 +30,13 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one
                    is always mock-first (static fixtures, no network) and outranks its backend sibling in autopilot's picker,
                    while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
-                   commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches;
+                   commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches — one handler,
+                   scrub-commit-exclude.sh, called by auto-commit/create-pr/clean, enforced even when auto_commit is off;
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json);
                    /speckit-git-clean refuses every destructive step until verify-landed.sh proves the branch's work is
-                   on the base — a squash merge leaves no ancestry, so content is compared tree-wide (minus commit_exclude)
-                   instead of by a hand-typed path list that differed every run (issue #49); UNKNOWN is a refusal
+                   on the base — a squash merge leaves no ancestry, so the branch's own touched paths (from its commit
+                   history, minus commit_exclude) are compared against the fetched origin/<base> instead of a hand-typed
+                   path list that differed every run (issue #49); UNKNOWN, or a check that cannot run at all, is a refusal
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)

@@ -137,6 +137,25 @@ else
   echo "  FAIL: scrub-commit-exclude.sh is not declared in extension.yml" >&2; fail=1
 fi
 
+echo "10. a NEWLY ADDED excluded file is left neither staged nor on disk"
+# `git restore --staged` turns a staged addition into an untracked file, so a
+# scrubber that read the untracked list once, before unstaging, reported success
+# and left `?? graphify-out/...` behind for the next `git add` to commit.
+R="$TMP/r10"; make_repo "$R"
+mkdir -p "$R/graphify-out/2026-09-10"
+echo '{"cost":1}' > "$R/graphify-out/2026-09-10/cost.json"
+echo 'edited' > "$R/app.txt"
+git -C "$R" add -A >/dev/null            # the flow's own `git add -A`
+scrub "$R" >/dev/null
+check new-addition "index carries no excluded path" "" \
+  "$(git -C "$R" diff --cached --name-only -- graphify-out)"
+check new-addition "nothing left untracked" "" \
+  "$(git -C "$R" ls-files --others --exclude-standard -- graphify-out)"
+check new-addition "removed from disk" "absent" \
+  "$([[ -e "$R/graphify-out/2026-09-10/cost.json" ]] && echo present || echo absent)"
+check new-addition "real work still staged" "app.txt" \
+  "$(git -C "$R" diff --cached --name-only -- app.txt)"
+
 if [[ $fail -eq 0 ]]; then echo "commit_exclude check: ok"; else
   echo "commit_exclude check: FAILED" >&2; fi
 exit $fail

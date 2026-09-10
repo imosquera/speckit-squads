@@ -22,7 +22,6 @@ This command is invoked as a hook after (or before) core commands. It:
 Determine the event name from the hook that triggered this command, then run the script:
 
 - **Bash**: `.specify/extensions/git/scripts/bash/auto-commit.sh <event_name>`
-- **PowerShell**: `.specify/extensions/git/scripts/powershell/auto-commit.ps1 <event_name>`
 
 Replace `<event_name>` with the actual hook event (e.g., `after_specify`, `before_plan`, `after_implement`).
 

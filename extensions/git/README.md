@@ -126,5 +126,3 @@ The extension bundles cross-platform scripts:
 
 - `scripts/bash/create-new-feature.sh` — Bash implementation
 - `scripts/bash/git-common.sh` — Shared Git utilities (Bash)
-- `scripts/powershell/create-new-feature.ps1` — PowerShell implementation
-- `scripts/powershell/git-common.ps1` — Shared Git utilities (PowerShell)

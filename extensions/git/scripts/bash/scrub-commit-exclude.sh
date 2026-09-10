@@ -122,6 +122,12 @@ for _ex in "${EXCLUDES[@]}"; do
         git -C "$REPO" checkout -- "$_ex" 2>/dev/null || true
         what="${what:+$what, }restored to HEAD"
     fi
+    # Re-read: unstaging a file that was staged as an ADDITION turns it
+    # untracked, so the pre-scrub reading is stale in exactly the case this
+    # exists for — a freshly generated dated snapshot picked up by `git add -A`.
+    # Reporting success while leaving `?? graphify-out/` behind is how it gets
+    # committed by the next `git add` and blocks the squash after that.
+    _untracked=$(git -C "$REPO" ls-files --others --exclude-standard -- "$_ex" 2>/dev/null | head -1)
     if [ -n "$_untracked" ]; then
         git -C "$REPO" clean -qfd -- "$_ex" 2>/dev/null || true
         what="${what:+$what, }removed untracked output"

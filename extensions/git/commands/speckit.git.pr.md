@@ -4,7 +4,7 @@ description: "Open a GitHub PR for the current feature branch, auto-appending Cl
 
 # Create PR for Current Feature
 
-Open a GitHub pull request from the current feature branch into `main` (or another base passed as an argument). If `.specify/feature.json` carries a `source_issue` field — written by `/speckit-git-feature` when it created or was bound to a GitHub issue — the PR body will include a `Closes #N` line so merging the PR automatically closes that issue. That is the file's only field; every other part of the feature's identity is derived from git at read time (issue #33).
+Open a GitHub pull request from the current feature branch into `main` (or another base passed as an argument). If `.specify/feature.json` carries a `source_issue` field — written by `/speckit-git-feature` when it created or was bound to a GitHub issue — the PR body will include a `Closes #N` line so merging the PR automatically closes that issue. `source_issue` is the only field this command reads; every part of the feature's identity — branch, number, spec directory, worktree path — is derived from git at read time, never from that file (issue #33), including the `feature_directory` key core Spec Kit keeps there for its own resolver.
 
 The PR also inherits the tracking issue's **labels** (priority, kind, layer — whatever `/speckit-git-issue` applied), minus `autopilot:*` run-state, and carries an **Agent session** footer naming the Claude Code session that produced the branch so a reviewer can resume it locally. Both are read deterministically by the script — from `gh` and from the environment — and both can be turned off in `git-config.yml`.
 
@@ -40,7 +40,7 @@ If a command that is supposed to run is unavailable or fails, stop and return an
 3. Resolve the feature:
    - The feature directory is derived from the current branch (`specs/<branch>`, honouring `SPECIFY_FEATURE_DIRECTORY`/`SPECIFY_FEATURE`) → used to derive the PR title from the spec's H1 and to mention spec/plan/tasks paths in the PR body.
    - When a `source_issue` is present the title is prefixed `#N: `, so the PR reads as the delivery of that issue in a list view. A prefix, not a trailing `(#N)` — GitHub appends `(#<pr>)` to the subject itself on a squash merge, and a title carrying both would read as two PR numbers. Double-prefixing is guarded, so a spec H1 that already names the issue is left alone. The squashed commit subject uses the same string, keeping commit and PR titles identical.
-   - `source_issue` is read from `.specify/feature.json`, its only field → if present and numeric, append `Closes #N` to the PR body.
+   - `source_issue` is read from `.specify/feature.json` — the only field read from it → if present and numeric, append `Closes #N` to the PR body.
 4. If `squash_before_pr: true` in `git-config.yml`, squash every commit between `merge-base(HEAD, <base>)` and `HEAD` into a single commit (title from the spec H1, body listing the original commit subjects). Aborts if the working tree has uncommitted changes.
 5. If the branch isn't yet on `origin`, push it (`git push -u origin <branch>`). If it was already pushed and a squash happened, force-push with `--force-with-lease`.
 6. If a PR already exists for the branch, print its URL and exit. In `--draft` mode, if that existing PR is *not* a draft, also print a warning naming `gh pr ready <url> --undo` — the script does not mutate a PR it did not create.

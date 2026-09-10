@@ -156,15 +156,15 @@ fi
 # ---------------------------------------------------------------- case 5
 start "unknown entry => exit 0, warning on stderr, entry kept"
 d="$(mkfeature unknown)"
-mkdir -p "$d/checklists"
-printf '%s\n' '- [ ] item' > "$d/checklists/ux.md"
+mkdir -p "$d/notes"
+printf '%s\n' '- [ ] item' > "$d/notes/scratch.md"
 run "$d"
 if [[ $RC -ne 0 ]]; then
     fail "expected exit 0, got $RC ($ERR)"
-elif [[ ! -d "$d/checklists" ]]; then
-    fail "checklists/ was removed"
-elif [[ "$ERR" != *"warning:"*"checklists"* ]]; then
-    fail "expected a warning about checklists on stderr, got: $ERR"
+elif [[ ! -d "$d/notes" ]]; then
+    fail "notes/ was removed"
+elif [[ "$ERR" != *"warning:"*"notes"* ]]; then
+    fail "expected a warning about notes on stderr, got: $ERR"
 else
     pass
 fi
@@ -559,6 +559,24 @@ elif [[ "$OUT" != *removed:*data-model.md* ]]; then
     fail "expected a 'removed:' line, got: $OUT"
 elif [[ "$ERR" == *Error* ]]; then
     fail "reporting raised under a non-UTF-8 locale: $ERR"
+else
+    pass
+fi
+
+# ---------------------------------------------------------------- case 22
+start "checklists/ is allowed => exit 0, no warning, dir left in place"
+d="$(mkfeature checklists-allowed)"
+mkdir -p "$d/checklists"
+printf '%s\n' '- [ ] item' > "$d/checklists/requirements.md"
+run "$d"
+if [[ $RC -ne 0 ]]; then
+    fail "expected exit 0, got $RC ($ERR)"
+elif [[ ! -f "$d/checklists/requirements.md" ]]; then
+    fail "checklists/ was removed or emptied"
+elif [[ -n "$ERR" ]]; then
+    fail "expected no warning about checklists, got: $ERR"
+elif has 'requirements.md' "$d/plan.md"; then
+    fail "checklists content was folded into plan.md"
 else
     pass
 fi

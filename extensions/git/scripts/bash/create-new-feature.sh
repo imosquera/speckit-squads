@@ -661,10 +661,13 @@ if [ "$DRY_RUN" != true ]; then
     # Write the worktree's per-worktree feature state, and prefix the issue
     # title with the actual FEATURE_NUM.
     #
-    # `.specify/feature.json` carries `source_issue` and nothing else — every
-    # other field (branch, number, worktree path, spec directory) is derived
-    # from git at read time by spec_kit_resolve_feature(), so it cannot go
-    # stale. The helper also gitignores the file and untracks it if an older
+    # `.specify/feature.json` carries `source_issue` — the only part of a
+    # feature's identity that cannot be derived from git — plus a
+    # `feature_directory` written once here solely for core Spec Kit's own
+    # resolver (see the block below). Branch, number and worktree path are
+    # never written, and no reader of ours reads a feature's paths out of this
+    # file: spec_kit_resolve_feature() derives them from git at read time, so
+    # they cannot go stale. The helper also gitignores the file and untracks it if an older
     # layout committed it; see git-common.sh and issue #33.
     #
     # When this run has no issue at all (the GIT_BRANCH_NAME / --timestamp /
@@ -685,7 +688,14 @@ if [ "$DRY_RUN" != true ]; then
     # title with FEATURE_NUM so the issue <-> spec alignment is visible.
     # ---------------------------------------------------------------------
     if [ "$HAS_GIT" = true ] && [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
-        spec_kit_write_feature_json "$WORKTREE_PATH" "$SOURCE_ISSUE"
+        # The second argument is the tracking issue; the third is the
+        # `feature_directory` key written FOR CORE SPEC KIT ONLY, never read
+        # back by us (see spec_kit_write_feature_json in git-common.sh, which
+        # merges the two halves so neither writer can erase the other's).
+        # The slug matches how spec_kit_resolve_feature derives specs/<slug>.
+        _fj_dir="specs/$(spec_kit_effective_branch_name "$BRANCH_NAME")"
+        spec_kit_write_feature_json "$WORKTREE_PATH" "$SOURCE_ISSUE" "$_fj_dir"
+
         if [ -n "$SOURCE_ISSUE" ]; then
             >&2 echo "[specify] Linked worktree to issue #${SOURCE_ISSUE} via .specify/feature.json."
         fi

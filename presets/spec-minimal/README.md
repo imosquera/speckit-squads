@@ -7,7 +7,7 @@ Wraps `/speckit-specify` and `/speckit-plan` to trim the generated artifacts wit
 | Command | Default artifacts | Under `spec-minimal` |
 |---|---|---|
 | `/speckit-specify` | `spec.md` with all sections | `spec.md` minus **Assumptions**, **Key Entities**, and **Success Criteria** |
-| `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `spec.md`, `plan.md`, `tasks.md`, optionally `quickstart.md` and `research.md` — `data-model.md` and `contracts/` are forbidden |
+| `/speckit-plan` | `plan.md` + `research.md` + `data-model.md` + `quickstart.md` + `contracts/` | `spec.md`, `plan.md`, `tasks.md`, `checklists/`, optionally `quickstart.md` and `research.md` — `data-model.md` and `contracts/` are forbidden |
 
 This preset does one thing: artifact minimalism. The inline HTML UI preview lives in the separate `spec-ui-preview` preset, and GitHub issue sync lives in the `git` extension (`/speckit-git-issue`, on the `after_specify` hook).
 
@@ -32,7 +32,9 @@ Exit codes:
   - `PARTIALLY HEALED` — **the content IS safely inlined in `plan.md`, but at least one forbidden artifact could not be removed** and is still on disk. Deleting it by hand loses nothing.
 - **`2`** — bad usage.
 
-Unknown top-level entries are **not** failures. The enforcer emits a `warning:` on stderr and carries on, so a checklist or other file legitimately written by a stacked preset never breaks the run. Dotfiles are ignored entirely. Nothing is ever pre-created on disk — the one file the enforcer will create is `plan.md`, and only when there is inlined content that would otherwise have nowhere to go.
+Unknown top-level entries are **not** failures. The enforcer emits a `warning:` on stderr and carries on, so a file legitimately written by a stacked preset never breaks the run. Dotfiles are ignored entirely. Nothing is ever pre-created on disk — the one file the enforcer will create is `plan.md`, and only when there is inlined content that would otherwise have nowhere to go.
+
+`checklists/` is in the allowed set, not merely tolerated as an unknown entry: core Spec Kit's own `/speckit-specify` mandates writing `checklists/requirements.md`, so warning about it on every single run would train the reader to ignore the warnings. It is never created or healed by the enforcer.
 
 `research.md` is allowed but never pre-created — it exists so the `library-research` preset can stack on top of `spec-minimal` without having its findings folded away.
 

@@ -57,14 +57,17 @@ check_feature_branch() {
 # Feature identity resolution.
 #
 # `.specify/feature.json` is per-worktree runtime state, NOT project
-# configuration: it is gitignored and regenerated per worktree. It carries
-# exactly one field — `source_issue` — because that is the only piece of
-# feature identity that cannot be derived from git.
+# configuration: it is gitignored and regenerated per worktree. The only field
+# our tooling reads out of it is `source_issue` — the only piece of feature
+# identity that cannot be derived from git. (`create-new-feature.sh` also writes
+# a `feature_directory` key there, solely for core Spec Kit's own
+# get_feature_paths(); nothing here reads it.)
 #
 # Everything else (branch, number, worktree path, spec directory) is read
-# from git at call time, so it can never go stale. Historically all five
-# were written to the file, which meant a new worktree inherited the
-# previous feature's identity from the base branch (issue #33).
+# from git at call time, so it can never go stale — a feature's paths are never
+# resolved from this file. Historically all five were written to it *and* the
+# file was tracked, which meant a new worktree inherited the previous feature's
+# identity from the base branch (issue #33).
 # ---------------------------------------------------------------------------
 
 # Read `source_issue` from a worktree's feature.json. Prints nothing when the
@@ -75,6 +78,29 @@ spec_kit_feature_source_issue() {
     local json="$root/.specify/feature.json"
     [ -f "$json" ] || return 0
     sed -nE 's/.*"source_issue"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$json" | head -1
+}
+
+# Read `feature_directory` from a worktree's feature.json, still JSON-escaped
+# exactly as stored, so it can be re-emitted verbatim without a decode/encode
+# round trip. Private: nothing in this repo consumes the key's *value* — it
+# exists only so core Spec Kit's get_feature_paths() resolves (see the header
+# above) — and the only caller is the printf fallback below.
+_spec_kit_feature_directory_raw() {
+    local root="${1:-$(pwd)}"
+    local json="$root/.specify/feature.json"
+    [ -f "$json" ] || return 0
+    sed -nE 's/.*"feature_directory"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' "$json" | head -1
+}
+
+# Escape a string for use inside a JSON string literal. Core Spec Kit's
+# common.sh has its own `json_escape`, but git-common.sh is sourced by callers
+# that never load core (bind-feature-issue.sh, worktree-add.sh), so the writers
+# below cannot depend on it.
+spec_kit_json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '%s' "$s"
 }
 
 # Derive the feature number from a branch name: the leading sequential prefix
@@ -134,8 +160,27 @@ spec_kit_resolve_feature() {
 # Write the per-worktree feature.json, gitignore it, and untrack it if a
 # previous (pre-#33) commit put it under version control.
 #
-# `source_issue` is the entire payload. When $2 is empty, whether an existing
-# file is stale turns on one question: is it TRACKED?
+#   spec_kit_write_feature_json <worktree> [source_issue] [feature_directory]
+#
+# This is the ONLY writer of `.specify/feature.json` in this repo. It MERGES:
+# passing just a source_issue preserves an existing feature_directory, and
+# passing just a feature_directory preserves an existing source_issue. A writer
+# that overwrote instead let bind-feature-issue.sh erase the feature_directory
+# create-new-feature.sh had written, restoring core Spec Kit's hard
+# "Feature directory not found" error on autopilot's own bind path.
+#
+# `feature_directory` is written FOR CORE SPEC KIT ONLY, never read back by us:
+# core's `.specify/scripts/bash/common.sh` get_feature_paths() resolves the
+# feature directory out of that key and hard-errors when it is missing. Our own
+# tooling derives every path from git (spec_kit_resolve_feature) and must never
+# read it. `branch_name`, `feature_num` and `worktree_path` stay banned.
+#
+# Both values are JSON-escaped, so a branch name carrying a quote
+# (GIT_BRANCH_NAME='074-say"hi') cannot write a file that jq then refuses to
+# parse — which core swallows into that same hard error.
+#
+# Whether an existing file is stale turns on one question:
+# is it TRACKED?
 #
 #   tracked   -> it arrived from the base branch when this worktree was
 #                materialised, so it describes the PREVIOUS feature. Remove it,
@@ -149,24 +194,89 @@ spec_kit_resolve_feature() {
 spec_kit_write_feature_json() {
     local worktree="$1"
     local source_issue="${2:-}"
+    local feature_dir="${3:-}"
     local json="$worktree/.specify/feature.json"
+
+    if [ -n "$source_issue" ] && ! [[ "$source_issue" =~ ^[0-9]+$ ]]; then
+        >&2 echo "[specify] Refusing to write a non-numeric source_issue: $source_issue"
+        return 1
+    fi
 
     mkdir -p "$worktree/.specify"
 
-    if [ -n "$source_issue" ]; then
-        printf '{"source_issue":%s}\n' "$source_issue" > "$json"
-    elif [ -f "$json" ]; then
+    if [ -f "$json" ]; then
         # Check trackedness BEFORE spec_kit_ignore_feature_json runs its
         # `git rm --cached`, which would make every file look untracked.
         if git -C "$worktree" ls-files --error-unmatch ".specify/feature.json" >/dev/null 2>&1; then
+            # Unconditional: a tracked file is inherited whether or not this
+            # call carries a source_issue, and merging into it would carry the
+            # previous feature's feature_directory forward -- which core
+            # resolves without cross-checking the branch, so /speckit-plan
+            # would write into the previous feature's spec dir (issue #33).
             rm -f "$json"
             >&2 echo "[specify] Removed inherited .specify/feature.json (it described the previous feature)."
-        else
+        elif [ -z "$source_issue" ]; then
             >&2 echo "[specify] Kept this worktree's existing .specify/feature.json (issue #$(spec_kit_feature_source_issue "$worktree")); this run created no issue."
         fi
     fi
 
+    if [ -n "$source_issue" ] || [ -n "$feature_dir" ]; then
+        _spec_kit_merge_feature_json "$worktree" "$source_issue" "$feature_dir"
+    fi
+
     spec_kit_ignore_feature_json "$worktree"
+}
+
+# Convenience wrapper for the callers that only own the directory half
+# (worktree-add.sh): write `feature_directory` while preserving whatever
+# `source_issue` the file already carries.
+spec_kit_write_feature_directory() {
+    spec_kit_write_feature_json "$1" "" "$2"
+}
+
+# Merge the given keys into $worktree/.specify/feature.json, leaving every key
+# already present untouched. jq when it is available and the existing file
+# parses; otherwise a printf rebuild from the two dependency-free readers above.
+# Private — go through spec_kit_write_feature_json, which owns the issue-#33
+# inheritance rule and the gitignore/untrack step.
+_spec_kit_merge_feature_json() {
+    local worktree="$1"
+    local source_issue="${2:-}"
+    local feature_dir="${3:-}"
+    local json="$worktree/.specify/feature.json"
+    local merged dir_json
+
+    if command -v jq >/dev/null 2>&1 && [ -s "$json" ] \
+        && merged=$(jq -c --arg i "$source_issue" --arg d "$feature_dir" \
+            '. + (if $i == "" then {} else {source_issue: ($i | tonumber)} end)
+               + (if $d == "" then {} else {feature_directory: $d} end)' \
+            "$json" 2>/dev/null); then
+        printf '%s\n' "$merged" > "$json"
+        return 0
+    fi
+
+    # Fallback: no jq, no existing file, or a file jq could not parse. Read the
+    # halves this call did not supply BEFORE the redirect truncates the file.
+    [ -n "$source_issue" ] || source_issue=$(spec_kit_feature_source_issue "$worktree")
+    if [ -n "$feature_dir" ]; then
+        dir_json=$(spec_kit_json_escape "$feature_dir")
+    else
+        # Already stored escaped; re-emit verbatim rather than decode/re-encode.
+        dir_json=$(_spec_kit_feature_directory_raw "$worktree")
+    fi
+
+    {
+        local sep=""
+        printf '{'
+        if [ -n "$source_issue" ]; then
+            printf '"source_issue":%s' "$source_issue"
+            sep=","
+        fi
+        if [ -n "$dir_json" ]; then
+            printf '%s"feature_directory":"%s"' "$sep" "$dir_json"
+        fi
+        printf '}\n'
+    } > "$json"
 }
 
 # Ensure `.specify/feature.json` is gitignored in this worktree, and drop it

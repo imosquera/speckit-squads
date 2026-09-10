@@ -28,9 +28,9 @@ start() { CASE="$1"; }
 pass() { echo "PASS: $CASE"; }
 fail() { echo "FAIL: $CASE — $1"; FAILURES=$((FAILURES + 1)); }
 
-# run <script> <arg> -> sets RC, OUT, ERR
+# run <script> <arg>... -> sets RC, OUT, ERR
 run() {
-    OUT="$("$1" "$2" 2>"$WORK/.stderr")"
+    OUT="$("$@" 2>"$WORK/.stderr")"
     RC=$?
     ERR="$(cat "$WORK/.stderr")"
 }
@@ -400,6 +400,40 @@ if expect_rc 1; then
         pass
     fi
 fi
+
+start "plan: artifact file paths are accepted, and reported once -> 1"
+d="$(mkplanfeature p18)"
+printf '# Plan\n\n- update `firestore.rules` to allow the read\n' > "$d/plan.md"
+run "$PLAN" "$d/spec.md" "$d/plan.md"
+if expect_rc 1; then
+    if [[ "$(grep -c 'plan.md:3' <<<"$ERR")" -ne 1 ]]; then
+        fail "same feature dir reported more than once: $ERR"
+    else
+        pass
+    fi
+fi
+
+start "plan: dir spellings that differ only by a trailing slash dedupe -> 1, once"
+d="$(mkplanfeature p19)"
+printf '# Plan\n\n- update `firestore.rules` to allow the read\n' > "$d/plan.md"
+run "$PLAN" "$d/" "$d" "$d/plan.md"
+if expect_rc 1; then
+    if [[ "$(grep -c 'plan.md:3' <<<"$ERR")" -ne 1 ]]; then
+        fail "same feature dir reported more than once: $ERR"
+    else
+        pass
+    fi
+fi
+
+start "plan: a lone artifact file path resolves its feature dir -> 0"
+d="$(mkplanfeature p20)"
+printf '# Plan\n\n- edit `src/handlers/claim.ts`\n' > "$d/plan.md"
+run "$PLAN" "$d/plan.md"
+expect_rc 0 && pass
+
+start "plan: argument that is neither dir nor file -> 2"
+run "$PLAN" "$WORK/nope/plan.md"
+expect_rc 2 && pass
 
 start "plan: no spec.md -> 2"
 d="$(mkfeature p9)"

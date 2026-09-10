@@ -16,33 +16,77 @@
 #   - every line under a heading about scope, non-goals, or corrections
 #
 # Usage: check-plan-scope.sh <feature-dir>
+#        check-plan-scope.sh <artifact.md> [<artifact.md> ...]
+#
+# Either form works: a feature directory (specs/NNN), or one or more artifact
+# paths inside one (spec.md / plan.md / tasks.md, in any combination), whose
+# feature directory is taken from their dirname. Files from the same feature
+# directory are scanned once, not once per argument. Its sibling
+# check-scope-sections.sh takes a spec.md path; accepting both here means a
+# caller can pass the same paths to either script.
+#
 # Exit:  0 no artifact plans work in a forbidden path (or nothing is forbidden)
 #        1 at least one violation (each printed as file:line on stderr)
-#        2 bad usage (no feature dir, or no spec.md in it)
+#        2 bad usage (no argument, an argument that is neither a directory nor
+#          a file, or no spec.md in a resolved feature dir)
 
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON="$HERE/scope-common.py"
 
-DIR="${1:-}"
-if [[ -z "$DIR" ]]; then
-    echo "error: feature directory required" >&2
+usage() {
     echo "usage: $(basename "$0") <feature-dir>" >&2
-    exit 2
-fi
-if [[ ! -d "$DIR" ]]; then
-    echo "error: not a directory: $DIR" >&2
-    exit 2
-fi
-if [[ ! -f "$DIR/spec.md" ]]; then
-    echo "error: no spec.md in $DIR" >&2
+    echo "       $(basename "$0") <artifact.md> [<artifact.md> ...]" >&2
+}
+
+if [[ $# -eq 0 ]]; then
+    echo "error: feature directory or artifact path required" >&2
+    usage
     exit 2
 fi
 if [[ ! -f "$COMMON" ]]; then
     echo "error: missing helper: $COMMON" >&2
     exit 2
 fi
+
+DIRS=()
+CANON=()
+for arg in "$@"; do
+    if [[ -d "$arg" ]]; then
+        dir="$arg"
+    elif [[ -f "$arg" ]]; then
+        dir="$(dirname "$arg")"
+    else
+        echo "error: not a directory or file: $arg" >&2
+        usage
+        exit 2
+    fi
+    if [[ ! -f "$dir/spec.md" ]]; then
+        echo "error: no spec.md in $dir" >&2
+        exit 2
+    fi
+    # Dedupe on the physical absolute path, not the spelling: `specs/001/`,
+    # `specs/001` and `$PWD/specs/001` are one feature directory, and scanning
+    # it twice reports every violation twice. The dir is still *reported* as the
+    # caller spelled it.
+    canon="$(cd -P "$dir" 2>/dev/null && pwd)"
+    if [[ -z "$canon" ]]; then
+        echo "error: cannot resolve: $arg" >&2
+        exit 2
+    fi
+    seen=0
+    for d in ${CANON+"${CANON[@]}"}; do
+        [[ "$d" == "$canon" ]] && { seen=1; break; }
+    done
+    if [[ $seen -eq 0 ]]; then
+        DIRS+=("$dir")
+        CANON+=("$canon")
+    fi
+done
+
+STATUS=0
+for DIR in "${DIRS[@]}"; do
 
 python3 - "$DIR" "$COMMON" <<'PY'
 import pathlib
@@ -120,3 +164,8 @@ if violations:
 
 print(f"diff-minimal: plan artifacts respect all {len(paths)} out-of-scope path(s).")
 PY
+    rc=$?
+    [[ $rc -ne 0 ]] && STATUS=$rc
+done
+
+exit $STATUS

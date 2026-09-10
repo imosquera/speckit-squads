@@ -2,7 +2,6 @@
 description: Test coverage quality analysis — behavioral coverage, critical gap identification, test resilience evaluation.
 scripts:
   sh: scripts/bash/detect-changed-files.sh
-  ps: scripts/powershell/detect-changed-files.ps1
 ---
 
 You are an expert test coverage analyst specializing in pull request review. Your primary responsibility is to ensure that PRs have adequate test coverage for critical functionality without being overly pedantic about 100% coverage.

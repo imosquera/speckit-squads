@@ -48,6 +48,18 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     exit 0
 fi
 
+# Scrub the `commit_exclude` paths FIRST — before the config is even read, and
+# therefore regardless of whether auto-commit is enabled for this event.
+#
+# The `:(exclude)` pathspec further down only governs commits this hook makes,
+# and `auto_commit.default` is `false` in most projects: there the commits are
+# made by the flow's own `git add`, so the exclusion had no effect at all and
+# the derived data landed on the branch anyway (issue #62). Scrubbing on every
+# phase boundary makes the exclusion a property of the repo instead of a
+# property of one optional hook, and gives the pipeline one handler for a
+# background rebuild's churn instead of six improvisations (issue #55).
+"$SCRIPT_DIR/scrub-commit-exclude.sh" --repo "$REPO_ROOT" || true
+
 # Read per-command config from git-config.yml
 _config_file="$REPO_ROOT/.specify/extensions/git/git-config.yml"
 _enabled=false

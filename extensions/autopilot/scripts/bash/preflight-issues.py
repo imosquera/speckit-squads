@@ -141,8 +141,19 @@ PR_URL_RE = re.compile(
 #
 # The parent of a split needs no rule here: `split-issue.sh` labels it `epic`,
 # which is already in BLOCK.
-BLOCKED_BY_RE = re.compile(r"^[ \t>*-]*blocked[ _-]?by\s*:?\s*(.+)$", re.I | re.M)
+BLOCKED_BY_RE = re.compile(r"^[ \t>*-]*blocked[ _-]?by\s*:?\s*(.*)$", re.I)
 ISSUE_REF_RE = re.compile(r"#(\d+)")
+
+# A wrapped dependency line is one line. Bodies are prose and every editor wraps
+# prose, so `Blocked by: #43,\n#44` used to yield [43] and the wire-up child read
+# as unblocked the moment #43 closed (issue #76) — the same defect class as #68,
+# whose fix lives in the diff-minimal preset's own script tree and so cannot be
+# imported here. A continuation is any non-blank line that does not itself open
+# something; a blank line ends the marker. Folding one line too many can only
+# over-block, which is the safe direction.
+_CONTINUATION_STOP_RE = re.compile(
+    r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\||```|~~~"
+    r"|\*{2}[^*]+\*{2}\s*:|[A-Za-z][\w \t-]{0,40}:(?:\s|$))")
 
 # A PR in these states means someone already delivered the issue. CLOSED is
 # absent on purpose — a closed, unmerged PR is abandoned work, and treating it
@@ -183,11 +194,26 @@ BUG_LABELS = {"bug", "defect", "regression", "fix", "broken", "incident", "outag
 BUG_TITLE_RE = re.compile(r"^\s*(?:\[[^\]]*\]\s*)?(?:bug|fix|hotfix)\b[:( ]", re.I)
 
 
+def _blocked_by_lines(body):
+    """Every `Blocked by:` tail in `body`, with wrapped continuations folded in."""
+    lines = body.splitlines()
+    for i, line in enumerate(lines):
+        m = BLOCKED_BY_RE.match(line)
+        if not m:
+            continue
+        tail = [m.group(1)]
+        for nxt in lines[i + 1:]:
+            if not nxt.strip() or _CONTINUATION_STOP_RE.match(nxt):
+                break
+            tail.append(nxt.strip())
+        yield " ".join(tail)
+
+
 def blocked_by(issue, open_numbers):
     """Open issues #N must close before this one starts; [] when unblocked."""
     body = issue.get("body") or ""
     deps = []
-    for line in BLOCKED_BY_RE.findall(body):
+    for line in _blocked_by_lines(body):
         for ref in ISSUE_REF_RE.findall(line):
             n = int(ref)
             if n != issue.get("number") and n in open_numbers and n not in deps:
@@ -534,6 +560,10 @@ def main():
         print("SKIP: no issues file given")
         return
 
+    if argv[0] == "--selftest":
+        selftest()
+        return
+
     if argv[0] == "--worktree-check":
         if len(argv) < 2:
             print("SKIP: --worktree-check requires an issue number")
@@ -563,6 +593,28 @@ def main():
         return
 
     auto_pick(issues, cross_repo=cross_repo)
+
+
+def selftest():
+    """Dependency parsing, wrapped and unwrapped. `--selftest` runs it."""
+    open_numbers = {43, 44, 99}
+
+    def deps(body, number=50):
+        return blocked_by({"number": number, "body": body}, open_numbers)
+
+    assert deps("Blocked by: #43, #44") == [43, 44]
+    # issue #76: the wrapped form used to lose every ref after the first.
+    assert deps("Blocked by: #43,\n#44") == [43, 44]
+    assert deps("Parent: #7\n\nBlocked by: #43,\n#44\n\nWire it up.") == [43, 44]
+    # A blank line, a bullet, and a new `key:` each end the marker.
+    assert deps("Blocked by: #43\n\n#44") == [43]
+    assert deps("Blocked by: #43\n- see #44") == [43]
+    assert deps("Blocked by: #43\nParent: #44") == [43]
+    # Closed (absent from open_numbers) and self-references stay out.
+    assert deps("Blocked by: #43, #77") == [43]
+    assert deps("Blocked by: #43, #50") == [43]
+    assert deps("nothing here") == []
+    print("OK: preflight-issues selftest")
 
 
 if __name__ == "__main__":

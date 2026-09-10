@@ -191,6 +191,13 @@ on first run in a project that still tracks it, so the migration is automatic.
   (`blocked_by()`, checked against the fetched open-issue list, so it costs no
   `gh` calls). This is what keeps autopilot off the wire-up child of a
   `/speckit-git-issue` layer split until its frontend and backend siblings land.
+  **A wrapped `Blocked by:` is one line** — same rule as `diff-minimal`'s folded
+  logical lines, duplicated because that fix lives in another installable item's
+  script tree. Matching the physical line lost every ref after the first, so
+  `Blocked by: #43,\n#44` read as unblocked the moment #43 closed (issue #76).
+  A blank line, a bullet, or a new `key:` ends the marker; folding one line too
+  many only over-blocks, which is the safe direction.
+  `preflight-issues.py --selftest` is the check.
   **Ceremony is proportional to the change.** Step 2.5 is the fast path: a change
   that touches one behaviour in ~1–3 files with nothing structural and no real
   ambiguity skips Steps 3–6 entirely — no `spec.md`, `plan.md`, or `tasks.md` — and

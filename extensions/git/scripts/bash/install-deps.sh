@@ -46,8 +46,16 @@ WORKTREE_PATH="$(cd "$WORKTREE_PATH" && pwd)"
 
 # The base checkout: the repository's main worktree, which is the one that has
 # been worked in and therefore the one that knows which directories matter.
-BASE="$(git -C "$WORKTREE_PATH" worktree list --porcelain 2>/dev/null \
-    | awk '/^worktree /{print $2; exit}')"
+# `worktree <path>` — take everything after the prefix, never field 2: a base
+# checkout under "~/My Code/repo" split on the space and resolved to "/Users/me/My",
+# which fails the -d test below and silently skips the install for that repo.
+# The -z form is newline-proof too; older git rejects it, hence the fallback.
+BASE="$(git -C "$WORKTREE_PATH" worktree list --porcelain -z 2>/dev/null \
+    | tr '\0' '\n' | sed -n '1s/^worktree //p')"
+if [[ -z "$BASE" ]]; then
+    BASE="$(git -C "$WORKTREE_PATH" worktree list --porcelain 2>/dev/null \
+        | sed -n '1s/^worktree //p')"
+fi
 if [[ -z "$BASE" || ! -d "$BASE" ]]; then
     say "could not resolve the base checkout; skipping dependency install"
     exit 0
@@ -71,6 +79,8 @@ MANIFEST_DIRS="$(git -C "$WORKTREE_PATH" ls-files 2>/dev/null \
     | grep -E '(^|/)(package\.json|uv\.lock|poetry\.lock)$' \
     | sed -E 's![^/]+$!!; s!/$!!; s!^$!.!' \
     | sort -u)"
+# Read line by line, never `for rel in $MANIFEST_DIRS` — a directory with a
+# space in it is one manifest, not two.
 
 if [[ -z "$MANIFEST_DIRS" ]]; then
     exit 0
@@ -79,6 +89,25 @@ fi
 # ---- plan: one command per directory the base checkout has already installed
 declare -a PLAN_DIR=() PLAN_CMD=()
 SKIPPED_NO_TOOL=""
+
+# The directory whose install covers <rel>: the nearest ancestor (self first)
+# carrying a node lockfile. A pnpm/npm/yarn workspace installs every project
+# from its root, so a child package must NOT be installed separately — running
+# `npm install` in a child of a pnpm workspace concurrently with the root's
+# `pnpm install` writes a package-lock.json into a tree pnpm is mid-install on.
+node_install_root() { # node_install_root <rel-dir>
+    local rel="$1" dir
+    while :; do
+        dir="$WORKTREE_PATH/$rel"
+        if [[ -f "$dir/bun.lockb" || -f "$dir/bun.lock" || -f "$dir/pnpm-lock.yaml" \
+           || -f "$dir/yarn.lock" || -f "$dir/package-lock.json" ]]; then
+            echo "$rel"; return
+        fi
+        [[ "$rel" == "." ]] && break
+        rel="$(dirname "$rel")"
+    done
+    echo "$1"   # no lockfile anywhere above it — install it where it sits
+}
 
 plan_node() { # plan_node <rel-dir> <abs-dir>
     local abs="$2" cmd=""
@@ -91,20 +120,31 @@ plan_node() { # plan_node <rel-dir> <abs-dir>
     echo "$cmd"
 }
 
-for rel in $MANIFEST_DIRS; do
+PLANNED=""
+while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
     abs="$WORKTREE_PATH/$rel"
     base_abs="$BASE/$rel"
     [[ -d "$abs" ]] || continue
 
     cmd=""
-    if [[ -f "$abs/package.json" && -d "$base_abs/node_modules" ]]; then
-        cmd="$(plan_node "$rel" "$abs")"
+    if [[ -f "$abs/package.json" ]]; then
+        # Redirect a workspace child to the root that installs it, and gate on
+        # either one being installed in the base: pnpm keeps node_modules in
+        # both, npm workspaces hoist to the root only.
+        root_rel="$(node_install_root "$rel")"
+        if [[ -d "$base_abs/node_modules" || -d "$BASE/$root_rel/node_modules" ]]; then
+            rel="$root_rel"
+            abs="$WORKTREE_PATH/$rel"
+            cmd="$(plan_node "$rel" "$abs")"
+        fi
     elif [[ -f "$abs/uv.lock" && -d "$base_abs/.venv" ]]; then
         cmd="uv sync"
     elif [[ -f "$abs/poetry.lock" && -d "$base_abs/.venv" ]]; then
         cmd="poetry install"
     fi
     [[ -n "$cmd" ]] || continue
+    case "$PLANNED" in *"|$rel|"*) continue ;; esac   # workspace root, already planned
 
     tool="${cmd%% *}"
     if ! command -v "$tool" >/dev/null 2>&1; then
@@ -113,7 +153,8 @@ for rel in $MANIFEST_DIRS; do
     fi
     PLAN_DIR+=("$rel")
     PLAN_CMD+=("$cmd")
-done
+    PLANNED="$PLANNED|$rel|"
+done <<< "$MANIFEST_DIRS"
 
 if [[ -n "$SKIPPED_NO_TOOL" ]]; then
     say "not on PATH, skipped:$SKIPPED_NO_TOOL"

@@ -43,7 +43,8 @@ make_repo() { # make_repo <name>
 }
 add_wt() { # add_wt <repo> -> worktree path
   local repo="$1" wt="$1.wt"
-  git -C "$repo" worktree add -q -b "feat-$(basename "$repo")" "$wt" >/dev/null 2>&1
+  # slugify: a repo dir may contain a space, a branch name may not
+  git -C "$repo" worktree add -q -b "feat-$(basename "$repo" | tr ' ' '-')" "$wt" >/dev/null 2>&1
   echo "$wt"
 }
 
@@ -137,6 +138,38 @@ BIN="$TMP/bin8"; fake_bin "$BIN" npm 0
 out="$(PATH="$BIN:$PATH" "$SCRIPT" "$TMP/installed" 2>&1)"; rc=$?
 check base-checkout "exit code" 0 "$rc"
 check base-checkout "ran no installer" "" "$(cat "$TMP/calls.log")"
+
+echo "9. a pnpm workspace child is installed by its root, never on its own"
+# A child package with no lockfile of its own used to fall through to
+# \`npm install\`, which races the root's pnpm install and writes a
+# package-lock.json into a tree pnpm is mid-install on.
+REPO="$(make_repo workspace)"
+echo '{"name":"x"}' > "$REPO/package.json"; : > "$REPO/pnpm-lock.yaml"
+mkdir -p "$REPO/packages/api"; echo '{"name":"api"}' > "$REPO/packages/api/package.json"
+git -C "$REPO" add -A && git -C "$REPO" commit -qm ws
+mkdir -p "$REPO/node_modules" "$REPO/packages/api/node_modules"
+WT="$(add_wt "$REPO")"
+: > "$TMP/calls.log"
+BIN="$TMP/bin9"; fake_bin "$BIN" pnpm 0; fake_bin "$BIN" npm 0
+out="$(PATH="$BIN:$PATH" "$SCRIPT" "$WT" 2>&1)"; rc=$?
+calls="$(cat "$TMP/calls.log")"
+check workspace "exit code" 0 "$rc"
+contains "workspace root" "$WT pnpm install --frozen-lockfile" "$calls"
+absent "workspace child" "packages/api" "$calls"
+check workspace "installs once" "1" "$(grep -c . <<<"$calls")"
+
+echo "10. a base checkout whose path contains a space still resolves"
+REPO="$(make_repo "spaced repo")"
+echo '{"name":"x"}' > "$REPO/package.json"; : > "$REPO/package-lock.json"
+git -C "$REPO" add -A && git -C "$REPO" commit -qm pkg
+mkdir -p "$REPO/node_modules"
+WT="$(add_wt "$REPO")"
+: > "$TMP/calls.log"
+BIN="$TMP/bin10"; fake_bin "$BIN" npm 0
+out="$(PATH="$BIN:$PATH" "$SCRIPT" "$WT" 2>&1)"; rc=$?
+check spaced "exit code" 0 "$rc"
+absent spaced "could not resolve the base checkout" "$out"
+contains spaced "$WT npm ci" "$(cat "$TMP/calls.log")"
 
 if [[ $fail -eq 0 ]]; then echo "worktree deps check: ok"; else
   echo "worktree deps check: FAILED" >&2; fi

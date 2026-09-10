@@ -653,6 +653,12 @@ if [ "$DRY_RUN" != true ]; then
         if [ -x "$SCRIPT_DIR/seed-graph.sh" ]; then
             "$SCRIPT_DIR/seed-graph.sh" "$WORKTREE_PATH" || true
         fi
+        # Install the worktree's dependencies at creation, so the implement
+        # phase doesn't rediscover an empty worktree through a `tsx: not
+        # found` (issue #51). Best effort; never fails feature creation.
+        if [ -x "$SCRIPT_DIR/install-deps.sh" ]; then
+            "$SCRIPT_DIR/install-deps.sh" "$WORKTREE_PATH" || true
+        fi
     else
         >&2 echo "[specify] Warning: Git repository not detected; skipped branch + worktree creation for $BRANCH_NAME"
     fi

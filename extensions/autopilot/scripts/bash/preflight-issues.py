@@ -169,8 +169,8 @@ MAX_PR_LOOKUPS = 10
 # The backlog arrives oldest-first (`fetch-open-issues.sh` sorts by createdAt),
 # but "oldest" is not the same as "most important": a P0 outage filed this
 # morning sat behind a year-old chore, every tick, until a human intervened.
-# Eligible candidates are therefore ordered by (priority, kind, age) instead of
-# age alone. Age remains the final tiebreak, so the previous behaviour is what
+# Eligible candidates are therefore ordered by (priority, kind, layer, age)
+# instead of age alone. Age remains the final tiebreak, so the previous behaviour is what
 # you get on a backlog with no priority or type labels at all.
 #
 # Priority is read from labels in any of the common spellings — `p0`, `P1`,
@@ -192,6 +192,18 @@ DEFAULT_PRIORITY = 2
 # strongest signal available.
 BUG_LABELS = {"bug", "defect", "regression", "fix", "broken", "incident", "outage"}
 BUG_TITLE_RE = re.compile(r"^\s*(?:\[[^\]]*\]\s*)?(?:bug|fix|hotfix)\b[:( ]", re.I)
+
+# Within one priority tier and one kind, the mock-first split's frontend child
+# comes before its backend sibling: the mock freezes the data shape the backend
+# then implements, so building the backend first hands the UI a contract it did
+# not get to choose. This used to fall out of `split-issue.sh`'s creation order
+# via the age tiebreak, which held only while both children kept equal priority,
+# equal kind, and their original relative age — none of which is enforced
+# (issue #56). The labels are the ones `label-issue.sh` writes (`LAYERS`).
+# An issue with no layer label ranks in the middle, level with `backend`, so an
+# unlabelled backlog sorts exactly as it did before.
+LAYER_RANKS = {"frontend": 0, "backend": 1, "integration": 2}
+DEFAULT_LAYER = 1
 
 
 def _blocked_by_lines(body):
@@ -256,18 +268,34 @@ def is_bug(issue, labels):
     return bool(BUG_TITLE_RE.match(issue.get("title") or ""))
 
 
+def layer_ranks(labels):
+    """Every layer rank an issue's labels spell out, in no order."""
+    return [LAYER_RANKS[l] for l in labels if l in LAYER_RANKS]
+
+
+def layer_rank(labels):
+    """Lowest layer rank among an issue's labels; DEFAULT_LAYER if none."""
+    ranks = layer_ranks(labels)
+    return min(ranks) if ranks else DEFAULT_LAYER
+
+
 def rank_key(issue, seq):
-    """Sort key for eligible candidates: priority, then bugs, then oldest.
+    """Sort key for candidates: priority, then bugs, then layer, then oldest.
 
     `seq` is the issue's index in the (oldest-first) fetch, which keeps the
     sort stable and makes age the final tiebreak without re-parsing dates.
     """
     labels = {l["name"].lower() for l in issue.get("labels", [])}
-    return (priority_rank(labels), 0 if is_bug(issue, labels) else 1, seq)
+    return (
+        priority_rank(labels),
+        0 if is_bug(issue, labels) else 1,
+        layer_rank(labels),
+        seq,
+    )
 
 
 def rank_reason(issue):
-    """Short why-this-one tag for the PICK line, e.g. `p0, bug` or `p2 default`.
+    """Short why-this-one tag for the PICK line: `p0, bug, frontend`, `p2 default`.
 
     Says explicitly when the priority was assumed rather than labelled, so a log
     line never implies a triage decision nobody made.
@@ -277,6 +305,9 @@ def rank_reason(issue):
     bits = [f"p{p}" if labelled_priority(labels) else f"p{p} default"]
     if is_bug(issue, labels):
         bits.append("bug")
+    layers = sorted(labels & set(LAYER_RANKS), key=LAYER_RANKS.get)
+    if layers:
+        bits.append(layers[0])
     return ", ".join(bits)
 
 
@@ -614,6 +645,32 @@ def selftest():
     assert deps("Blocked by: #43, #77") == [43]
     assert deps("Blocked by: #43, #50") == [43]
     assert deps("nothing here") == []
+
+    # issue #56: the layer term, between kind and age.
+    def issue(number, *names, title="add saved searches"):
+        return {"number": number, "title": title,
+                "labels": [{"name": n} for n in names]}
+
+    def order(*issues):
+        ranked = sorted(enumerate(issues), key=lambda p: rank_key(p[1], p[0]))
+        return [i["number"] for _, i in ranked]
+
+    fe, be = issue(1, "frontend", "mock-first"), issue(2, "backend")
+    # Frontend wins whatever the creation order was...
+    assert order(be, fe) == [1, 2]
+    # ...and however the age tiebreak would have fallen out.
+    assert order(fe, be) == [1, 2]
+    # But priority and kind still outrank it.
+    assert order(fe, issue(2, "backend", "p1")) == [2, 1]
+    assert order(fe, issue(2, "backend", "bug")) == [2, 1]
+    # An unlabelled issue sits level with backend, so age decides as before.
+    assert order(issue(1), issue(2, "backend")) == [1, 2]
+    assert order(issue(1, "backend"), issue(2)) == [1, 2]
+    assert order(issue(1, "integration"), issue(2)) == [2, 1]
+    assert rank_reason(fe) == "p2 default, frontend"
+    assert rank_reason(issue(3, "p0", "bug", "backend")) == "p0, bug, backend"
+    assert rank_reason(issue(4)) == "p2 default"
+
     print("OK: preflight-issues selftest")
 
 

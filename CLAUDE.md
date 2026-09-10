@@ -294,6 +294,19 @@ on first run in a project that still tracks it, so the migration is automatic.
   Two exemptions keep it from crying wolf (a checker that does gets disabled
   within a day): lines whose own text negates (`MUST NOT`, `out of scope`, …)
   and everything under a heading matching scope/non-goals/corrections/constraints.
+  Both checkers read **folded logical lines**, never physical ones
+  (`scope-common.py`'s `logical_lines()`, which reports the line the block
+  started on). These artifacts are prose and every editor wraps prose: matching
+  physical lines ended a `MUST NOT touch:` list at its first continuation —
+  nine paths silently became one and the gate passed — and stripped the
+  negation off a wrapped restatement in a plan, flagging it as a violation
+  (issue #68). A wrapped bullet is one bullet.
+  **Only a bullet or a `**marker:**` line accepts a continuation; prose never
+  folds**, and that asymmetry is load-bearing rather than lazy. Folding
+  consecutive prose lines makes two sentences of one paragraph a single logical
+  line, so a negation in the first silently exempts a violation in the second —
+  a wrongly-exempted violation is a worse failure than the truncation being
+  fixed. Both defects #68 reports were wrapped *bullets*; prose never needed it.
   **It mandates the smallest change, not small changes** — a migration or a
   rename is legitimately wide, and the escape hatch is an explicit
   `**Scope justification:**` line. A sibling preset rather than an extension of
@@ -304,7 +317,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
-- `implement-prelude-skills` — `/speckit-implement` override that invokes `ponytail:ponytail` and `caveman` skills (when available) as a mandatory prelude before implementation begins
+- `implement-prelude-skills` — `/speckit-implement` override that invokes the `ponytail:ponytail` skill (when available) as a mandatory prelude before implementation begins. Implementation-discipline skills only: a prose-register skill compresses the very audit trail an unattended `/speckit-autopilot-run` depends on, so it does not belong in the prelude (issue #72)
 - `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a Node helper on the TS Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules)
 - `graph-first-navigation` — makes knowledge-graph queries and the TypeScript
   language server the default navigation instruments and demotes grep to a
@@ -331,6 +344,28 @@ on first run in a project that still tracks it, so the migration is automatic.
   **`built_at_commit` is megabytes into `graph.json`, not at the top** — reading
   the first 8KB finds nothing. The guard mmaps and byte-scans; `graph-freshness.sh`
   uses `grep -m1 -oa`. Neither parses the JSON.
+  **The language server is reached by a resolver shim, never by `export PATH`
+  and never by a symlink into a project.** The LSP tool spawns
+  `typescript-language-server` as a bare command name from the agent process, so
+  a copy in `node_modules/.bin` is invisible to it and a shell tool's `export`
+  cannot change that — shell state does not persist between calls, the agent's
+  own `PATH` is fixed at startup, a hook runs in its own process, and `env` in
+  `.claude/settings.json` takes literal strings with no `${PATH}` expansion
+  (issue #71). A name on the inherited `PATH` is the only seam, so
+  `post-install.sh` installs `lsp-shim.sh` under that name. The shim resolves the
+  server **per spawn** — cwd walk-up, then `$CLAUDE_PROJECT_DIR`, then the repo's
+  main worktree via `--git-common-dir`, then `npx` — which is what makes one file
+  correct for every repo *and* every feature worktree: a worktree has no
+  `node_modules` of its own, and leg 3 finds its own repo's copy rather than some
+  other project's. A symlink is the wrong shape for exactly that reason: it dies
+  on the next `npm ci` and, in another repo's worktree, silently answers with the
+  linked project's TypeScript. An existing non-shim binary on `PATH` is left
+  alone unless `SPECKIT_LSP_SHIM=force`; `SPECKIT_LSP_BIN_DIR` picks the install
+  dir. `pre-uninstall.sh` deliberately does **not** remove the shim — it is
+  machine-level and shared by every project that installed the preset.
+  The seeded block also warns that a **cold** language server loads the project
+  lazily, so a first cross-file `findReferences` can under-report ("2 references"
+  for a symbol with 26) — warm it, and cross-check negatives against the graph.
   **The staleness rule is the one legitimate reason to break the rule, and it
   resolves the other way:** a stale graph means **rebuild** (`graphify update`),
   never fall back to grep. Every layer says so.

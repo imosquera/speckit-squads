@@ -24,6 +24,11 @@ provides:
       executable: true
       description: "PreToolUse hook body. Reads the hook payload on stdin and emits a non-blocking reminder (hookSpecificOutput.additionalContext) redirecting structural Grep/Glob calls to graphify query / the LSP tool. Fires only when graphify-out/graph.json exists, only on identifier-shaped patterns (never on whitespace/quoted/URL literals or non-code file scopes), and at most 3 times per session. Any internal error exits 0 silently."
 
+    - name: "lsp-shim.sh"
+      file: "scripts/bash/lsp-shim.sh"
+      executable: true
+      description: "Installed by post-install.sh onto the agent's PATH as `typescript-language-server`. Resolves a project-local language server at spawn time — cwd walk-up, then $CLAUDE_PROJECT_DIR, then the repo's main worktree via --git-common-dir (a feature worktree has no node_modules of its own), then npx. The LSP tool spawns a bare command name from the agent process, whose PATH is fixed at startup, so a name on that PATH is the only seam; the name is stable and the target is resolved per spawn, so nothing goes stale."
+
     - name: "post-install.sh"
       file: "scripts/bash/post-install.sh"
       executable: true

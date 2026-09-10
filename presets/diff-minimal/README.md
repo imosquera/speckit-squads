@@ -62,6 +62,36 @@ for each hit.
 It reads the **artifacts, not the diff**, because at plan time there is no diff
 — and catching a forbidden path in the plan is the cheap moment.
 
+## Wrapped bullets are one bullet
+
+Both checkers parse **folded logical lines**, not physical ones:
+`scope-common.py`'s `logical_lines()` joins a wrapped line onto the bullet or
+`**marker:**` line it continues, and a blank line — or any line that opens
+something of its own — closes the block. The reported line number is the line
+the block *started* on, so a violation still points at the bullet rather than at
+its tail.
+
+**Only a bullet or a `**marker:**` line accepts a continuation. Prose does not
+fold.** That limit is the point, not an omission: folding consecutive prose
+lines would make two sentences of one paragraph a single logical line, and a
+negation in the first sentence would then silently exempt a violation in the
+second. A wrongly-exempted violation is a worse failure than the truncation this
+fixes, and both defects #68 reports were wrapped *bullets*. Fenced code blocks,
+ordered items, blockquotes, table rows and thematic breaks are block openers too,
+so none of them fold into a bullet written directly above them.
+
+Matching physical lines broke in both directions (issue #68):
+
+- a `MUST NOT touch:` bullet that wrapped ended the list at its first
+  continuation line — nine forbidden paths silently became one, and the plan
+  check passed;
+- a plan line that restated an exclusion across a wrap (`this file MUST NOT be /
+  touched`) lost its negation on the physical line carrying the path, and was
+  reported as a violation.
+
+Nothing about authoring changes: prose wraps, and neither the spec nor the plan
+has to keep a bullet on one physical line to be parsed correctly.
+
 ## Why the two sections have to be sections
 
 Both halves of the rule want a known heading, which is exactly what a preset can
@@ -104,11 +134,14 @@ flagged for it. Two classes of line are skipped:
 - every line under a heading matching `scope`, `non-goals`, `corrections`, or
   `constraints`, up to the next heading of the same or a shallower level.
 
+Both exemptions are evaluated on the folded logical line, so a restatement that
+wraps still carries its own negation.
+
 A checker that cries wolf gets disabled within a day.
 
 ## Path syntax
 
-Entries are globs, matched as substrings against each artifact line:
+Entries are globs, matched as substrings against each artifact logical line:
 
 | Spelling | Matches |
 |----------|---------|

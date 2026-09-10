@@ -15,6 +15,9 @@
 set -euo pipefail
 
 PROJECT_DIR="${1:?usage: post-install.sh <project-dir>}"
+# Resolve our own directory before cd'ing away — BASH_SOURCE is relative when the
+# script is invoked by a relative path.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
 GUARD_REL=".specify/presets/graph-first-navigation/scripts/python/graph_first_guard.py"
@@ -87,26 +90,44 @@ Always pass the path. A bare `graphify update` rebuilds whichever project the
 CWD resolves to — from a worktree that is regularly another worktree's graph.
 
 **The language server has to be reachable before it can be the instrument.** The
-LSP tool spawns `typescript-language-server` as a bare command name, so a copy in
-`node_modules/.bin` does not count and an unprobed call fails with `ENOENT`:
+LSP tool spawns `typescript-language-server` as a bare command name **from the
+agent process**, so a copy in `node_modules/.bin` does not count and an unprobed
+call fails with `ENOENT`:
 
 ```bash
 command -v typescript-language-server
 ```
 
 Not found → do not call the LSP tool. Use the graph and grep, and record which
-one the call sites came from. To make it found, project-locally (never
-`npm i -g`):
+one the call sites came from. To make it found, re-run this preset's
+`post-install.sh`: it installs a shim under that name into a directory on `PATH`,
+which resolves a project-local server at spawn time — walking up from the cwd,
+then `$CLAUDE_PROJECT_DIR`, then the repo's **main** worktree (a feature worktree
+has no `node_modules` of its own), then `npx`. One file, every repo, every
+worktree, nothing to go stale.
 
-```bash
-cd "$(git rev-parse --show-toplevel)"
-npm install
-export PATH="$PWD/node_modules/.bin:$PATH"
-```
+**`export PATH=…` in a shell tool cannot work** — do not re-add it. Shell state
+does not persist between tool calls, and even within one call the LSP tool
+resolves the binary against the `PATH` the *agent process* inherited at startup,
+which no child shell can change. For the same reason a hook cannot fix it, and
+`env` in `.claude/settings.json` takes literal strings with no `${PATH}`
+expansion. A name on the inherited `PATH` is the only seam.
 
-The `npm install` is load-bearing in a worktree, which starts with no root
-`node_modules` at all: without it even `npx typescript-language-server`
-"succeeds" only by downloading the package at run time.
+Do **not** point that name at a symlink into some project's `node_modules`: it
+breaks on the next `npm ci`, and in a *different* repo's worktree the server
+would silently resolve that first project's TypeScript instead of this one's.
+
+`npm install` in the checkout is still worth having — with it the shim finds this
+project's own server and TypeScript version rather than the main worktree's copy
+or an `npx` download.
+
+**A cold language server under-reports across files.**
+`typescript-language-server` loads a project lazily, so the *first* cross-file
+`findReferences` can answer "2 references across 1 file" for a symbol that has 26
+across 4 once the callers are loaded. Warm it first — query inside the target
+file, or open the files you expect to be callers — and, exactly as with the
+graph, never trust a **negative** answer ("nothing else uses this") without
+cross-checking it against `graphify query`.
 
 **Staleness.** A graph is built against a commit; a feature worktree diverges
 from it. Before trusting a negative answer ("nothing else reads this"), check
@@ -149,4 +170,47 @@ PYEOF
 else
   { [[ -f CLAUDE.md ]] && printf '\n'; printf '%s\n' "$BLOCK"; } >> CLAUDE.md
   echo "  added the graph-first navigation block to CLAUDE.md"
+fi
+
+# ------------------------------------------------- language server reachability
+# The LSP tool spawns `typescript-language-server` as a bare command name from
+# the agent process, whose PATH is fixed at startup. There is no lsp.path
+# setting and a hook cannot alter that PATH, so the only working remedy is a
+# name on it. Install our shim under that name: it resolves a project-local
+# server at spawn time (cwd walk-up, then CLAUDE_PROJECT_DIR, then the repo's
+# main worktree, then npx), so one file serves every repo and every worktree
+# and never goes stale. A symlink into some project's node_modules would.
+SHIM_SRC="$SCRIPT_DIR/lsp-shim.sh"
+SHIM_TAG="speckit:graph-first-navigation:lsp-shim"
+
+if [[ ! -f "$SHIM_SRC" ]]; then
+  echo "  warn: lsp-shim.sh not found beside post-install.sh — skipping language-server setup" >&2
+elif [[ "${SPECKIT_LSP_SHIM:-}" != "force" ]] && \
+     existing="$(command -v typescript-language-server 2>/dev/null)" && \
+     ! grep -qF "$SHIM_TAG" "$existing" 2>/dev/null; then
+  echo "  typescript-language-server already on PATH ($existing) — left alone"
+  if [[ -L "$existing" ]]; then
+    echo "        (it is a symlink to $(readlink "$existing") — if that points into a project's" >&2
+    echo "         node_modules it breaks on the next npm ci and leaks that project's TypeScript" >&2
+    echo "         into other repos; SPECKIT_LSP_SHIM=force replaces it with the resolver shim)" >&2
+  fi
+else
+  BIN_DIR="${SPECKIT_LSP_BIN_DIR:-}"
+  if [[ -z "$BIN_DIR" ]]; then
+    for cand in "$HOME/.local/bin" "$HOME/bin"; do
+      case ":$PATH:" in *":$cand:"*) BIN_DIR="$cand"; break ;; esac
+    done
+  fi
+  ON_PATH=1
+  if [[ -z "$BIN_DIR" ]]; then BIN_DIR="$HOME/.local/bin"; ON_PATH=0; fi
+
+  mkdir -p "$BIN_DIR"
+  install -m 0755 "$SHIM_SRC" "$BIN_DIR/typescript-language-server"
+  echo "  installed the typescript-language-server shim -> $BIN_DIR/typescript-language-server"
+  if (( ! ON_PATH )); then
+    echo "  warn: $BIN_DIR is not on PATH — the LSP tool still cannot find it." >&2
+    echo "        Add it in your shell profile (a login-shell one, e.g. ~/.zprofile, so" >&2
+    echo "        non-interactive runs such as launchd-scheduled autopilot inherit it)," >&2
+    echo "        or re-run with SPECKIT_LSP_BIN_DIR=<a dir already on PATH>." >&2
+  fi
 fi

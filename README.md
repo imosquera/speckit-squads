@@ -132,6 +132,14 @@ mapping has to travel with the install rather than live only in this repo's docs
 
 **Migrating from `spec-minimal` 1.x:** 2.0.0 is breaking — `spec-minimal` now only strips spec sections and holds the plan tree. The UI preview moved to the separate `spec-ui-preview` preset, and issue sync moved into the `git` extension. Install both to keep the 1.x behavior.
 
+## Working with an agent on this repo
+
+**Always hand back the PR link.** Any time an agent opens, updates, merges into, or
+otherwise works on a pull request here, the reply must include the PR URL — not just
+the number, and not just a description of what changed. The link is how the human
+gets from the agent's summary to the actual diff; a reply without it costs a round
+trip every single time.
+
 ## Authoring
 
 Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. Because installs are copies rather than symlinks, re-run `./install.sh --force <project>` (or the matching `specify ... add --dev`) in any consuming project after *any* change — command text and scripts included, not just manifests.

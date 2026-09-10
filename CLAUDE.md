@@ -38,9 +38,8 @@ tree before invoking anything.
 extensions runs on Windows, so a PowerShell twin is never exercised — it is a
 second copy of logic whose only job is to stay identical to the first, and it
 drifts silently because no one runs it. The git and review extensions each
-carried one, and each was deleted the moment a fix had to be written twice — the
-git tree here, the review tree in PR #91. The `commit_exclude` handler is the
-case in point: a single handler that a second
+carried one, and each was deleted the moment a fix had to be written twice. The
+`commit_exclude` handler is the case in point: a single handler that a second
 uninstrumented commit path bypasses is not a single handler at all.
 
 The three `ps:` lines still in `presets/*/commands/` point at **core Spec Kit's**
@@ -181,6 +180,21 @@ on first run in a project that still tracks it, so the migration is automatic.
   phase's issue comment. Step 3 enumerates the `after_specify` slot explicitly, and
   Steps 5–7 name their own; Step 8 *is* the `after_implement` review hook, so it
   isn't run twice.
+  **And nothing runs them for you — `auto_execute_hooks` is not a runtime.** There is
+  no hook executor in the `specify` CLI; the dispatcher is the core `/speckit-specify`
+  command *body*, which emits an `EXECUTE_COMMAND:` block for a **mandatory** hook and
+  merely ``To execute: `/{command}` `` for an **optional** one. So the two hooks the
+  bullet above exists to protect — the graphify and agent-context refreshes, both
+  `optional: true` — are exactly the two that never fire on their own, and Step 3 used
+  to claim the opposite. Told to run a hook with no verb to run it with, the
+  coordinator invented `specify hook run speckit.agent-context.update`; `hook` is not a
+  command in v0.15.1 (`hooks` isn't either, and `specify event run` is the
+  native-harness bridge, not this), so both hooks were silent no-ops across five
+  features in `imosquera/enroute` while the run reported success (issue #45). A hook's
+  registered command id **is** its slash command — `speckit.agent-context.update` →
+  `/speckit-agent-context-update` — and a non-zero exit is a failure, not noise.
+  `check-cli-usage.sh` already fails the install on a `specify hook` line inside a
+  fenced bash block; the runtime invention is what the prose has to prevent.
   **The per-repo log is timestamped and attributed from the stream, not from the
   decoder.** `stream-decode.py` used to stamp `datetime.now()` at decode time, so a
   buffered burst of turns minutes apart all printed on one wall-clock second and in
@@ -314,9 +328,56 @@ on first run in a project that still tracks it, so the migration is automatic.
   resolves to, and it keeps the rebuild out of version control (`info/exclude` plus
   `skip-worktree` on any already-tracked `graphify-out` files), since a committed
   graph makes the freshness gate report STALE forever.
+  `install-deps.sh` is its sibling on the same two creation sites (same
+  best-effort contract, skippable with `SPECKIT_SKIP_INSTALL=1`): a linked
+  worktree gets the tracked files and nothing else, so six autopilot runs in
+  three days each rediscovered the empty `node_modules` **mid-implement**,
+  through a `tsx: not found` after the code was already written (issue #51).
+  The install was never the cost — the interrupt and the diagnosis were.
+  **The base checkout is the oracle, not a hard-coded list:** a directory is
+  installed only when the same directory in the main worktree already carries
+  the ecosystem's installed marker (`node_modules/`, `.venv/`), which is what
+  makes one script right for a three-workspace monorepo *and* a silent no-op
+  for a docs repo without a config schema. Manifests come from `git ls-files`
+  (so vendored trees are never walked), the package manager is read off the
+  lockfile rather than assumed to be npm (`bun`/`pnpm`/`yarn`/`npm ci`, plus
+  `uv sync`/`poetry install`), the installs run concurrently, and every path
+  exits 0 — a worktree without dependencies is a worse worktree, a worktree
+  that failed to be created is no worktree at all.
+  **A workspace child is installed by its root, never on its own.** A pnpm/npm
+  workspace keeps one lockfile at the top, so a child package matched the
+  no-lockfile fallback and got `npm install` — running concurrently with the
+  root's `pnpm install`, writing a `package-lock.json` into a tree pnpm was
+  mid-install on. Each node manifest now resolves to the nearest ancestor
+  carrying a lockfile and the plan is deduplicated by that directory. The base
+  checkout's path is likewise read whole out of `git worktree list --porcelain`
+  rather than as an awk field: split on the space, `~/My Code/repo` resolved to
+  `~/My` and every install was silently skipped for that repo.
+  `./test-worktree-deps.sh` is the check.
   `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.sh` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`), and **`scrub-commit-exclude.sh` is the single handler for them** — it unstages those paths, restores tracked edits to HEAD, drops untracked output, and reports every line it discarded. The untracked list is re-read **after** the unstage, never before: `git restore --staged` turns a staged *addition* into an untracked file, so the one reading taken up front is stale in exactly the case this exists for — a freshly generated dated snapshot swept up by the flow's own `git add -A` — and the scrub reported success while leaving `?? graphify-out/` for the next `git add` to commit. `auto-commit.sh`, `create-pr.sh` and `clean.sh` all call it, and the auto-commit call happens **before the config is read**, which is the whole fix: the `:(exclude)` pathspec only ever governed commits that hook made, so in a project whose `auto_commit.default` is `false` — the default — the commits come from the flow's own `git add` and the exclusion had no effect at all (issue #62). One handler also replaces the six improvisations each phase had for a background graph rebuild dirtying the tree on its own, which blocked the squash, the pull, and the cleanup step in three different ways; a rebuild **in flight** is waited for on a bounded timeout rather than raced, and `--require-clean` exits 2 when anything outside the excluded paths is dirty, since that is real work and the caller should still refuse (issue #55). `create-pr.sh` additionally resets them to the base before opening the PR: the working tree is the handler's job, but a divergence already **committed** on the branch is invisible to it. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. `./test-commit-exclude.sh` is the check. The extension ships **bash only** (see *No PowerShell* above) — the twin was deleted rather than taught the same rules, since a second copy of a handler whose whole point is being the single one is a second place for it to drift. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
-- `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
+- `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr).
+  **The coordinator hands each reviewer its scope; it never lets one infer it.** A
+  subagent inherits the session cwd — regularly the main checkout on `main`, not the
+  feature worktree — so a reviewer once produced confident findings about an unrelated
+  working tree, and a review of the wrong tree reads exactly like a review that passed
+  (issue #52). `detect-changed-files.sh` therefore emits `repo_root` (absolute) and
+  `diff_base` (the merge-base, empty in Mode B) alongside the file list, and
+  step 6a of `run.md` requires both verbatim in every reviewer prompt, with a
+  `SCOPE ERROR:` refusal — not a review of whatever was lying around — when the branch
+  or the range doesn't check out. Two turn-burners are named in the same step: 6b
+  forbids status-only turns after dispatch (the model already knows not to poll and
+  polls anyway — eleven consecutive no-op turns in one run), and 6c gives the hang its
+  recovery (no output and no elapsed-time movement for 10 min → `TaskStop`, run that
+  aspect inline, and report it as `degraded`, never as a clean pass).
+  **A base, not a `base...HEAD` range, and the file list — not the diff — is the
+  authoritative scope.** Three-dot compares two commits, so it drops the staged and
+  unstaged work the detector lists in the same breath; and no diff of any shape shows
+  an untracked file, in either mode. A reviewer handed only a commit range silently
+  reviews the committed half of the change and calls it a pass. The PowerShell twin
+  was deleted rather than kept in sync: nothing here runs on Windows, and a second
+  copy of this logic is a second place for it to drift.
+  `./test-review-scope.sh` is the check
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.
 
 **Presets**

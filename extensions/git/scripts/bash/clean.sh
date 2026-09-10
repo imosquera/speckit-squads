@@ -181,6 +181,12 @@ if [[ -z "$FEATURE_DIRECTORY" && -z "$TARGET_SPEC" && -z "$TARGET_WORKTREE" && -
   exit 1
 fi
 
+# Scrub the commit_exclude paths before the tree-state check below, so a
+# background graph rebuild that dirtied the worktree on its own does not make
+# /speckit-git-clean refuse (or, with --force, silently reset the real work
+# alongside it). Same handler as auto-commit.sh and create-pr.sh (issues #62, #55).
+"$SCRIPT_DIR/scrub-commit-exclude.sh" --repo "$WORKTREE_ROOT" || true
+
 STATUS_FILES="$(get_status_files "$WORKTREE_ROOT")"
 if [[ -n "$STATUS_FILES" ]]; then
   if [[ "$FORCE" -ne 1 ]]; then

@@ -55,8 +55,12 @@ independently.
   hook's tool is genuinely missing/unauthed or it plainly doesn't apply to this
   project — and when you skip, **say which hook and why**, in the phase's issue
   comment, the same audit-trail discipline as an auto-answered clarify. Invoke a
-  hook the way an interactive run would (its registered command / skill); never
-  reimplement its work by hand.
+  hook the way an interactive run would — **its registered command as a slash
+  command** (`speckit.foo.bar` → `/speckit-foo-bar`), never reimplementing its work
+  by hand and never through a `specify` CLI verb, because there is no hook-dispatch
+  verb to reach for. Nothing runs these for you: the core command body *suggests*
+  optional hooks and only *directs* mandatory ones, so an optional hook you don't
+  invoke simply never happened (issue #45).
 - **Tracking pipeline stages with the harness task tools?** `TaskCreate` /
   `TaskUpdate` / `TaskList` are **deferred** — their schemas aren't loaded, so
   calling one cold fails with `InputValidationError` (typed params get sent as
@@ -425,17 +429,35 @@ lifecycle-hook policy, not just the non-optional ones:
 - **Knowledge-graph refresh** — if this project keeps a graph (a `graphify-out/`
   directory, or `graphify` is on `PATH`), refresh it with the Claude `/graphify`
   skill. It is not a `specify` subcommand.
-- **Agent-context refresh** — if the project ships one (e.g. an
-  `update-agent-context` script under `.specify/scripts/bash/`, or a preset/extension
-  command that rewrites `CLAUDE.md`-style agent context), run it so Steps 5–8 plan
-  against the new spec instead of stale context.
+- **Agent-context refresh** (optional) — the core `agent-context` extension's
+  `speckit.agent-context.update`, invoked as the slash command
+  **`/speckit-agent-context-update`**, so Steps 5–8 plan against the new spec instead
+  of stale context. If the project doesn't have that extension, look for an
+  `update-agent-context` script under `.specify/scripts/bash/` instead.
 
-When `settings.auto_execute_hooks` is true the registered hooks fire on their own and
-there is nothing to invoke by hand — the `specify` CLI has no `hook` subcommand, so
-when it is false, invoke each hook's registered command directly (`ls
-.specify/extensions/*/commands/` to find them). Either way, **verify** they ran:
-`git log -1` for the commit, the issue body for the sync. If one is missing, run it;
-if it can't run, note which and why in the Step 3 progress comment.
+**Nothing fires these on its own — `auto_execute_hooks` is not a runtime.** There is
+no hook executor anywhere in the `specify` CLI; the dispatcher is the core
+`/speckit-specify` command body, and it dispatches *by prose addressed to you*. For a
+**mandatory** hook it emits an `EXECUTE_COMMAND:` block you are told to act on; for an
+**optional** hook it emits only ``To execute: `/{command}` `` — a suggestion with no
+directive behind it. `settings.auto_execute_hooks: true` does not change that. So the
+two hooks that need you most — the graphify and agent-context refreshes, both
+`optional: true` — are precisely the two that never run unless you run them (issue
+#45: silent no-ops across five features in `imosquera/enroute`).
+
+**Invoke them as slash commands, never as a CLI verb.** `specify` has no
+hook-dispatch surface at all: no `hook`, no `hooks`, and `specify event run` is the
+native-harness event bridge, not this. A line like `specify hook run
+speckit.agent-context.update` is an invention, and its usage error (`No such command
+'hook'`) is easy to pipe away and read as success. `ls .specify/extensions/*/commands/`
+lists the real command ids; a hook whose command is `speckit.foo.bar` is run as
+`/speckit-foo-bar`.
+
+Then **verify each one landed**, and treat a non-zero exit as a failure rather than
+noise: `git log -1` for the commit, the issue body for the sync, `graphify-out/`'s
+mtime for the graph, the agent-context file's diff for the refresh. If one is missing,
+run it; if it genuinely can't run, name which and why in the Step 3 progress comment.
+A hook that reported nothing is a hook that did nothing.
 
 ## Step 4 — Clarify (you answer the questions)
 

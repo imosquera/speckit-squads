@@ -142,6 +142,12 @@ fi
 SEED_GRAPH="$(dirname "${BASH_SOURCE[0]}")/seed-graph.sh"
 [[ -x "$SEED_GRAPH" ]] && "$SEED_GRAPH" "$WORKTREE_PATH" || true
 
+# Install the worktree's dependencies now, rather than letting the implement
+# phase discover a missing node_modules through a confusing resolution error
+# (issue #51). Best effort; never fails worktree creation.
+INSTALL_DEPS="$(dirname "${BASH_SOURCE[0]}")/install-deps.sh"
+[[ -x "$INSTALL_DEPS" ]] && "$INSTALL_DEPS" "$WORKTREE_PATH" || true
+
 echo "BRANCH_NAME: $BRANCH_NAME"
 echo "WORKTREE_PATH: $WORKTREE_PATH"
 printf '# NEXT STEP: cd %q\n' "$WORKTREE_PATH"

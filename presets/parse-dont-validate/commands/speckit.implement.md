@@ -119,22 +119,27 @@ TypeScript/Python changed during this run:
      for TypeScript, `#` for Python). Waive only at the trusted parser boundary;
      a waiver anywhere else is the bug this preset exists to catch.
 
-   Re-run `scan --new-only` until it exits zero. **Do not report completion while it exits
-   non-zero.**
+   Re-run `scan --new-only` until it **exits zero, or exits `4` on a run you have
+   confirmed wrote no TypeScript or Python** (the "verified empty input" case
+   below). Those two are the only outcomes you may report completion on.
 
-If the run produced no TypeScript or Python, `scan` exits `4` saying nothing was
-scanned. That is the one non-zero exit you may proceed past — and only after
-confirming this run really wrote no TypeScript or Python; say so in the
-completion report.
+**The verified empty-input case.** If the run produced no TypeScript or Python,
+`scan` exits `4` saying nothing was scanned. That is the one non-zero exit you
+may proceed past, and only after checking the change set yourself and confirming
+it really holds no `.ts`/`.tsx`/`.js`/`.jsx`/`.py` file. Wherever the rest of
+this section says "exits zero", read it as "exits zero, or exits `4` verified
+this way". If the run *did* write TypeScript or Python, exit `4` means the
+invocation is wrong, not that the gate passed — fix the call and re-run.
 
 ## Failure Policy
 
-- A non-zero exit from `parse_dont_validate.py scan --new-only` is a hard stop on reporting
-  completion. Exit `1` means findings: fix the flagged code or add a boundary
-  waiver, then re-scan. Exits `2`/`3` mean the gate never ran — fix the
-  invocation or the environment and run it; they are not a pass. Exit `4` means
-  nothing was scanned, which is a pass only for a run with no TypeScript or
-  Python in it.
+- A non-zero exit from `parse_dont_validate.py scan --new-only` is a hard stop on
+  reporting completion, with the single verified exit-`4` exception above. Exit
+  `1` means findings: fix the flagged code or add a boundary waiver, then
+  re-scan. Exits `2`/`3` mean the gate never ran — fix the invocation or the
+  environment and run it; they are not a pass. Exit `4` means nothing was
+  scanned, which is a pass only for a run you have confirmed wrote no TypeScript
+  or Python; report it as such rather than reporting a zero exit.
 - Do not silence a finding by deleting the offending line's functionality, by
   widening a type to escape the regex, or by waiving outside a parser module.
   The point is a real parser at the boundary, not a green scan.
@@ -145,6 +150,9 @@ completion report.
 
 On success, include:
 - The normal `/speckit-implement` completion summary from the core flow.
-- Whether the parse-don't-validate scan ran and that it exited zero.
+- Whether the parse-don't-validate scan ran and that it exited zero — or, for a
+  run with no TypeScript or Python, that it exited `4` and that you confirmed the
+  change set holds no such file. State which of the two it was; never claim a
+  zero exit for the exit-`4` case.
 - Any findings that were fixed (what became a parser) and any that were waived
   at a parser boundary (with the reason).

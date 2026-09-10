@@ -80,6 +80,16 @@ grep -q "unknown option" <<<"$out" || { echo "  FAIL typo'd flag not named"; fai
 out="$(python3 "$SCRIPT" scan --base 2>&1)"; st=$?
 check "--base with no ref is a usage error" 2 "$st" "$out"
 
+# `--base --new-only` used to consume the flag as the ref: the scan then ran
+# without --new-only against an unresolvable ref, found no change set, and
+# exited 4 — an empty-input answer to what is really a usage error.
+out="$(python3 "$SCRIPT" scan --base --new-only 2>&1)"; st=$?
+check "--base followed by another option is a usage error" 2 "$st" "$out"
+grep -q "needs a ref argument" <<<"$out" || { echo "  FAIL --base misuse not named"; echo "$out" | sed 's/^/       /'; fail=1; }
+
+out="$(python3 "$SCRIPT" scan --base= --new-only 2>&1)"; st=$?
+check "--base= with an empty ref is a usage error" 2 "$st" "$out"
+
 out="$(python3 "$SCRIPT" scan nosuchfile.ts 2>&1)"; st=$?
 check "paths that resolve to nothing are a hard error" 3 "$st" "$out"
 
@@ -100,6 +110,32 @@ if command -v node >/dev/null 2>&1; then
   check "the Node helper refuses a zero-file job" 2 "$st" "$out"
 else
   echo "  skip node helper checks (node not on PATH)"
+fi
+
+# --- the prompt's exit contract is internally consistent ---------------------
+# The command file grants one exception (proceed past a verified exit 4). Every
+# other place that states the exit contract must carry that carve-out, or a
+# docs-only run cannot satisfy all the mandatory instructions at once and the
+# agent stops or loops instead of using the exception.
+CMD="$ROOT/presets/parse-dont-validate/commands/speckit.implement.md"
+cmd_rule() { # name regex-that-must-match
+  if grep -qiE "$2" "$CMD"; then echo "  ok   $1"; else
+    echo "  FAIL $1 (no line matching /$2/ in speckit.implement.md)"; fail=1
+  fi
+}
+# Step 3's rerun loop must not demand a zero exit unconditionally.
+if grep -qE 'Re-run `scan --new-only` until it exits zero\.' "$CMD"; then
+  echo "  FAIL the rerun loop still demands exit zero with no exit-4 carve-out"; fail=1
+else
+  echo "  ok   the rerun loop admits the verified exit-4 case"
+fi
+cmd_rule "the rerun loop names exit 4" 'exits zero, or exits .4.'
+cmd_rule "the failure policy names the exit-4 exception" 'exit-.4. exception'
+# The completion report must not require claiming a zero exit outright.
+if grep -qE '^- Whether the parse-don.t-validate scan ran and that it exited zero\.$' "$CMD"; then
+  echo "  FAIL the completion report still requires reporting a zero exit only"; fail=1
+else
+  echo "  ok   the completion report admits the verified exit-4 case"
 fi
 
 [[ $fail -eq 0 ]] && echo "test-pdv-changeset: PASS" || echo "test-pdv-changeset: FAIL"

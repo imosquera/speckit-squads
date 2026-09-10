@@ -401,13 +401,23 @@ def cmd_scan(argv: List[str]) -> int:
     it = iter(argv)
     for arg in it:
         if arg == "--base":
+            # The next token is only a ref if it looks like one. `--base
+            # --new-only` used to swallow the flag as the ref: the scan then ran
+            # without --new-only against a ref git cannot resolve, so a branch
+            # whose files were already committed found no change set and exited
+            # 4 — an empty-input answer to what is really a usage error.
             base = next(it, None)
-            if base is None:
-                print(f"parse-dont-validate: --base needs a ref argument.\n{USAGE}",
+            if not base or base.startswith("-"):
+                print("parse-dont-validate: --base needs a ref argument"
+                      + (f", got {base!r}.\n" if base else ".\n") + USAGE,
                       file=sys.stderr)
                 return 2
         elif arg.startswith("--base="):
             base = arg.split("=", 1)[1]
+            if not base:
+                print(f"parse-dont-validate: --base needs a ref argument.\n{USAGE}",
+                      file=sys.stderr)
+                return 2
         elif arg == "--new-only":
             new_only = True
         elif arg.startswith("-"):

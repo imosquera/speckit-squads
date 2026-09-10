@@ -35,6 +35,15 @@ Subcommands
       staged and committed the changes. Exits non-zero when un-waived findings
       exist (1) or when the scan itself could not run (3).
 
+      `--new-only` subtracts the findings that already reproduce in the base
+      ref's copy of the same files, so only findings this branch introduced are
+      reported. Findings are matched by (file, rule, source text), not line
+      number.
+
+      Change-set detection always anchors at the git worktree root, so a scan
+      started from a subdirectory sees the whole diff rather than the untracked
+      files below it.
+
 Waivers
 -------
 Any finding can be suppressed with a trailing or preceding line comment
@@ -53,10 +62,12 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -273,7 +284,29 @@ def _detect_base() -> Optional[str]:
     return None
 
 
+def _git_root() -> Optional[Path]:
+    out = _git(["rev-parse", "--show-toplevel"])
+    return Path(out[0]) if out else None
+
+
+def _base_commit(base: Optional[str]) -> Optional[str]:
+    """The commit this branch forked from, to diff committed work against."""
+    base = base or _detect_base()
+    if not base:
+        return None
+    mb = _git(["merge-base", base, "HEAD"])
+    return mb[0] if mb else None
+
+
 def _changed_files(base: Optional[str]) -> List[Path]:
+    # Change-set detection is cwd-sensitive: `git diff --name-only` reports
+    # root-relative paths while `git ls-files --others` is limited to the cwd
+    # subtree, so from a subdirectory the whole diff silently collapses to the
+    # handful of untracked files below it. Anchor at the worktree root.
+    root = _git_root()
+    if root:
+        os.chdir(root)
+
     # Working-tree state (before any auto-commit hook runs).
     names: List[str] = []
     names += _git(["diff", "--name-only", "--diff-filter=d", "HEAD"])
@@ -283,11 +316,9 @@ def _changed_files(base: Optional[str]) -> List[Path]:
     # Committed work on this branch — so the gate still sees the implementation
     # even after a post-implement hook has staged + committed it. Diff against
     # the merge-base with the branch's base ref.
-    base = base or _detect_base()
-    if base:
-        mb = _git(["merge-base", base, "HEAD"])
-        if mb:
-            names += _git(["diff", "--name-only", "--diff-filter=d", mb[0], "HEAD"])
+    mb = _base_commit(base)
+    if mb:
+        names += _git(["diff", "--name-only", "--diff-filter=d", mb, "HEAD"])
 
     seen, paths = set(), []
     for n in names:
@@ -319,8 +350,44 @@ def cmd_checklist() -> int:
     return 0
 
 
+def _scan(targets: List[Path]) -> List[Finding]:
+    py = [p for p in targets if p.suffix in PY_EXTENSIONS]
+    tsx = [p for p in targets if p.suffix in TS_EXTENSIONS]
+    findings = _scan_python(py)
+    if tsx:
+        findings += _scan_typescript(tsx)
+    return findings
+
+
+def _fingerprint(f: Finding, path: str) -> tuple:
+    """Identity of a finding across revisions — line numbers shift, text doesn't."""
+    return (path, f.rule, f.text)
+
+
+def _preexisting(targets: List[Path], commit: str) -> set:
+    """Fingerprints of the findings already present in `commit`'s copy of these files."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        restored: Dict[str, str] = {}
+        for path in targets:
+            blob = subprocess.run(
+                ["git", "show", f"{commit}:{path}"],
+                capture_output=True, text=True, check=False)
+            if blob.returncode != 0:      # added on this branch — all new
+                continue
+            dest = root / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(blob.stdout, encoding="utf-8")
+            restored[str(dest)] = str(path)
+        if not restored:
+            return set()
+        return {_fingerprint(f, restored[f.path])
+                for f in _scan([Path(p) for p in sorted(restored)])}
+
+
 def cmd_scan(argv: List[str]) -> int:
     base: Optional[str] = None
+    new_only = False
     paths: List[str] = []
     it = iter(argv)
     for arg in it:
@@ -328,6 +395,8 @@ def cmd_scan(argv: List[str]) -> int:
             base = next(it, None)
         elif arg.startswith("--base="):
             base = arg.split("=", 1)[1]
+        elif arg == "--new-only":
+            new_only = True
         else:
             paths.append(arg)
 
@@ -336,16 +405,27 @@ def cmd_scan(argv: List[str]) -> int:
         print("parse-dont-validate: no TypeScript/Python files to scan.")
         return 0
 
-    py = [p for p in targets if p.suffix in PY_EXTENSIONS]
-    tsx = [p for p in targets if p.suffix in TS_EXTENSIONS]
-
     try:
-        findings = _scan_python(py)
-        if tsx:
-            findings += _scan_typescript(tsx)
+        findings = _scan(targets)
+        skipped = 0
+        if new_only and findings:
+            commit = _base_commit(base)
+            if commit is None:
+                raise ScanError(
+                    "--new-only needs a base ref to compare against and none "
+                    "could be detected; pass --base <ref>.")
+            old = _preexisting(targets, commit)
+            kept = [f for f in findings
+                    if _fingerprint(f, f.path) not in old]
+            skipped = len(findings) - len(kept)
+            findings = kept
     except ScanError as e:
         print(f"parse-dont-validate: {e}", file=sys.stderr)
         return 3
+
+    if new_only and skipped:
+        print(f"parse-dont-validate: ignored {skipped} pre-existing finding(s) "
+              f"already present in {commit}.")
 
     if not findings:
         print(f"parse-dont-validate: clean — scanned {len(targets)} file(s), "

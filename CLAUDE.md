@@ -340,7 +340,18 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes the `ponytail:ponytail` skill (when available) as a mandatory prelude before implementation begins. Implementation-discipline skills only: a prose-register skill compresses the very audit trail an unattended `/speckit-autopilot-run` depends on, so it does not belong in the prelude (issue #72)
-- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a Node helper on the TS Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules)
+- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a Node helper on the TS Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules).
+  **The gate is one invocation: `parse_dont_validate.py scan --new-only`.** The two
+  deterministic steps around it used to be driven by hand every run (issue #66) and
+  both had exactly one right answer: change-set detection now anchors at the git
+  worktree root instead of the cwd — `git diff --name-only` reports root-relative
+  paths while `git ls-files --others` is limited to the cwd subtree, so a scan
+  started from `functions/` collapsed to the untracked files below it and a
+  one-file scan reads exactly like a clean gate — and `--new-only` re-scans the
+  base ref's copy of the same files and subtracts what reproduces there, replacing
+  the hand-diff against `main`. Findings are matched by (file, rule, source text),
+  never line number, so shifted code stays pre-existing. `./test-pdv-changeset.sh`
+  is the check
 - `graph-first-navigation` — makes knowledge-graph queries and the TypeScript
   language server the default navigation instruments and demotes grep to a
   **stated** fallback. Two halves, and the harness half is the one that binds:

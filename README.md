@@ -27,6 +27,9 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    then runs /speckit-clarify and asks the
                    issue-shaped gaps (done-condition, repro, out-of-scope, layer) before creating — answers land
                    in spec.md, since the body is re-rendered from it on every sync (--no-clarify skips);
+                   the spec->body render is sync-issue-body.sh, not model-authored string surgery: it keeps the
+                   human's original report verbatim below a <!-- speckit:original-report --> sentinel, carries the
+                   work-breakdown block through, and refuses to write a body that would lose either;
                    a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one
                    is always mock-first (static fixtures, no network) and outranks its backend sibling in autopilot's picker,
                    while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;

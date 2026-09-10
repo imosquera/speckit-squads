@@ -225,6 +225,24 @@ on first run in a project that still tracks it, so the migration is automatic.
   and `epic` markers — creating any label the repo lacks and keeping each axis
   exclusive (`--priority p1` removes the other three; `--layer backend` removes
   the other two). Markers are independent and only ever touch themselves.
+  **The spec→body render is a script, not prose.** `sync-issue-body.sh` is the
+  single renderer and the single `gh issue edit --body` on the sync path: the
+  command file used to describe the render in prose, so every run re-derived it
+  in a fresh heredoc and four unattended runs in one 24-hour window each invented
+  a different, incompatible scheme for the human report the sync overwrites
+  (issue #63; the policy half is #61). The `<!-- speckit:original-report -->`
+  sentinel is what makes a re-sync idempotent — the first sync files the existing
+  body verbatim below it (a `/speckit-git-feature` stub is recognised and not
+  preserved as a report), every later sync rewrites only the region above it and
+  carries that region across byte for byte. Nothing wraps the preserved text, so
+  the next run reads back exactly what the last one wrote. It also carries the
+  `<!-- speckit:work-breakdown -->` block through and re-emits it last, which
+  makes the "sync before the split" ordering belt-and-braces instead of the only
+  thing preventing duplicate children — a hand-rolled `gh issue edit --body` still
+  erases it. It **refuses** rather than repairs: exit 2 leaves the issue
+  untouched when the composed body would drop either region. `--render-only` is
+  the create path (nothing to preserve yet), `--body-file` lets a caller own the
+  prose while keeping the surgery, and `./test-sync-issue-body.sh` is the check.
   **A manual `/speckit-git-issue` with no linked issue checks for a duplicate
   before it creates anything.** `find-duplicate-issues.sh` is the scan: it
   reduces the prospective title to its distinctive tokens and searches each one

@@ -51,6 +51,10 @@ provides:
       file: scripts/bash/label-issue.sh
       executable: true
       command: speckit.git.issue
+    - name: sync-issue-body.sh
+      file: scripts/bash/sync-issue-body.sh
+      executable: true
+      command: speckit.git.issue
     - name: split-issue.sh
       file: scripts/bash/split-issue.sh
       executable: true

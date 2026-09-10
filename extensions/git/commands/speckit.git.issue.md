@@ -182,6 +182,12 @@ decision recorded in the thread into `## Clarifications` as a
 `gh issue comment N` saying the issue is now tracked by this feature and naming
 the spec path, so the reporter can see what happened to their report.
 
+`sync-issue-body.sh` keeps the reporter's own words on the issue regardless — the
+first sync files them verbatim below the `<!-- speckit:original-report -->`
+sentinel — but that is a safety net, not a substitute: the spec is what the next
+run renders from, so anything left only in the preserved region is out of the
+plan.
+
 If the existing issue's original report cannot be reduced into the spec, that is
 strong evidence it is **not** the same unit of work — go back to step 3 and file
 separately.
@@ -275,16 +281,40 @@ This section covers the **hook** path and **manual, inside a feature** path. On
 `feature.json` to read or write.
 
 1. Read `.specify/feature.json`.
-2. **If it has a numeric `source_issue` — update that issue's body only:**
-   `gh issue edit <source_issue> --body "<body>"`
+2. **If it has a numeric `source_issue` — update that issue's body only, with the shared script:**
+
+   ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   SYNC="$PROJECT_DIR/.specify/extensions/git/scripts/bash/sync-issue-body.sh"
+   bash "$SYNC" <source_issue> <feature directory>/spec.md
+   ```
+
+   Never hand-write the render or the `gh issue edit`. This command used to
+   describe both in prose, so the model re-derived them in a fresh heredoc every
+   run — four unattended runs in one day, four incompatible schemes for the human
+   report the sync overwrites (issue #63). The script owns all of it: it renders
+   the spec's `##` sections (see **Issue Body**), preserves the issue's existing
+   body verbatim below the `<!-- speckit:original-report -->` sentinel on the
+   first sync and carries that region across untouched on every later one,
+   carries the `<!-- speckit:work-breakdown -->` block through, and refuses to
+   write (exit 2) rather than publish a body that lost either. `--dry-run` prints
+   the composed body without editing.
    **Do NOT pass `--title`.** `/speckit-git-feature` already set the title to `NNN: <feature description>` and owns it. The spec's H1 is the template heading (`Feature Specification: …`), not that title — writing it back would rewrite issue #N's title to something like `23: Feature Specification: …` on every re-spec.
    Then apply the triage labels (see **Priority & Kind Labels** below) — on this path only for axes the issue does not already carry.
    Here `gh` **MUST** be installed and authenticated: a linked issue that cannot be updated is a genuinely broken state. If `gh` is missing, `gh auth status` fails, or `gh issue edit` exits non-zero, stop with a clear error — never silently skip the sync.
 3. **If there is no `source_issue`:**
    - On the **hook** path: print the skip notice above and exit successfully.
    - On a **manual** invocation, once the **Duplicate Scan** has cleared the create
-     (a merge takes path 2 instead, against the adopted issue): create one with
-     `gh issue create --title "<title>" --body "<body>"`
+     (a merge takes path 2 instead, against the adopted issue): create one by rendering
+     the body with the same script and handing the file to `gh`:
+
+     ```bash
+     bash "$SYNC" --render-only <feature directory>/spec.md > /tmp/issue-body.md
+     gh issue create --title "<title>" --body-file /tmp/issue-body.md
+     ```
+
+     `--render-only` skips the preservation surgery because a brand-new issue has
+     nothing to preserve; every later sync takes path 2 above.
      then parse the issue number out of the returned URL and persist it back into `.specify/feature.json` as a numeric `source_issue`, preserving every other key in the file. Subsequent runs then take the update path. Then apply the triage labels (see **Priority & Kind Labels** below). Use the spec's H1 as the title, prefixed with the feature number when the branch/spec is numbered (e.g. `008: User Auth`). This is the only path that may set a title.
 
 ## Priority & Kind Labels
@@ -394,8 +424,11 @@ What the script does, so you do not duplicate any of it:
   every re-spec.
 
 Because the parent body rewrite appends the breakdown block, **run the split after
-the body sync**, never before — a later `gh issue edit --body` would erase the block
-and the next run would open three duplicate children.
+the body sync**, never before. `sync-issue-body.sh` carries an existing block
+through and re-emits it last, so the ordering is now belt-and-braces rather than the
+only thing standing between a re-spec and three duplicate children — but a
+hand-rolled `gh issue edit --body` still erases it, which is one more reason not to
+write one.
 
 ### The frontend child's body
 
@@ -425,7 +458,9 @@ Check with `bash "$SPLIT" <issue> --show` or simply look for the layer label.
 
 ## Issue Body
 
-Derive the body from **whatever sections `spec.md` actually contains** — do not assume a fixed set. Presets may add or remove sections, so read the file and render only the headings that are present. If a section is absent, skip its heading entirely rather than emitting an empty one.
+`sync-issue-body.sh` renders this; the shape is documented here so you can read
+what it produced, not so you can reproduce it by hand. It derives the body from
+**whatever sections `spec.md` actually contains** — it does not assume a fixed set. Presets may add or remove sections, so read the file and render only the headings that are present. If a section is absent, skip its heading entirely rather than emitting an empty one.
 
 ```markdown
 Spec path: <feature directory>/spec.md
@@ -459,6 +494,13 @@ Generated/updated by /speckit-git-issue
 section — render them only when there is content. `## Clarifications` comes from
 `spec.md`, never from this command's own memory of the conversation.
 
+The script drops the spec's H1 (the template heading), omits `## Success Criteria`
+by default, and appends the `## Notes` line. `--omit "<heading>"` drops another
+section and `--include "Success Criteria"` puts that one back. When you have a
+reason to compose the body yourself — folding a merged issue's report in, say —
+write it to a file and pass `--body-file`, which keeps the sentinel and the
+preservation surgery while letting you own the prose.
+
 **`## Success Criteria` is deliberately omitted.** Presets such as `spec-minimal` strip that section out of `spec.md`, so demanding it here would require inventing content that does not exist. The same reasoning applies to any other optional section: render it only if the spec has it.
 
 ## Failure Modes
@@ -469,6 +511,7 @@ section — render them only when there is content. `## Clarifications` comes fr
 | No `source_issue`, manual path | Create the issue; `gh` missing/unauthenticated/failing → hard error. |
 | `source_issue` present, `gh` missing or unauthenticated | **Hard error** with an install / `gh auth login` hint. |
 | `source_issue` present, `gh issue edit` non-zero exit | **Hard error**, surfacing `gh`'s own message. |
+| `sync-issue-body.sh` exits 2 | **Hard error, nothing written.** The composed body would have dropped the preserved report or the work-breakdown block; the issue on GitHub is untouched. Never "fix" it with a hand-rolled `gh issue edit`. |
 | No feature directory or no `spec.md`, hook path | **Hard error** — the hook only fires right after `/speckit-specify` wrote one, so its absence means something is genuinely broken. |
 | No feature directory or no `spec.md`, manual path | **Not an error.** Falls into **Standalone Mode**: file from the given/asked-for title and description, no spec, no clarify. |
 | Standalone mode, user gave no title/description and didn't answer when asked | **Create nothing.** Say the issue was not filed for lack of content. |

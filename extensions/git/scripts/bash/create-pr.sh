@@ -255,17 +255,14 @@ _ensure_base_local() {
 
 # Reconcile `commit_exclude` paths before anything inspects the working tree.
 #
-# The auto-commit hook already keeps these generated artifacts out of every
-# commit, but a lifecycle hook that regenerated one (graphify, typically) leaves
-# the result sitting in the working tree. Left alone it would abort the squash
-# path below on "working tree has uncommitted changes" — so restore tracked
-# content to HEAD and drop the untracked leftovers, which is exactly the manual
-# reconcile every autopilot run used to perform by hand before opening its PR
-# (issue #22).
-#
-# This only ever touches paths the project explicitly listed in commit_exclude.
-# `git clean` here is deliberate and scoped to those paths: they are rebuilt
-# artifacts, not work. It is not passed -x, so genuinely ignored files survive.
+# (a) The working tree is scrubbed by the shared handler — the same one
+# auto-commit.sh and clean.sh call, so no two steps can improvise a different
+# reconcile or forget to do one at all (issues #62, #55). Without it the squash
+# path below aborts on "working tree has uncommitted changes" over output a
+# background rebuild wrote by itself.
+"$SCRIPT_DIR/scrub-commit-exclude.sh" --repo "$REPO_ROOT" || true
+
+# (b) is PR-specific and stays here: history, not the working tree.
 if type spec_kit_commit_excludes >/dev/null 2>&1; then
     _base_ok=false
     _ensure_base_local && _base_ok=true
@@ -274,18 +271,7 @@ if type spec_kit_commit_excludes >/dev/null 2>&1; then
     while IFS= read -r _ex; do
         [ -n "$_ex" ] || continue
 
-        # (a) Working tree: drop the hook's regenerated output. Without this the
-        # squash path below aborts on "working tree has uncommitted changes".
-        if [ -e "$REPO_ROOT/$_ex" ]; then
-            if ! git diff --quiet -- "$_ex" 2>/dev/null || \
-               [ -n "$(git ls-files --others --exclude-standard -- "$_ex" 2>/dev/null)" ]; then
-                echo "[specify] Reconciling excluded artifact to HEAD: $_ex" >&2
-                git checkout -- "$_ex" 2>/dev/null || true
-                git clean -qfd -- "$_ex" 2>/dev/null || true
-            fi
-        fi
-
-        # (b) Committed history: the exclusion only governs commits this hook
+        # Committed history: the exclusion only governs commits this hook
         # makes. A path can still have landed on the branch from a run predating
         # the config, a manual `git add -A`, or a merge — and then it is in the
         # PR diff no matter how clean the working tree is. Reset it to the base

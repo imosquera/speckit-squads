@@ -79,7 +79,6 @@ Generate a concise short name (2-4 words) for the branch — this is the **only*
 Then run the script exactly once, passing the short name and the feature description:
 
 - **Bash**: `.specify/extensions/git/scripts/bash/create-new-feature.sh --json --short-name "<short-name>" "<feature description>"`
-- **PowerShell**: `.specify/extensions/git/scripts/powershell/create-new-feature.ps1 -Json -ShortName "<short-name>" "<feature description>"`
 
 Everything deterministic is handled by the script:
 - Detecting whether the working directory is a git repo (warns and skips branch creation if not)
@@ -89,7 +88,7 @@ Everything deterministic is handled by the script:
 
 **IMPORTANT**:
 - Do NOT pass `--number` — the script determines the correct next number automatically
-- Always include the JSON flag (`--json` for Bash, `-Json` for PowerShell) so the output can be parsed reliably
+- Always include `--json` so the output can be parsed reliably
 - You must only ever run this script once per feature
 - The JSON output will contain `BRANCH_NAME` and `FEATURE_NUM` (and `SOURCE_ISSUE` / `ISSUE_URL` when an issue was created)
 

@@ -87,26 +87,40 @@ Always pass the path. A bare `graphify update` rebuilds whichever project the
 CWD resolves to — from a worktree that is regularly another worktree's graph.
 
 **The language server has to be reachable before it can be the instrument.** The
-LSP tool spawns `typescript-language-server` as a bare command name, so a copy in
-`node_modules/.bin` does not count and an unprobed call fails with `ENOENT`:
+LSP tool spawns `typescript-language-server` as a bare command name **from the
+agent process**, so a copy in `node_modules/.bin` does not count and an unprobed
+call fails with `ENOENT`:
 
 ```bash
 command -v typescript-language-server
 ```
 
 Not found → do not call the LSP tool. Use the graph and grep, and record which
-one the call sites came from. To make it found, project-locally (never
-`npm i -g`):
+one the call sites came from. To make it found, link the project-local copy into
+a directory that is already on `PATH` (never `npm i -g`):
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-npm install
-export PATH="$PWD/node_modules/.bin:$PATH"
+npm install   # a worktree starts with no root node_modules at all
+mkdir -p ~/.local/bin
+ln -sf "$PWD/node_modules/typescript-language-server/lib/cli.mjs" \
+       ~/.local/bin/typescript-language-server
 ```
 
-The `npm install` is load-bearing in a worktree, which starts with no root
-`node_modules` at all: without it even `npx typescript-language-server`
-"succeeds" only by downloading the package at run time.
+**`export PATH=…` in a shell tool cannot work** — do not re-add it. Shell state
+does not persist between tool calls, and even within one call the LSP tool
+resolves the binary against the `PATH` the *agent process* inherited at startup,
+which no child shell can change. If `~/.local/bin` is not on that `PATH`, link
+into a directory that is, or set a literal absolute `env.PATH` in
+`.claude/settings.json` — it does not expand `${PATH}`, so it goes stale.
+
+**A cold language server under-reports across files.**
+`typescript-language-server` loads a project lazily, so the *first* cross-file
+`findReferences` can answer "2 references across 1 file" for a symbol that has 26
+across 4 once the callers are loaded. Warm it first — query inside the target
+file, or open the files you expect to be callers — and, exactly as with the
+graph, never trust a **negative** answer ("nothing else uses this") without
+cross-checking it against `graphify query`.
 
 **Staleness.** A graph is built against a commit; a feature worktree diverges
 from it. Before trusting a negative answer ("nothing else reads this"), check
@@ -149,4 +163,21 @@ PYEOF
 else
   { [[ -f CLAUDE.md ]] && printf '\n'; printf '%s\n' "$BLOCK"; } >> CLAUDE.md
   echo "  added the graph-first navigation block to CLAUDE.md"
+fi
+
+# ------------------------------------------------- language server reachability
+# Probe rather than instruct: the LSP tool spawns `typescript-language-server` as
+# a bare command name from the agent process, so a copy in node_modules/.bin is
+# invisible to it and no `export PATH` from a shell tool can change that.
+if command -v typescript-language-server >/dev/null 2>&1; then
+  echo "  typescript-language-server on PATH: $(command -v typescript-language-server)"
+else
+  CLI="$PWD/node_modules/typescript-language-server/lib/cli.mjs"
+  if [[ -f "$CLI" ]]; then
+    echo "  warn: typescript-language-server is installed but NOT on PATH — the LSP tool cannot spawn it." >&2
+    echo "        Link it into a directory already on PATH (an 'export PATH' in a shell tool will not take):" >&2
+    echo "          mkdir -p ~/.local/bin && ln -sf \"$CLI\" ~/.local/bin/typescript-language-server" >&2
+  else
+    echo "  note: typescript-language-server not installed — 'npm install' at the repo root, then link node_modules/typescript-language-server/lib/cli.mjs into a directory on PATH." >&2
+  fi
 fi

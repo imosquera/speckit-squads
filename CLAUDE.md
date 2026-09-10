@@ -328,6 +328,16 @@ on first run in a project that still tracks it, so the migration is automatic.
   **`built_at_commit` is megabytes into `graph.json`, not at the top** — reading
   the first 8KB finds nothing. The guard mmaps and byte-scans; `graph-freshness.sh`
   uses `grep -m1 -oa`. Neither parses the JSON.
+  **The language server is reached by a symlink, never by `export PATH`.** The
+  LSP tool spawns `typescript-language-server` as a bare command name from the
+  agent process, so a copy in `node_modules/.bin` is invisible to it and a shell
+  tool's `export` cannot change that — shell state does not persist between
+  calls, and the agent's own `PATH` is fixed at startup (issue #71). The seeded
+  `CLAUDE.md` block links the project-local `lib/cli.mjs` into `~/.local/bin`,
+  and `post-install.sh` probes and prints that command rather than instructing.
+  The same block warns that a **cold** language server loads the project lazily,
+  so a first cross-file `findReferences` can under-report ("2 references" for a
+  symbol with 26) — warm it, and cross-check negatives against the graph.
   **The staleness rule is the one legitimate reason to break the rule, and it
   resolves the other way:** a stale graph means **rebuild** (`graphify update`),
   never fall back to grep. Every layer says so.

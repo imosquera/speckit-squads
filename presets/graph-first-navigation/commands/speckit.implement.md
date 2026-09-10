@@ -45,9 +45,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    ```
 
    Not found → do not call the LSP tool; it fails with `ENOENT`. Use the graph
-   and grep, and record that provenance. `CLAUDE.md` has the project-local
-   bootstrap that makes the probe succeed. Found → the LSP tool is the
-   **required** instrument:
+   and grep, and record that provenance. `CLAUDE.md` has the bootstrap that makes
+   the probe succeed — a symlink into a directory already on `PATH`, because an
+   `export PATH=…` from a shell tool never reaches the agent process the LSP tool
+   spawns from. Found → the LSP tool is the **required** instrument:
 
    - `findReferences` — every reference to the symbol
    - `incomingCalls` — every caller of the function
@@ -57,6 +58,13 @@ You **MUST** consider the user input before proceeding (if not empty).
    For module- and system-level questions ("what reads this collection", "what
    depends on this package"), use the graph: `graphify query "what imports
    <module>"`, `graphify explain "<module>"`.
+
+   **Warm it before believing a negative.** `typescript-language-server` loads a
+   project lazily, so the first cross-file `findReferences` can report "2
+   references across 1 file" for a symbol that has 26 across 4 once the callers
+   are loaded. Run a query inside the target file first, and cross-check any
+   "nothing else uses this" against `graphify query` before acting on it — the
+   same rule the graph's own freshness check exists to enforce.
 
 3. **Record the scope** in the implementation notes or the task's progress entry
    before editing: symbol, instrument used (LSP operation or graph query), and

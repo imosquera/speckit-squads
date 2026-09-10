@@ -48,8 +48,13 @@ ORIG_END="<!-- /speckit:original-report -->"
 WB_BEGIN="<!-- speckit:work-breakdown -->"
 WB_END="<!-- /speckit:work-breakdown -->"
 # `/speckit-git-feature` opens the issue with this stub. It is not a human's
-# report, so it is not worth preserving as one.
+# report, so it is not worth preserving as one — but a reporter may have added
+# real text to the stub before the first sync, so only the placeholder itself is
+# removed and whatever else the body carries is preserved. Keep these two in
+# sync with the `_issue_body` heredoc in `create-new-feature.sh`.
 STUB_MARK="Stub created by \`/speckit-git-feature\`"
+STUB_LEAD="Tracking issue for feature: "
+STUB_SENTENCE="Stub created by \`/speckit-git-feature\`. The full spec body will be filled in by \`/speckit-specify\`."
 
 die()  { echo "[speckit-git-issue] error: $*" >&2; exit 1; }
 warn() { echo "[speckit-git-issue] warning: $*" >&2; }
@@ -110,6 +115,22 @@ strip_between() { # strip_between <begin> <end> <text>
   printf '%s\n' "$3" | sed "\|$1|,\|$2|d"
 }
 has() { printf '%s\n' "$2" | grep -qF -- "$1"; }
+# First 1-based line number carrying <needle>, empty when absent.
+line_of() { # line_of <needle> <text>
+  printf '%s\n' "$2" | grep -nF -- "$1" | head -1 | cut -d: -f1
+}
+# Drop leading/trailing blank lines.
+trim_blank() { printf '%s\n' "$1" | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'; }
+# Remove the `/speckit-git-feature` placeholder, keeping everything else on the
+# line — a reporter who edits the stub before the first sync keeps their text.
+strip_stub() { # strip_stub <text>
+  printf '%s\n' "$1" \
+    | awk -v lead="$STUB_LEAD" -v s="$STUB_SENTENCE" '
+        index($0, lead) == 1 { next }
+        { i = index($0, s)
+          if (i) $0 = substr($0, 1, i-1) substr($0, i+length(s))
+          print }'
+}
 
 WORKBREAKDOWN=""
 if has "$WB_BEGIN" "$CURRENT"; then
@@ -121,16 +142,26 @@ fi
 # the human's report. Later syncs: whatever is already inside the sentinels,
 # byte for byte — this script never re-derives a region it once preserved.
 if has "$ORIG_BEGIN" "$CURRENT"; then
+  # `between` runs to EOF when the closing sentinel was removed by a manual
+  # edit, and `sed '1d;$d'` then eats the reporter's last line — after which the
+  # guard below compares the truncated text against itself and passes. An
+  # unbalanced region is not repairable here, so refuse before extracting.
+  _b="$(line_of "$ORIG_BEGIN" "$CURRENT")"
+  _e="$(line_of "$ORIG_END" "$CURRENT")"
+  if [ -z "$_e" ] || [ "$_e" -le "$_b" ]; then
+    echo "[speckit-git-issue] error: issue #$ISSUE body opens '$ORIG_BEGIN' with no matching '$ORIG_END' after it — refusing to guess where the original report ends; nothing written" >&2
+    exit 2
+  fi
   PRESERVED="$(between "$ORIG_BEGIN" "$ORIG_END" "$CURRENT" \
     | sed "1d;\$d")"                       # drop the sentinel lines themselves
   HAD_SENTINEL=true
 else
   HAD_SENTINEL=false
-  PRESERVED="$(strip_between "$WB_BEGIN" "$WB_END" "$CURRENT")"
-  # Trim leading/trailing blank lines.
-  PRESERVED="$(printf '%s\n' "$PRESERVED" | sed -e '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
-  if [ -z "$PRESERVED" ] || has "$STUB_MARK" "$PRESERVED"; then
-    PRESERVED=""                            # a stub is not a report
+  PRESERVED="$(trim_blank "$(strip_between "$WB_BEGIN" "$WB_END" "$CURRENT")")"
+  if has "$STUB_MARK" "$PRESERVED"; then
+    # A stub is not a report — but a reporter may have added one to it before
+    # the first sync. Strip only the placeholder; keep anything else.
+    PRESERVED="$(trim_blank "$(strip_stub "$PRESERVED")")"
   fi
 fi
 

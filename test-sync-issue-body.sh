@@ -115,6 +115,23 @@ lacks stub "$ORIG_BEGIN" "$stub"
 lacks stub "Stub created by" "$stub"
 contains stub "## Functional Requirements" "$stub"
 
+echo "5b. a reporter's edit to a stub survives the first sync"
+cat > "$TMP/stub-edited.md" <<'STUB'
+Tracking issue for feature: saved searches
+
+Stub created by `/speckit-git-feature`. The full spec body will be filled in by `/speckit-specify`.
+
+Repro: save a search, reload the page, the list is empty.
+Expected: the saved search is still listed.
+STUB
+se="$(bash "$SYNC" 41 "$SPEC" --current-body "$TMP/stub-edited.md" --dry-run)"; rc=$?
+check "edited stub" "exit code" 0 "$rc"
+contains "edited stub" "$ORIG_BEGIN" "$se"
+contains "edited stub" "Repro: save a search, reload the page, the list is empty." "$se"
+contains "edited stub" "Expected: the saved search is still listed." "$se"
+lacks "edited stub" "Stub created by" "$se"
+lacks "edited stub" "Tracking issue for feature:" "$se"
+
 echo "6. the work-breakdown registry survives a body sync, and lands last"
 { cat "$TMP/synced.md"
   printf '\n%s\n' "$WB_BEGIN"
@@ -167,6 +184,22 @@ bash "$SYNC" 41 "$TMP/nope.md" --current-body "$REPORT" --dry-run >/dev/null 2>&
 check "missing spec" "exit code" 1 "$?"
 bash "$SYNC" notanumber "$SPEC" --dry-run >/dev/null 2>&1
 check "non-numeric issue" "exit code" 1 "$?"
+
+echo "11. an unclosed report sentinel is a refusal, not a silent truncation"
+{ printf 'Rendered region from an earlier sync.\n\n'
+  printf '## Original report (as filed)\n\n'
+  printf '%s\n' "$ORIG_BEGIN"
+  printf 'The saved-search list disappears after a reload.\n'
+  printf 'Expected: the search is still there.\n'; } > "$TMP/unclosed.md"
+unc="$(bash "$SYNC" 41 "$SPEC" --current-body "$TMP/unclosed.md" --dry-run 2>&1)"; rc=$?
+check "unclosed sentinel" "exit code" 2 "$rc"
+contains "unclosed sentinel" "nothing written" "$unc"
+lacks "unclosed sentinel" "## Functional Requirements" "$unc"
+# The same body with its closing sentinel back is synced normally, last line and all.
+printf '%s\n' "$ORIG_END" >> "$TMP/unclosed.md"
+closed="$(bash "$SYNC" 41 "$SPEC" --current-body "$TMP/unclosed.md" --dry-run)"; rc=$?
+check "closed sentinel" "exit code" 0 "$rc"
+contains "closed sentinel" "Expected: the search is still there." "$closed"
 
 if [ "$fail" -eq 0 ]; then echo "all cases passed"; else echo "FAILURES" >&2; fi
 exit "$fail"

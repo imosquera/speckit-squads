@@ -2,6 +2,7 @@
 set -euo pipefail
 
 FORCE=0
+BASE_BRANCH=""
 TARGET_WORKTREE=""
 TARGET_SPEC=""
 TARGET_ISSUE=""
@@ -12,6 +13,11 @@ while [[ $# -gt 0 ]]; do
     --force|-f)
       FORCE=1
       shift
+      ;;
+    --base)
+      [[ $# -ge 2 ]] || { echo "[clean] --base requires a ref" >&2; exit 1; }
+      BASE_BRANCH="$2"
+      shift 2
       ;;
     --worktree)
       [[ $# -ge 2 ]] || { echo "[clean] --worktree requires a path" >&2; exit 1; }
@@ -30,9 +36,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     --help|-h)
       cat <<'EOF'
-Usage: clean.sh [--force|-f] [--worktree <path>] [--spec <path>] [--issue <number>] [target]
+Usage: clean.sh [--force|-f] [--base <ref>] [--worktree <path>] [--spec <path>] [--issue <number>] [target]
 
 Targets may be a worktree path, a spec directory, or an issue number.
+
+Refuses to clean unless verify-landed.sh proves the branch's work is on the
+base (default main) — a squash merge leaves no ancestry, so content is what is
+checked. --force overrides, discarding whatever the branch still holds.
 EOF
       exit 0
       ;;
@@ -179,6 +189,28 @@ fi
 if [[ -z "$FEATURE_DIRECTORY" && -z "$TARGET_SPEC" && -z "$TARGET_WORKTREE" && -z "$TARGET_ISSUE" ]]; then
   echo "[clean] cannot derive a feature from branch '${BRANCH_NAME:-?}' in $WORKTREE_ROOT (no matching specs/ directory); pass --worktree, --spec, or --issue to identify the feature" >&2
   exit 1
+fi
+
+# Nothing below this point is reversible — the working tree can be reset, the
+# issue closed, the worktree removed and the branch deleted. So the "did this
+# actually land?" question is answered once, by verify-landed.sh, instead of
+# being re-derived by hand with a per-run path list (issue #49). A squash merge
+# leaves no ancestry, so `git branch -d` / `--merged` / `--is-ancestor` all
+# report "not merged" for work that is safely on main; the script handles that.
+# UNKNOWN is a refusal, never a pass.
+if [[ -n "$BRANCH_NAME" && -x "$SCRIPT_DIR/verify-landed.sh" ]]; then
+  VERIFY_ARGS=("$BRANCH_NAME" --repo "$WORKTREE_ROOT")
+  [[ -n "$BASE_BRANCH" ]] && VERIFY_ARGS+=(--base "$BASE_BRANCH")
+  if VERIFY_OUT="$("$SCRIPT_DIR/verify-landed.sh" "${VERIFY_ARGS[@]}" 2>&1)"; then
+    printf '%s\n' "$VERIFY_OUT" | sed 's/^/[clean] /'
+  else
+    printf '%s\n' "$VERIFY_OUT" | sed 's/^/[clean] /' >&2
+    if [[ "$FORCE" -ne 1 ]]; then
+      echo "[clean] refusing to clean '$BRANCH_NAME': its work is not provably on ${BASE_BRANCH:-main} (use --force to override)" >&2
+      exit 1
+    fi
+    echo "[clean] --force: cleaning '$BRANCH_NAME' anyway; the work above is being discarded" >&2
+  fi
 fi
 
 STATUS_FILES="$(get_status_files "$WORKTREE_ROOT")"

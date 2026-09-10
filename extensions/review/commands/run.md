@@ -2,7 +2,6 @@
 description: Comprehensive code review using specialized agents — orchestrates code, comments, tests, errors, types, and simplify agents sequentially.
 scripts:
   sh: scripts/bash/detect-changed-files.sh
-  ps: scripts/powershell/detect-changed-files.ps1
 ---
 
 # Comprehensive PR Review
@@ -36,13 +35,29 @@ Run a comprehensive pull request review using multiple specialized agents, each 
 
 4. **Identify Changed Files**
 
-   - If the user provided a file list or explicit instructions on how to retrieve files (e.g., only staged, only unstaged, a specific folder, etc.), follow those instructions directly.
-   - Otherwise, you **MUST** execute the `{SCRIPT}` with `--json` to detect changed files. **Do not** attempt to detect changes by running `git` commands directly, reading git state manually, or using any other method — always delegate to the script.
+   - **Run the `{SCRIPT}` with `--json` in every case** — it is the only authoritative
+     source of the scope metadata (`repo_root`, `branch`, `diff_base`) that step 6a
+     requires, and a user-supplied file list carries none of it. Even when the script
+     exits 2 (no changes detected) its JSON still carries those three fields.
+   - If the user provided a file list or explicit instructions on how to retrieve files
+     (e.g., only staged, only unstaged, a specific folder), those instructions decide
+     **which files to review** — they override `changed_files` and nothing else. Keep
+     `repo_root`, `branch`, and `diff_base` from the script.
+   - Otherwise take the file list from the script too. **Do not** attempt to detect
+     changes by running `git` commands directly, reading git state manually, or using
+     any other method — always delegate to the script.
      - The script automatically picks the best detection mode:
        - **Mode A (feature branch):** diffs the current branch against the default branch (`main`/`master`) from the merge-base, plus any staged and unstaged changes.
        - **Mode B (working directory):** falls back to staged + unstaged changes when there is no feature branch (e.g., working directly on the default branch).
-     - JSON output: `{"branch", "default_branch", "repo_root", "diff_range", "mode", "changed_files": [...]}`
-     - `repo_root` is the absolute path of **this** worktree and `diff_range` is the exact `<merge-base>...HEAD` range (empty in Mode B). Both **MUST** be carried into every reviewer prompt — see step 6. Do not re-derive either one yourself.
+     - JSON output: `{"branch", "default_branch", "repo_root", "diff_base", "mode", "changed_files": [...]}`
+     - `repo_root` is the absolute path of **this** worktree. `diff_base` is the
+       merge-base in Mode A and empty in Mode B — a **base, not a range**, so
+       `git diff <diff_base>` reaches the working tree and covers committed, staged
+       and unstaged work alike. Carry both into every reviewer prompt verbatim (step
+       6a); do not re-derive either one.
+     - **`changed_files` is the authoritative scope, not the diff.** No `git diff` can
+       show an untracked file, and the detector lists them in both modes. A reviewer
+       given only a diff command silently skips every newly created file.
    - **Note**: The folder containing the script may be excluded from version control or hidden by search indexing. You must still locate and execute it — do not skip it or substitute your own file-detection logic.
    - **Ignore** the `graphify-out/` directory in all review passes — exclude it from diffs, file reads, and issue reporting. If the changed-files list includes paths under `graphify-out/`, filter them out before dispatching to specialist agents. Generated knowledge-graph artifacts are out of scope for review.
 
@@ -81,15 +96,25 @@ Run a comprehensive pull request review using multiple specialized agents, each 
    Review scope — do not infer it, do not use your inherited cwd:
      worktree: <repo_root>          # absolute path
      branch:   <branch>
-     diff:     git -C <repo_root> diff <diff_range>
+     diff:     git -C <repo_root> diff <diff_base>
+     files:    <one path per line, exactly the filtered changed_files list>
+   The file list is authoritative — review every path on it. The diff is context for
+   the tracked ones; an untracked file appears in no diff at all, so read those from
+   disk under <repo_root>.
    Before reviewing, verify: `git -C <repo_root> rev-parse --abbrev-ref HEAD` equals
-   <branch>, and the diff above is non-empty. If either check fails, abort
-   immediately and reply with exactly `SCOPE ERROR: <what mismatched>` — do not
+   <branch>, and every listed file exists under <repo_root>. If either check fails,
+   abort immediately and reply with exactly `SCOPE ERROR: <what mismatched>` — do not
    review whatever is in your working directory instead.
    ```
 
-   If `diff_range` is empty (Mode B — working directory), pass
-   `git -C <repo_root> diff HEAD` as the diff command and drop the branch check.
+   If `diff_base` is empty (Mode B — working directory), pass
+   `git -C <repo_root> diff HEAD` as the diff command and drop the branch check. The
+   `files:` list is unchanged and still authoritative: a Mode B change set of nothing
+   but untracked files yields an empty diff and is still a valid review.
+
+   If the user supplied an explicit file list or scope (step 4), it replaces the
+   `files:` list. `worktree:` and `branch:` still come from the script and are still
+   mandatory — an explicit file list says *what* to review, never *which checkout*.
 
    A reviewer that returns `SCOPE ERROR:` is a failed launch, not a finding:
    re-dispatch it with the corrected scope, and never fold its output into the

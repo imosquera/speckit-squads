@@ -305,7 +305,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   feature worktree — so a reviewer once produced confident findings about an unrelated
   working tree, and a review of the wrong tree reads exactly like a review that passed
   (issue #52). `detect-changed-files.sh` therefore emits `repo_root` (absolute) and
-  `diff_range` (`<merge-base>...HEAD`, empty in Mode B) alongside the file list, and
+  `diff_base` (the merge-base, empty in Mode B) alongside the file list, and
   step 6a of `run.md` requires both verbatim in every reviewer prompt, with a
   `SCOPE ERROR:` refusal — not a review of whatever was lying around — when the branch
   or the range doesn't check out. Two turn-burners are named in the same step: 6b
@@ -313,6 +313,13 @@ on first run in a project that still tracks it, so the migration is automatic.
   polls anyway — eleven consecutive no-op turns in one run), and 6c gives the hang its
   recovery (no output and no elapsed-time movement for 10 min → `TaskStop`, run that
   aspect inline, and report it as `degraded`, never as a clean pass).
+  **A base, not a `base...HEAD` range, and the file list — not the diff — is the
+  authoritative scope.** Three-dot compares two commits, so it drops the staged and
+  unstaged work the detector lists in the same breath; and no diff of any shape shows
+  an untracked file, in either mode. A reviewer handed only a commit range silently
+  reviews the committed half of the change and calls it a pass. The PowerShell twin
+  was deleted rather than kept in sync: nothing here runs on Windows, and a second
+  copy of this logic is a second place for it to drift.
   `./test-review-scope.sh` is the check
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.
 

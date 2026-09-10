@@ -39,9 +39,18 @@ OUT=$(cd "$REPO" && "$DETECT" --json)
 
 get() { sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p" <<<"$OUT"; }
 check "mode A repo_root is the worktree root" "$(git -C "$REPO" rev-parse --show-toplevel)" "$(get repo_root)"
-check "mode A diff_range is <merge-base>...HEAD" "$BASE...HEAD" "$(get diff_range)"
-# the range the reviewer is handed must actually resolve to the changed files
-check "mode A diff_range resolves" "a.txt" "$(git -C "$REPO" diff --name-only "$(get diff_range)")"
+check "mode A diff_base is the merge-base" "$BASE" "$(get diff_base)"
+# the base the reviewer is handed must resolve to the changed files
+check "mode A diff_base resolves" "a.txt" "$(git -C "$REPO" diff --name-only "$(get diff_base)")"
+
+# A two-dot diff against the base reaches the working tree; a three-dot range would
+# compare two commits and drop uncommitted work the detector still lists.
+echo uncommitted >> "$REPO/b.txt"
+git -C "$REPO" add b.txt
+OUT=$(cd "$REPO" && "$DETECT" --json)
+check "diff_base covers staged work" "a.txt
+b.txt" "$(git -C "$REPO" diff --name-only "$(get diff_base)")"
+git -C "$REPO" reset -q && rm -f "$REPO/b.txt"
 # repo_root is the worktree root, not wherever the caller happened to stand
 mkdir -p "$REPO/sub"
 OUT=$(cd "$REPO/sub" && "$DETECT" --json)
@@ -52,7 +61,18 @@ git -C "$REPO" checkout -q main
 echo dirty >> "$REPO/a.txt"
 OUT=$(cd "$REPO" && "$DETECT" --json)
 check "mode B repo_root still reported" "$(git -C "$REPO" rev-parse --show-toplevel)" "$(get repo_root)"
-check "mode B diff_range is empty" "" "$(get diff_range)"
+check "mode B diff_base is empty" "" "$(get diff_base)"
+
+# Untracked files appear in no diff at all, in either mode — changed_files is the
+# only place a reviewer can learn about them, so it must list them.
+git -C "$REPO" checkout -q -- a.txt
+echo new > "$REPO/brand-new.txt"
+OUT=$(cd "$REPO" && "$DETECT" --json)
+case "$OUT" in
+  *'"brand-new.txt"'*) echo "  ok: untracked-only change set is still reported" ;;
+  *) echo "  FAIL: untracked-only change set missing from changed_files" >&2; fail=1 ;;
+esac
+check "untracked-only diff is empty (so the file list must carry it)" "" "$(git -C "$REPO" diff --name-only HEAD)"
 
 [[ $fail -eq 0 ]] && echo "PASS" || echo "FAIL"
 exit $fail

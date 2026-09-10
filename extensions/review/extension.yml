@@ -32,9 +32,6 @@ provides:
     - name: "detect-changed-files.sh"
       file: "scripts/bash/detect-changed-files.sh"
       executable: true
-    - name: "detect-changed-files.ps1"
-      file: "scripts/powershell/detect-changed-files.ps1"
-      executable: true
 
   commands:
     - name: "speckit.review.run"

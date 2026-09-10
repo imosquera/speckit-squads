@@ -32,7 +32,11 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
                    commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches — one handler,
                    scrub-commit-exclude.sh, called by auto-commit/create-pr/clean, enforced even when auto_commit is off;
-                   --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json)
+                   --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json);
+                   /speckit-git-clean refuses every destructive step until verify-landed.sh proves the branch's work is
+                   on the base — a squash merge leaves no ancestry, so the branch's own touched paths (from its commit
+                   history, minus commit_exclude) are compared against the fetched origin/<base> instead of a hand-typed
+                   path list that differed every run (issue #49); UNKNOWN, or a check that cannot run at all, is a refusal
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)

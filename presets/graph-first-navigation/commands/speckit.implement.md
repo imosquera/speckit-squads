@@ -29,10 +29,14 @@ You **MUST** consider the user input before proceeding (if not empty).
    ```
 
    A feature worktree diverges from the commit the graph was built at, so this
-   check is load-bearing here more than anywhere else. `STALE` → rebuild
-   (`graphify update`) and re-check. `ABSENT` → no graph in this project; fall
-   back to the language server if the probe in step 2 finds it, and to grep if
-   it does not — and say which.
+   check is load-bearing here more than anywhere else. `STALE` → rebuild with
+   the command the verdict printed, path and all (`graphify update <this
+   worktree>`) and re-check; a bare `graphify update` rebuilds whichever
+   project the CWD resolves to, which from a worktree is regularly another one.
+   `UNKNOWN` → freshness is unanswerable, not failed; carry on and treat only
+   negative findings ("nothing else calls this") as unverified. `ABSENT` → no
+   graph in this project; fall back to the language server if the probe in
+   step 2 finds it, and to grep if it does not — and say which.
 
 2. **Enumerate the blast radius of every identity-changing edit** — every
    rename, signature change, type change, moved export, or deleted symbol the

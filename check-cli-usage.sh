@@ -155,6 +155,17 @@ print(f"script path check: ok ({sum(len(v) for v in declared.values())} declared
       f"{len(cmd_files)} command files)")
 PYEOF
 
+# Every shipped bash script must parse. Cheap, and it catches the trap that a
+# heredoc inside $( ) still scans its body for quotes — an odd apostrophe in
+# prose there is a syntax error reported a hundred lines away.
+syntax_bad=0
+while IFS= read -r script; do
+  bash -n "$script" || { echo "error: $script does not parse" >&2; syntax_bad=1; }
+done < <(find extensions presets -path '*/scripts/bash/*.sh' -type f 2>/dev/null)
+if [[ $syntax_bad -ne 0 ]]; then fail=1; else
+  echo "bash syntax check: ok"
+fi
+
 if [[ $fail -ne 0 ]]; then
   echo "error: pre-flight checks failed" >&2
   exit 1

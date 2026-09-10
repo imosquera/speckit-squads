@@ -391,6 +391,24 @@ on first run in a project that still tracks it, so the migration is automatic.
   **The staleness rule is the one legitimate reason to break the rule, and it
   resolves the other way:** a stale graph means **rebuild** (`graphify update`),
   never fall back to grep. Every layer says so.
+  **But the gate must not cry wolf, because it opens the plan phase of every
+  unattended run** (issue #67). Three rules keep it honest: a graph with no
+  `built_at_commit` is `UNKNOWN` (exit 3), not `STALE` — an unanswerable
+  question, not a failed one, and reporting it as staleness bought a full
+  rebuild at the top of every run; every remedy it prints carries the
+  **absolute path** (`graphify update <checkout>`), since a bare
+  `graphify update` rebuilds whichever project the CWD resolves to and has
+  already rebuilt the wrong worktree; and a **committed** `graphify-out/` is
+  reported as its own condition, because it is stale by construction. That last
+  one is prevented rather than reported by `post-install.sh`, which excludes
+  `graphify-out/` in the repo's `info/exclude` and `skip-worktree`s any tracked
+  graph files — the same thing the git extension's `seed-graph.sh` does per
+  worktree, duplicated because it lives in another installable's script tree.
+  `./test-graph-freshness.sh` is the check.
+  **The seeded CLAUDE.md block is a heredoc inside `$( )`, where bash still
+  scans the body for quotes** — an odd number of apostrophes in that prose is a
+  syntax error reported a hundred lines further down. `check-cli-usage.sh` now
+  runs `bash -n` over every shipped script, so it fails the install instead.
   Presets cannot declare harness hooks and extension `hooks:` cover only Spec Kit
   lifecycle phases, so the settings.json and CLAUDE.md edits ship as
   `scripts/bash/post-install.sh` / `pre-uninstall.sh` — run by a **generic**

@@ -27,11 +27,20 @@ You **MUST** consider the user input before proceeding (if not empty).
 - `ABSENT` — this project has no graph. Skip the Navigation pass entirely, say
   so in the completion report, and run the core flow unchanged. Grep is the
   correct instrument here.
-- `STALE` — **rebuild the graph** (`graphify update`, or the `/graphify` skill
-  with `--update`) and re-run the check. A stale graph does **not** license a
-  fall back to grep; it licenses a rebuild. If the rebuild is impossible in
-  this session (tool missing, unauthenticated), say so explicitly in
-  `## Navigation` and mark every entry below it `provenance: unverified`.
+- `STALE` — **rebuild the graph** and re-run the check. Run the command the
+  verdict printed, path and all (`graphify update <this checkout>`, or the
+  `/graphify` skill with `--update`); a bare `graphify update` rebuilds
+  whichever project the CWD resolves to, which from a worktree is regularly
+  another one. A stale graph does **not** license a fall back to grep; it
+  licenses a rebuild. If the rebuild is impossible in this session (tool
+  missing, unauthenticated), say so explicitly in `## Navigation` and mark
+  every entry below it `provenance: unverified`.
+- `UNKNOWN` — freshness is *unanswerable*, not failed: the graph records no
+  `built_at_commit` (an older build), or there is no HEAD to compare it to.
+  **Do not reflexively rebuild.** Proceed with the Navigation pass and mark
+  only its *negative* findings ("nothing else reads this")
+  `provenance: unverified`; rebuild only if a negative finding is what the plan
+  turns on.
 - `FRESH` — proceed.
 
 ### Core Flow

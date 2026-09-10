@@ -291,6 +291,19 @@ on first run in a project that still tracks it, so the migration is automatic.
   Two exemptions keep it from crying wolf (a checker that does gets disabled
   within a day): lines whose own text negates (`MUST NOT`, `out of scope`, …)
   and everything under a heading matching scope/non-goals/corrections/constraints.
+  Both checkers read **folded logical lines**, never physical ones
+  (`scope-common.py`'s `logical_lines()`, which reports the line the block
+  started on). These artifacts are prose and every editor wraps prose: matching
+  physical lines ended a `MUST NOT touch:` list at its first continuation —
+  nine paths silently became one and the gate passed — and stripped the
+  negation off a wrapped restatement in a plan, flagging it as a violation
+  (issue #68). A wrapped bullet is one bullet.
+  **Only a bullet or a `**marker:**` line accepts a continuation; prose never
+  folds**, and that asymmetry is load-bearing rather than lazy. Folding
+  consecutive prose lines makes two sentences of one paragraph a single logical
+  line, so a negation in the first silently exempts a violation in the second —
+  a wrongly-exempted violation is a worse failure than the truncation being
+  fixed. Both defects #68 reports were wrapped *bullets*; prose never needed it.
   **It mandates the smallest change, not small changes** — a migration or a
   rename is legitimately wide, and the escape hatch is an explicit
   `**Scope justification:**` line. A sibling preset rather than an extension of

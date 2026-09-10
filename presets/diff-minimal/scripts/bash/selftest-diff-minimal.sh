@@ -71,6 +71,22 @@ SCOPE_OK='
 - `infra/**` — a rules change pulls a Terraform apply in behind it
 '
 
+# A MUST-NOT list whose bullets wrap, the way any editor writes prose. Four
+# paths; the first and third each continue onto further physical lines. Before
+# issue #68 the parser stopped at the first continuation and saw exactly one.
+SCOPE_WRAPPED='
+## Scope discipline
+
+**MUST NOT touch:**
+
+- `firestore.rules` — the read runs on the Admin SDK, which never consults
+  rules, so a rules edit changes nothing here and drags a deploy in behind it
+- `infra/**` — a Terraform apply is not part of this change
+- `scripts/deploy.sh` — the release path is unchanged by this feature, and a
+  change here lands on every service at once rather than on this one
+- `package-lock.json` — no dependency moves
+'
+
 # --------------------------------------------------------------- sections
 start "sections: both present and populated -> 0"
 d="$(mkfeature s1)"
@@ -142,6 +158,54 @@ if expect_rc 0; then
     # `infra/main.tf` lives outside Scope discipline, so it must not be read as
     # a fourth forbidden path.
     [[ "$(grep -c '^  - ' <<<"$OUT")" -eq 2 ]] && pass || fail "wrong path count: $OUT"
+fi
+
+start "sections: wrapped MUST NOT bullets report every path, not the first"
+d="$(mkfeature s8)"
+printf '%s%s%s' "$SPEC_HEAD" "$CORRECTIONS_OK" "$SCOPE_WRAPPED" > "$d/spec.md"
+before="$(digest "$d/spec.md")"
+run "$SECTIONS" "$d/spec.md"
+if expect_rc 0; then
+    # rc=0 alone is exactly the silent pass this bug produced: a 4-path list read
+    # as 1 path still exits 0. Assert the count and every name.
+    if [[ "$before" != "$(digest "$d/spec.md")" ]]; then
+        fail "spec.md was modified by a read-only check"
+    elif [[ "$(grep -c '^  - ' <<<"$OUT")" -ne 4 ]]; then
+        fail "wrapped bullets truncated the list: $OUT"
+    elif ! grep -q '4 path(s)' <<<"$OUT"; then
+        fail "reported count is not 4: $OUT"
+    else
+        missing=""
+        for p in 'firestore.rules' 'infra/\*\*' 'scripts/deploy.sh' 'package-lock.json'; do
+            grep -q -- "$p" <<<"$OUT" || missing="$missing $p"
+        done
+        [[ -z "$missing" ]] && pass || fail "paths lost to wrapping:$missing"
+    fi
+fi
+
+start "sections: a wrapped bullet's tail is not read as a second path"
+d="$(mkfeature s9)"
+printf '%s%s\n## Scope discipline\n\n**MUST NOT touch:**\n\n- `infra/**` — a rules change pulls a Terraform\n  apply in behind it, and `terraform.tfstate` is not ours to move\n' \
+    "$SPEC_HEAD" "$CORRECTIONS_OK" > "$d/spec.md"
+run "$SECTIONS" "$d/spec.md"
+if expect_rc 0; then
+    [[ "$(grep -c '^  - ' <<<"$OUT")" -eq 1 ]] && pass || fail "one wrapped bullet is one path: $OUT"
+fi
+
+start "sections: a bare-spelled bullet keeps its own path, not its tail's backticks"
+d="$(mkfeature s10)"
+printf '%s%s\n## Scope discipline\n\n**MUST NOT touch:**\n\n- infra/** — a Terraform apply is not part of this change; the queue is\n  provisioned already and `src/queue/worker.ts` is the only consumer\n' \
+    "$SPEC_HEAD" "$CORRECTIONS_OK" > "$d/spec.md"
+run "$SECTIONS" "$d/spec.md"
+if expect_rc 0; then
+    # Preferring backticks over position picks a path out of the bullet's own
+    # prose: `infra/**` would be permitted and `src/queue/worker.ts` forbidden —
+    # enforcement inverted, not merely weakened.
+    if grep -q 'src/queue/worker.ts' <<<"$OUT"; then
+        fail "took the path from the wrapped tail: $OUT"
+    else
+        grep -q 'infra/\*\*' <<<"$OUT" && pass || fail "lost the bullet's own path: $OUT"
+    fi
 fi
 
 start "sections: missing file -> 2"
@@ -230,6 +294,112 @@ printf '%s%s\n## Scope discipline\n\n**MUST NOT touch:**\n\n- `src/*.ts`\n' \
 printf '# Plan\n\n- edit `src/handlers/claim.ts`\n' > "$d/plan.md"
 run "$PLAN" "$d"
 expect_rc 0 && pass
+
+# mkwrappedfeature <name> -> a feature whose spec's MUST-NOT bullets wrap
+mkwrappedfeature() {
+    local d; d="$(mkfeature "$1")"
+    printf '%s%s%s' "$SPEC_HEAD" "$CORRECTIONS_OK" "$SCOPE_WRAPPED" > "$d/spec.md"
+    echo "$d"
+}
+
+start "plan: a negation split across a line wrap is still a negation -> 0"
+d="$(mkplanfeature p10)"
+printf '# Plan\n\n- `firestore.rules` is deliberately\n  left untouched; the Admin SDK never consults it\n- we must not\n  apply `infra/main.tf` as part of this change\n- edit `src/handlers/claim.ts`\n' > "$d/plan.md"
+before="$(digest "$d/plan.md")"
+run "$PLAN" "$d"
+if expect_rc 0; then
+    [[ "$before" == "$(digest "$d/plan.md")" ]] && pass || fail "plan.md was modified"
+fi
+
+start "plan: a path declared in a WRAPPED spec bullet is still enforced -> 1"
+d="$(mkwrappedfeature p11)"
+printf '# Plan\n\n- edit `src/handlers/claim.ts`\n- run `scripts/deploy.sh` after the migration\n' > "$d/plan.md"
+run "$PLAN" "$d"
+if expect_rc 1; then
+    # `scripts/deploy.sh` sits on a continuation line in the spec; if the spec
+    # parse truncated, this violation would go unseen and the gate would pass.
+    grep -q 'plan.md:4' <<<"$ERR" && grep -q 'scripts/deploy.sh' <<<"$ERR" \
+        && pass || fail "wrapped-bullet path was not enforced: $ERR"
+fi
+
+start "plan: a heading is never folded into by the prose line after it"
+d="$(mkplanfeature p12)"
+printf '# Plan\n\n## Non-goals\n\nDeliberately parked for a follow-up: `firestore.rules` and its tests.\n\n## Steps\n\n- apply `infra/main.tf`\n' > "$d/plan.md"
+run "$PLAN" "$d"
+if expect_rc 1; then
+    # The prose names a forbidden path with no negation of its own. It is exempt
+    # only because `## Non-goals` was seen as a heading — folding it into the
+    # prose would lose the heading and flag line 5.
+    if grep -q 'plan.md:5' <<<"$ERR"; then
+        fail "heading folded into the prose under it; exempt section lost"
+    elif grep -q 'plan.md:9' <<<"$ERR"; then
+        pass
+    else
+        fail "did not flag the violation after the exempt section: $ERR"
+    fi
+fi
+
+# Folding is for WRAPPED PROSE only. Everything below is a line of markdown that
+# starts something of its own, so it must arrive as its own logical line — both
+# so the report points at the right line, and (the real damage) so a negation
+# earlier in the block cannot exempt a forbidden path later in it.
+
+start "plan: an ordered-list step is its own line, not a fold into the step above"
+d="$(mkplanfeature p13)"
+printf '# Plan\n\n## Steps\n\n1. Add the handler in `src/handlers/claim.ts`; no changes to the schema.\n2. Apply `infra/main.tf` so the new subnet exists.\n3. Deploy.\n' > "$d/plan.md"
+run "$PLAN" "$d"
+if expect_rc 1; then
+    grep -q 'plan.md:6' <<<"$ERR" && pass \
+        || fail "numbered step folded into the negation above it: $ERR"
+fi
+
+start "plan: a table row is its own line, not a fold into the header"
+d="$(mkplanfeature p14)"
+printf '# Plan\n\n## File map\n\n| File | Change |\n|------|--------|\n| `firestore.rules` | no changes to this file |\n| `infra/main.tf` | add the subnet |\n' > "$d/plan.md"
+run "$PLAN" "$d"
+if expect_rc 1; then
+    grep -q 'plan.md:8' <<<"$ERR" && pass \
+        || fail "table folded into one line; a negating row exempted the rest: $ERR"
+fi
+
+start "plan: a blockquote is its own line, not a fold into the prose above"
+d="$(mkplanfeature p15)"
+printf '# Plan\n\n## Steps\n\nRules are excluded here.\n> We still need to apply `infra/main.tf` for the subnet.\n' > "$d/plan.md"
+run "$PLAN" "$d"
+if expect_rc 1; then
+    grep -q 'plan.md:6' <<<"$ERR" && pass || fail "blockquote folded: $ERR"
+fi
+
+start "plan: code inside a fence never folds, and the fence never eats prose"
+d="$(mkplanfeature p16)"
+printf '# Plan\n\n## Steps\n\nThe rules file is out of scope for this change.\n\n```bash\ncd deploy\nterraform apply infra/main.tf\n```\n' > "$d/plan.md"
+run "$PLAN" "$d"
+if expect_rc 1; then
+    # Without fence handling the whole block folds onto line 5, whose text
+    # negates — a real violation silently exempted.
+    grep -q 'plan.md:9' <<<"$ERR" && pass \
+        || fail "fenced code folded into the prose above it: $ERR"
+fi
+
+start "plan: two prose sentences are two logical lines, not one exempt block"
+d="$(mkplanfeature p17)"
+printf '# Plan\n\n## Steps\n\nThe read path stays on the Admin SDK, so `firestore.rules` is out of scope.\nWe then apply `infra/main.tf` to add the new subnet the queue needs.\n' > "$d/plan.md"
+before="$(digest "$d/plan.md")"
+run "$PLAN" "$d"
+if expect_rc 1; then
+    # Fold these two sentences together and the first one's "out of scope"
+    # exempts the second one's forbidden path: the gate exits 0 on a real
+    # violation, which is worse than the truncation issue #68 fixed.
+    if grep -q 'plan.md:5' <<<"$ERR"; then
+        fail "flagged the negating sentence: $ERR"
+    elif ! grep -q 'plan.md:6' <<<"$ERR"; then
+        fail "did not report the violating sentence's own line: $ERR"
+    elif [[ "$before" != "$(digest "$d/plan.md")" ]]; then
+        fail "plan.md was modified"
+    else
+        pass
+    fi
+fi
 
 start "plan: no spec.md -> 2"
 d="$(mkfeature p9)"

@@ -78,7 +78,12 @@ for name in ("plan.md", "tasks.md", "quickstart.md", "research.md"):
         continue
 
     exempt_until = None  # heading level we are exempt beneath, or None
-    for n, line in enumerate(path.read_text().splitlines(), 1):
+    # Fold wrapped continuations before matching: these artifacts are prose, and
+    # a restatement that wraps ("this file MUST NOT be / touched") lost its
+    # negation on the physical line carrying the path and was reported as a
+    # violation (issue #68). Headings still arrive as their own entries, so the
+    # exempt-heading state machine below is unchanged.
+    for n, line in logical_lines(path.read_text().splitlines()):
         h = heading(line)
         if h:
             level, title = h
@@ -93,7 +98,11 @@ for name in ("plan.md", "tasks.md", "quickstart.md", "research.md"):
             continue
         for listed, pat in patterns:
             if pat.search(line):
-                violations.append((name, n, listed, line.strip()))
+                # A folded block can be a whole paragraph; keep the report readable.
+                text = line.strip()
+                if len(text) > 200:
+                    text = text[:197] + "..."
+                violations.append((name, n, listed, text))
                 break
 
 if violations:

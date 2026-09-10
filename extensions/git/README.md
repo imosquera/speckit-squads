@@ -11,8 +11,15 @@ This extension provides Git operations as an optional, self-contained module. It
 - **PR creation** for completed feature branches (`--draft` for a human-review handoff:
   opens the PR as a draft and leaves the tracking issue open)
 - **`commit_exclude`** — repo-tracked generated artifacts that CI rebuilds on the
-  default branch are kept out of every auto-commit, and reset to the base branch
-  before a PR opens
+  default branch. One handler, `scrub-commit-exclude.sh`, restores those paths to
+  HEAD — unstaging, discarding tracked edits, dropping untracked output — and is
+  called by `auto-commit.sh`, `create-pr.sh` and `clean.sh` alike, **before the
+  auto-commit config is even read**, so the exclusion holds in a project whose
+  `auto_commit.default` is `false` (issue #62) and no phase improvises its own
+  recovery from a background rebuild's churn (issue #55). A rebuild in flight is
+  waited for rather than raced. `create-pr.sh` additionally resets the paths to
+  the base branch, since the working tree says nothing about what already landed
+  in the branch's history
 - **GitHub issue sync** — when a tracking issue is linked, its body is re-rendered from `spec.md` after every `/speckit-specify` (title untouched) and its `p0`..`p3` / `bug`|`feature` triage labels are kept current; skipped cleanly when there is no linked issue
 - **Auto-commit** after core commands (configurable per-command with custom messages)
 

@@ -30,7 +30,8 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one
                    is always mock-first (static fixtures, no network) and outranks its backend sibling in autopilot's picker,
                    while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
-                   commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches;
+                   commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches — one handler,
+                   scrub-commit-exclude.sh, called by auto-commit/create-pr/clean, enforced even when auto_commit is off;
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json)
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)

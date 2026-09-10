@@ -116,7 +116,8 @@ already answers half of them.
    sentence and reliably returns nothing:
 
    ```bash
-   DUPES="$CLAUDE_PROJECT_DIR/.specify/extensions/git/scripts/bash/find-duplicate-issues.sh"
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   DUPES="$PROJECT_DIR/.specify/extensions/git/scripts/bash/find-duplicate-issues.sh"
    bash "$DUPES" --title "<the title this issue would get>" \
      [--keyword <distinctive term from the spec>]... [--exclude <issue to ignore>]
    ```
@@ -293,7 +294,8 @@ Every tracking issue carries two triage labels: a priority (`p0`, `p1`, `p2`, `p
 Apply them with the shared script — never with a hand-rolled `gh issue edit --add-label`, which would drift from the vocabulary the picker matches on and can leave an issue carrying two priorities at once:
 
 ```bash
-LABEL_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/git/scripts/bash/label-issue.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+LABEL_SCRIPT="$PROJECT_DIR/.specify/extensions/git/scripts/bash/label-issue.sh"
 bash "$LABEL_SCRIPT" <issue-number> --show                          # read current triage labels
 bash "$LABEL_SCRIPT" <issue-number> --priority p1 --kind bug        # set them (each is exclusive)
 bash "$LABEL_SCRIPT" <issue-number> --layer frontend --mock-first   # layer axis + markers
@@ -363,7 +365,8 @@ Never open the children with hand-rolled `gh issue create`: the script owns the
 titles, the parent's work-breakdown block, the `Blocked by:` line, and the labels.
 
 ```bash
-SPLIT="$CLAUDE_PROJECT_DIR/.specify/extensions/git/scripts/bash/split-issue.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+SPLIT="$PROJECT_DIR/.specify/extensions/git/scripts/bash/split-issue.sh"
 bash "$SPLIT" <parent-issue> --show                 # already split? prints "<layer> <number>"
 bash "$SPLIT" <parent-issue> \
   --title "<feature title, no layer prefix>" \

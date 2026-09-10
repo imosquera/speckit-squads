@@ -86,8 +86,9 @@ step after writing code is worse than one that never starts.
    **right now — before doing any work** — so the user can opt in for future passes.
    On macOS:
    ```bash
-   SCHED="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
-   [ -x "$SCHED" ] && "$SCHED" status --project "$CLAUDE_PROJECT_DIR" | head -1
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   SCHED="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
+   [ -x "$SCHED" ] && "$SCHED" status --project "$PROJECT_DIR" | head -1
    ```
    If the first line is `NOT SCHEDULED`, say once, then continue with this run:
 
@@ -130,7 +131,8 @@ it, and this sort is what makes age the stable final tiebreak — with `labels` 
 directly — takes a **file path**, never stdin:
 
 ```bash
-FETCH_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/fetch-open-issues.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+FETCH_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/fetch-open-issues.sh"
 bash "$FETCH_SCRIPT" /tmp/autopilot_issues.json
 ```
 
@@ -143,7 +145,8 @@ which is exactly how two runs collided on the same issue — see issue #19). Alw
 `exec` the script instead:
 
 ```bash
-PREFLIGHT_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/preflight-issues.py"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+PREFLIGHT_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/preflight-issues.py"
 
 # With an explicit issue number in $ARGUMENTS, validate THAT issue only:
 python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json "$N" --cross-repo
@@ -183,7 +186,8 @@ was introduced to end (issue #32). Park it with the delivering PR as the reason,
 then stop:
 
 ```bash
-PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
 bash "$PARK_SCRIPT" "$N" \
   "delivered by <PR-URL> (<state>) — close this issue, or clear the autopilot:blocked label if that PR does not resolve it" \
   --title "✅ **Already delivered**"
@@ -253,7 +257,8 @@ So, before any spec, branch, or worktree: read the issue and list every file pat
 asks you to change or create, then hand them all to the guard in one call:
 
 ```bash
-GUARD="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/check-target-repo.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+GUARD="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/check-target-repo.sh"
 bash "$GUARD" path/to/one.py ~/some/other/file.ts
 # => "INSIDE: … → <repo>"   per target, then
 #    "OK: 2 target(s) inside <repo>"          (exit 0 — proceed)
@@ -273,7 +278,8 @@ substitute for reading the issue.
 the claim, exactly as [Stop conditions](#stop-conditions) prescribes.
 
 ```bash
-PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
 bash "$PARK_SCRIPT" "$N" \
   "fix target <path> lives in <other-repo>; this autopilot run is bound to <this-repo> — move the issue to that repo, or clear autopilot:blocked if it can be fixed here" \
   --title "📍 **Wrong repository**"
@@ -331,7 +337,8 @@ mismatched numbering.
    extension predates `--source-issue` (issue #44), or the worktree came from
    `/speckit-git-worktree` — bind it explicitly:
    ```bash
-   BIND_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/bind-feature-issue.sh"
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   BIND_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/bind-feature-issue.sh"
    bash "$BIND_SCRIPT" "$N" "<absolute path to the new worktree>"
    ```
    Do **not** write the file by hand. Both that script and `--source-issue` go
@@ -576,7 +583,8 @@ the very next tick and picks it again — forever. `autopilot:blocked` is in tha
 script's `BLOCK` set, so this is the one write that ends the loop:
 
 ```bash
-PARK_SCRIPT="$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
 bash "$PARK_SCRIPT" "$N" "<ONE-LINE reason, self-contained, no leading formatting>"
 ```
 

@@ -391,8 +391,14 @@ on first run in a project that still tracks it, so the migration is automatic.
   correct for every repo *and* every feature worktree: a worktree has no
   `node_modules` of its own, and leg 3 finds its own repo's copy rather than some
   other project's. A symlink is the wrong shape for exactly that reason: it dies
-  on the next `npm ci` and, in another repo's worktree, silently answers with the
-  linked project's TypeScript. An existing non-shim binary on `PATH` is left
+  on the next `npm ci` in the project it points into, and takes the language
+  server away from **every** repo on the machine at once — silently, since the
+  `command -v` probe simply starts coming up empty. The wrong-TypeScript half of
+  that warning is narrower than it reads and was overstated until #67's
+  follow-up: `findTypescriptVersion` prefers the *opened* workspace's own
+  `node_modules/typescript`, so the linked project's copy is loaded only in a
+  workspace that has none. Fragility is the argument, not version leakage. An
+  existing non-shim binary on `PATH` is left
   alone unless `SPECKIT_LSP_SHIM=force`; `SPECKIT_LSP_BIN_DIR` picks the install
   dir. `pre-uninstall.sh` deliberately does **not** remove the shim — it is
   machine-level and shared by every project that installed the preset.
@@ -416,10 +422,13 @@ on first run in a project that still tracks it, so the migration is automatic.
   graph files — the same thing the git extension's `seed-graph.sh` does per
   worktree, duplicated because it lives in another installable's script tree.
   `./test-graph-freshness.sh` is the check.
-  **The seeded CLAUDE.md block is a heredoc inside `$( )`, where bash still
-  scans the body for quotes** — an odd number of apostrophes in that prose is a
-  syntax error reported a hundred lines further down. `check-cli-usage.sh` now
-  runs `bash -n` over every shipped script, so it fails the install instead.
+  **The seeded CLAUDE.md block is written to a temp file, not captured with
+  `$(cat <<EOF)`.** Inside a command substitution bash still scans the heredoc
+  body for quotes, so an odd number of apostrophes in that prose was a syntax
+  error reported a hundred lines further down — it bit twice in one session
+  before the shape changed. `check-cli-usage.sh` also runs `bash -n` over every
+  shipped script now, so a broken installer fails pre-flight instead of at a
+  consumer.
   Presets cannot declare harness hooks and extension `hooks:` cover only Spec Kit
   lifecycle phases, so the settings.json and CLAUDE.md edits ship as
   `scripts/bash/post-install.sh` / `pre-uninstall.sh` — run by a **generic**

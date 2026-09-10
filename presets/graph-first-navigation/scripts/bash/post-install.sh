@@ -99,10 +99,13 @@ fi
 BEGIN="<!-- BEGIN graph-first-navigation -->"
 END="<!-- END graph-first-navigation -->"
 
-# NOTE: this heredoc sits inside $( ), where bash still scans the body for
-# quotes — keep the apostrophes in the prose below EVEN in number, or the
-# parser reports a syntax error a hundred lines further down.
-BLOCK="$(cat <<'EOF'
+# The block is written to a temp file rather than captured with `$(cat <<EOF)`:
+# inside a command substitution bash still scans the heredoc body for quotes, so
+# an odd number of apostrophes in this prose became a syntax error reported a
+# hundred lines further down. A plain redirect has no such trap.
+BLOCK_FILE="$(mktemp)"
+trap 'rm -f "$BLOCK_FILE"' EXIT
+cat > "$BLOCK_FILE" <<'EOF'
 <!-- BEGIN graph-first-navigation -->
 ## Navigating this codebase
 
@@ -160,9 +163,15 @@ which no child shell can change. For the same reason a hook cannot fix it, and
 `env` in `.claude/settings.json` takes literal strings with no `${PATH}`
 expansion. A name on the inherited `PATH` is the only seam.
 
-Do **not** point that name at a symlink into some project's `node_modules`: it
-breaks on the next `npm ci`, and in a *different* repo's worktree the server
-would silently resolve that first project's TypeScript instead of this one's.
+Do **not** point that name at a symlink into some project's `node_modules`. It
+dies on the next `npm ci` in that project, and then **every** repo on the
+machine loses the language server at once — silently, since the probe above
+just starts coming up empty.
+
+The version leak is the smaller half, and narrower than it sounds: the server
+prefers the *opened* workspace's own `node_modules/typescript`
+(`findTypescriptVersion`), so it loads the linked project's TypeScript only in
+a workspace that has none of its own. The fragility is the real cost.
 
 `npm install` in the checkout is still worth having — with it the shim finds this
 project's own server and TypeScript version rather than the main worktree's copy
@@ -211,7 +220,7 @@ structural, when the checkout has no graph, and on the first TypeScript edit of
 a session.
 <!-- END graph-first-navigation -->
 EOF
-)"
+BLOCK="$(cat "$BLOCK_FILE")"
 
 if [[ -f CLAUDE.md ]] && grep -qF "$BEGIN" CLAUDE.md; then
   python3 - "$BLOCK" <<'PYEOF'
@@ -241,7 +250,8 @@ fi
 # name on it. Install our shim under that name: it resolves a project-local
 # server at spawn time (cwd walk-up, then CLAUDE_PROJECT_DIR, then the repo's
 # main worktree, then npx), so one file serves every repo and every worktree
-# and never goes stale. A symlink into some project's node_modules would.
+# and never goes stale. A symlink into some project's node_modules would: one
+# `npm ci` there takes the language server away from every repo on the machine.
 SHIM_SRC="$SCRIPT_DIR/lsp-shim.sh"
 SHIM_TAG="speckit:graph-first-navigation:lsp-shim"
 
@@ -253,8 +263,8 @@ elif [[ "${SPECKIT_LSP_SHIM:-}" != "force" ]] && \
   echo "  typescript-language-server already on PATH ($existing) — left alone"
   if [[ -L "$existing" ]]; then
     echo "        (it is a symlink to $(readlink "$existing") — if that points into a project's" >&2
-    echo "         node_modules it breaks on the next npm ci and leaks that project's TypeScript" >&2
-    echo "         into other repos; SPECKIT_LSP_SHIM=force replaces it with the resolver shim)" >&2
+    echo "         node_modules, one npm ci there takes the language server away from every repo" >&2
+    echo "         on this machine; SPECKIT_LSP_SHIM=force replaces it with the resolver shim)" >&2
   fi
 else
   BIN_DIR="${SPECKIT_LSP_BIN_DIR:-}"

@@ -41,7 +41,8 @@ Run a comprehensive pull request review using multiple specialized agents, each 
      - The script automatically picks the best detection mode:
        - **Mode A (feature branch):** diffs the current branch against the default branch (`main`/`master`) from the merge-base, plus any staged and unstaged changes.
        - **Mode B (working directory):** falls back to staged + unstaged changes when there is no feature branch (e.g., working directly on the default branch).
-     - JSON output: `{"branch", "default_branch", "mode", "changed_files": [...]}`
+     - JSON output: `{"branch", "default_branch", "repo_root", "diff_range", "mode", "changed_files": [...]}`
+     - `repo_root` is the absolute path of **this** worktree and `diff_range` is the exact `<merge-base>...HEAD` range (empty in Mode B). Both **MUST** be carried into every reviewer prompt — see step 6. Do not re-derive either one yourself.
    - **Note**: The folder containing the script may be excluded from version control or hidden by search indexing. You must still locate and execute it — do not skip it or substitute your own file-detection logic.
    - **Ignore** the `graphify-out/` directory in all review passes — exclude it from diffs, file reads, and issue reporting. If the changed-files list includes paths under `graphify-out/`, filter them out before dispatching to specialist agents. Generated knowledge-graph artifacts are out of scope for review.
 
@@ -54,7 +55,7 @@ Run a comprehensive pull request review using multiple specialized agents, each 
    - **If error handling changed** (if enabled): `/speckit.review.errors`
    - **If types added/modified** (if enabled): `/speckit.review.types`
    - **After passing review** (if enabled): `/speckit.review.simplify` (polish and refine)
-   - If an agent is disabled by config, note it in the final summary (e.g., "simplify: skipped (disabled in config)").
+   - If an agent is disabled by config, note it in the final summary (e.g., "simplify: skipped (disabled in config)"). Degraded aspects (step 6c) are noted the same way.
 
 6. **Launch Review Agents**
 
@@ -67,6 +68,52 @@ Run a comprehensive pull request review using multiple specialized agents, each 
    - Launch all agents simultaneously
    - Faster for comprehensive review
    - Results come back together
+
+   **6a. Scope contract — every reviewer prompt MUST carry the scope explicitly.**
+
+   A subagent inherits the session's cwd, which is regularly the main checkout on
+   the default branch rather than the feature worktree. A reviewer that inherits
+   the wrong tree produces confident findings about unrelated files, and nothing in
+   its output says so. So each prompt **MUST** open with, verbatim from the
+   script's JSON (never re-derived):
+
+   ```
+   Review scope — do not infer it, do not use your inherited cwd:
+     worktree: <repo_root>          # absolute path
+     branch:   <branch>
+     diff:     git -C <repo_root> diff <diff_range>
+   Before reviewing, verify: `git -C <repo_root> rev-parse --abbrev-ref HEAD` equals
+   <branch>, and the diff above is non-empty. If either check fails, abort
+   immediately and reply with exactly `SCOPE ERROR: <what mismatched>` — do not
+   review whatever is in your working directory instead.
+   ```
+
+   If `diff_range` is empty (Mode B — working directory), pass
+   `git -C <repo_root> diff HEAD` as the diff command and drop the branch check.
+
+   A reviewer that returns `SCOPE ERROR:` is a failed launch, not a finding:
+   re-dispatch it with the corrected scope, and never fold its output into the
+   summary.
+
+   **6b. Wait contract — do not poll, do not narrate.**
+
+   After dispatching, you **MUST NOT** emit a turn that only reports on the
+   reviewers' status. "Waiting on the four reviewers", "three passes still
+   running", "I'll stop polling and wait" are all the same anti-pattern: they
+   consume a turn and change nothing. Completion notifications arrive on their
+   own; you do not need to check for them.
+
+   Either do useful work that cannot conflict with a reviewer (verify a claim you
+   already flagged, check CI, draft the PR body) or stop and produce no output at
+   all until a notification arrives. Do not edit files the reviewers are reading.
+
+   **6c. Hang recovery.**
+
+   If a reviewer has produced no output and its elapsed time has not advanced for
+   **10 minutes**, `TaskStop` it and run that aspect inline yourself against the
+   same scope from 6a. Record every aspect handled this way in the final summary
+   as `<aspect>: degraded (agent hung, run inline)` — a degraded aspect is not the
+   same as a clean pass and must not be reported as one.
 
 7. **Aggregate Results**
 

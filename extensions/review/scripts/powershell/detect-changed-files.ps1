@@ -93,6 +93,18 @@ try {
     $CurrentBranch = ""
 }
 
+# Absolute root of THIS worktree - reviewers are dispatched against it explicitly
+# so a subagent can't inherit the session cwd and review another checkout.
+$RepoRoot = ""
+try {
+    $RepoRoot = ((git rev-parse --show-toplevel 2>$null) | Out-String).Trim()
+} catch {
+    $RepoRoot = ""
+}
+
+# Exact range the reviewers must diff (Mode A only; empty in Mode B)
+$DiffRange = ""
+
 # Determine default branch
 $DefaultBranch = ""
 
@@ -170,6 +182,7 @@ if ($CurrentBranch -and $DefaultBranch -and ($CurrentBranch -ne $DefaultBranch))
         # Combine and deduplicate
         $ChangedFiles = @($committedFiles + $stagedFiles + $unstagedFiles + $untrackedFiles | Sort-Object -Unique)
 
+        $DiffRange = "$MergeBase...HEAD"
         $Mode = "Feature branch diff ($DefaultBranch...HEAD) + uncommitted changes (staged + unstaged + untracked)"
     } else {
         # merge-base failed - fall through to Mode B
@@ -210,6 +223,8 @@ if ($ChangedFiles.Count -eq 0) {
         [PSCustomObject]@{
             branch        = $CurrentBranch
             default_branch = $DefaultBranch
+            repo_root     = $RepoRoot
+            diff_range    = $DiffRange
             mode          = $Mode
             changed_files = @()
             message       = "No changes detected. Nothing to review."
@@ -225,12 +240,16 @@ if ($Json) {
     [PSCustomObject]@{
         branch        = $CurrentBranch
         default_branch = $DefaultBranch
+        repo_root     = $RepoRoot
+        diff_range    = $DiffRange
         mode          = $Mode
         changed_files = $ChangedFiles
     } | ConvertTo-Json -Compress
 } else {
     Write-Output "BRANCH: $CurrentBranch"
     Write-Output "DEFAULT_BRANCH: $DefaultBranch"
+    Write-Output "REPO_ROOT: $RepoRoot"
+    Write-Output "DIFF_RANGE: $DiffRange"
     Write-Output "MODE: $Mode"
     Write-Output "CHANGED_FILES:"
     foreach ($f in $ChangedFiles) {

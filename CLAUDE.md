@@ -164,6 +164,21 @@ on first run in a project that still tracks it, so the migration is automatic.
   phase's issue comment. Step 3 enumerates the `after_specify` slot explicitly, and
   Steps 5–7 name their own; Step 8 *is* the `after_implement` review hook, so it
   isn't run twice.
+  **And nothing runs them for you — `auto_execute_hooks` is not a runtime.** There is
+  no hook executor in the `specify` CLI; the dispatcher is the core `/speckit-specify`
+  command *body*, which emits an `EXECUTE_COMMAND:` block for a **mandatory** hook and
+  merely ``To execute: `/{command}` `` for an **optional** one. So the two hooks the
+  bullet above exists to protect — the graphify and agent-context refreshes, both
+  `optional: true` — are exactly the two that never fire on their own, and Step 3 used
+  to claim the opposite. Told to run a hook with no verb to run it with, the
+  coordinator invented `specify hook run speckit.agent-context.update`; `hook` is not a
+  command in v0.15.1 (`hooks` isn't either, and `specify event run` is the
+  native-harness bridge, not this), so both hooks were silent no-ops across five
+  features in `imosquera/enroute` while the run reported success (issue #45). A hook's
+  registered command id **is** its slash command — `speckit.agent-context.update` →
+  `/speckit-agent-context-update` — and a non-zero exit is a failure, not noise.
+  `check-cli-usage.sh` already fails the install on a `specify hook` line inside a
+  fenced bash block; the runtime invention is what the prose has to prevent.
   **The per-repo log is timestamped and attributed from the stream, not from the
   decoder.** `stream-decode.py` used to stamp `datetime.now()` at decode time, so a
   buffered burst of turns minutes apart all printed on one wall-clock second and in

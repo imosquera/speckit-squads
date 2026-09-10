@@ -98,7 +98,13 @@ picked up again (issue #34).
 The pre-existing "fix target outside any git repo" stop condition did not catch it:
 that target was inside a perfectly good repo, just not ours.
 
-Step 1.5 now hands every path the issue names to the guard:
+Step 1.5 now hands every path the issue names to the guard, and it runs **before**
+the claim. It used to run after, so a run that discovered the target was
+undeliverable had already written `autopilot:claimed` onto an issue in a shared
+backlog and then had to unwind it (issue #48). The guard is read-only and
+deterministic; the claim is a write other runs can see, so the cheap check goes
+first. Collision safety is unaffected — the single-flight lock still serializes this
+machine's ticks and Step 2.0's liveness re-check still closes the residual window.
 
 ```
 $ check-target-repo.sh hindsight.py README.md
@@ -118,8 +124,40 @@ BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/lead-drop
   repo), because they are different stop conditions with different advice.
 
 A non-zero exit is a *Durable* stop: park with `park-issue.sh`, naming the repo the
-fix belongs in, and release the claim. A human moves the issue; autopilot does not
-guess.
+fix belongs in. There is no claim to release — that is the point of running it here.
+A human moves the issue; autopilot does not guess.
+
+## Stale worktree vs. live run (`liveness()`)
+
+An existing branch or worktree for `#N` stops the run, and always has. What it did
+not do was say *why the leftover is there*: `SKIP: #237 in-progress:237-contacts`
+was the whole output, so an operator who pasted an issue URL — and had created that
+worktree himself minutes earlier, in the previous session — was refused with nothing
+to act on and had to judge staleness by hand. Seven sessions over fifty days
+(issue #60).
+
+`liveness()` now reads the evidence and `classify()` turns it into a verdict:
+
+```
+$ preflight-issues.py --worktree-check 237
+STALE: 237-contacts — commit abc1234, clean, last commit 3d ago, 4/12 tasks done, no open PR
+```
+
+- **LIVE** — the tree is dirty, the tip commit is inside the live window
+  (`SPECKIT_AUTOPILOT_LIVE_WINDOW_MIN`, default 120), or a PR is open.
+- **STALE** — clean, older than the window, no open PR.
+- **Every unknown votes LIVE.** A tree git could not read, a tip with no readable
+  date: ambiguity is live. Reaping a running sibling's worktree is unrecoverable;
+  refusing a dead one costs a human one command, which the STALE output prints.
+
+STALE changes the verdict on exactly one path — an **attended** explicit-issue run,
+where the operator typed the number and gets `RESUME:` and `CLEAN:` lines to choose
+between instead of a refusal. Auto-pick keeps the hard SKIP, and so does the
+explicit path under `SPECKIT_AUTOPILOT_UNATTENDED=1`, which `autopilot-run.sh`
+exports before launching the session: both arrive as the same
+`preflight-issues.py <file> <N>` call, so the environment is the only seam between a
+human and a scheduled tick. Autopilot still never resumes or deletes anything by
+itself.
 
 ## Cross-repo delivery detection (`--cross-repo`)
 

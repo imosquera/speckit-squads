@@ -4,9 +4,11 @@
 Three modes, selected by argv:
   preflight-issues.py <issues.json>              — auto-pick the highest-ranked eligible issue
   preflight-issues.py <issues.json> <N>          — validate ONE specific issue number
-  preflight-issues.py --worktree-check <N>       — branch/worktree/PR existence only
+  preflight-issues.py --worktree-check <N>       — branch/worktree/PR existence + liveness
 
-`--cross-repo` may be added to either of the first two modes.
+`--cross-repo` may be added to either of the first two modes; `--unattended` /
+`--attended` override the `SPECKIT_AUTOPILOT_UNATTENDED` environment variable
+that decides whether a STALE worktree is offered back or refused.
 
 The first two modes share the same eligibility rules (block labels, empty
 body, in-progress) so the auto-pick path and the explicit-issue path can
@@ -72,12 +74,27 @@ The verdict is always the FIRST line, so the existing "read the first word to
 decide" contract is unchanged; callers that do not care about parking can keep
 reading `head -1` and ignore the rest.
 
-Existence of a branch/worktree/PR is unconditionally treated as in-progress
-here — there is no "looks dead, might be safe to reuse" downgrade. A fresh,
-seconds-old worktree from a sibling run and a genuinely abandoned one from a
-crashed run look identical at this level, and this project's autopilot never
-auto-resumes existing work either way (issue #19 fix #3): a human can always
-inspect and clean up a stale branch/worktree by hand.
+Existence of a branch/worktree/PR still stops every unattended path — nothing
+is ever auto-resumed (issue #19 fix #3). What changed with issue #60 is that the
+stop now carries **evidence** instead of a bare verdict. "A live sibling run and
+an abandoned worktree look identical from the outside" was true of the output,
+not of the worktree: `liveness()` reads the tip commit's age, whether the tree is
+dirty, how far `tasks.md` got, and whether a PR is open, and `classify()` turns
+those into LIVE or STALE. An operator who pasted an issue URL and got
+`SKIP: #237 in-progress:237-…` had nothing to act on and had to judge staleness
+by hand — in seven sessions over fifty days.
+
+The classification is deliberately asymmetric: **ambiguity resolves to LIVE.** A
+tree whose state could not be read, or a tip with no readable date, counts as
+live. Reaping a running sibling's worktree is unrecoverable; refusing a dead one
+costs a human one command, which the STALE output now prints for them.
+
+STALE downgrades the verdict on exactly one path: an **attended** explicit-issue
+run, where a human typed the number and is owed resume-or-clean rather than a
+refusal. The unattended paths — auto-pick, and the explicit path under
+`SPECKIT_AUTOPILOT_UNATTENDED=1` (exported by `autopilot-run.sh`) — keep the hard
+SKIP, because there guessing is genuinely unsafe and nobody is reading the
+evidence anyway.
 
 Auto-pick orders the eligible pool by (priority, bug-before-feature, age) — see
 the "ordering" block below — instead of taking the oldest. The chosen issue's
@@ -91,20 +108,30 @@ Output format (callers read the first word to decide):
   PICK: #42 "Fix the thing" (explicit)
   SKIP: #42 parked:autopilot:claimed
   SKIP: #42 blocked — fix target is outside any git repo
-  SKIP: #42 in-progress:082-fix-thing
+  SKIP: #42 in-progress:082-fix-thing (live — uncommitted changes, …)
   SKIP: #42 blocked-by:#40,#41
   SKIP: #42 delivered — https://github.com/o/r/pull/3 (merged)
   SKIP: #42 not open or not found
+  STALE: #42 082-fix-thing — commit abc1234, clean, last commit 3d ago, no open PR
 
-Plus, after the verdict line, zero or more machine-readable park requests:
+Plus, after the verdict line, zero or more machine-readable follow-ups:
   DELIVERED: 42 https://github.com/o/r/pull/3 (merged)
-  LIVE: 082-fix-thing
+  RESUME: 42 082-fix-thing /path/to/worktree
+  CLEAN: 42 git worktree remove /path/to/worktree && git branch -D 082-fix-thing
+
+`--worktree-check` prints one of:
   CLEAR
+  LIVE: 082-fix-thing — uncommitted changes, last commit 4m ago, no open PR
+  STALE: 082-fix-thing — commit abc1234, clean, last commit 3d ago, no open PR
 """
+import glob
+import io
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 
 BLOCK = {
     "blocked", "wontfix", "duplicate",
@@ -318,6 +345,41 @@ def sh(*args):
         return ""
 
 
+def sh_rc(*args):
+    """(returncode, stdout) — for the calls where "failed" and "empty" differ.
+
+    `sh()` collapses the two, which is fine for "did this print a branch name"
+    but not for "is this tree dirty": an empty answer from a git that errored
+    would read as `clean`, and clean is half of the STALE verdict.
+    """
+    try:
+        p = subprocess.run(args, capture_output=True, text=True)
+        return p.returncode, p.stdout.strip()
+    except Exception:
+        return 1, ""
+
+
+# ---------------------------------------------------------------- liveness ---
+# How recent a commit still counts as a live run. Two hours is generous on
+# purpose: an autopilot pass that is deep in `/speckit-implement` can go a long
+# while between commits, and the cost of calling a live run stale is a reaped
+# worktree, while the cost of calling a stale one live is one manual cleanup.
+LIVE_WINDOW_MIN = int((os.environ.get("SPECKIT_AUTOPILOT_LIVE_WINDOW_MIN") or "120").strip() or 120)
+LIVE_WINDOW_SEC = LIVE_WINDOW_MIN * 60
+
+
+def unattended():
+    """True when nobody is reading the output.
+
+    `autopilot-run.sh` exports `SPECKIT_AUTOPILOT_UNATTENDED=1` before launching
+    the session, so the skill's explicit-issue preflight can tell a scheduled
+    tick apart from a human who typed the issue number. There is no other seam:
+    both paths arrive as the same `preflight-issues.py <file> <N>` call.
+    """
+    v = (os.environ.get("SPECKIT_AUTOPILOT_UNATTENDED") or "").strip().lower()
+    return v not in ("", "0", "false", "no", "off")
+
+
 def has_open_pr(n):
     out = sh("gh", "pr", "list", "--state", "open",
              "--search", f"{n} in:title,body",
@@ -328,29 +390,162 @@ def has_open_pr(n):
         return False
 
 
-def find_worktree_or_branch(n):
+def worktrees():
+    """[(path, branch)] from `git worktree list --porcelain`."""
+    out = sh("git", "worktree", "list", "--porcelain")
+    res, path, branch = [], "", ""
+    for line in out.splitlines() + [""]:
+        if line.startswith("worktree "):
+            path, branch = line[len("worktree "):].strip(), ""
+        elif line.startswith("branch "):
+            branch = line[len("branch "):].strip().split("/")[-1]
+        elif not line.strip():
+            if path:
+                res.append((path, branch))
+            path, branch = "", ""
+    return res
+
+
+def locate(n):
+    """(name, worktree path, git ref) for issue #N's work; ("","","") if none.
+
+    The branch scan stays authoritative for the NAME — it also sees a branch
+    that has no worktree at all — and the worktree list only supplies the PATH
+    the dirty-tree and tasks.md evidence is read from.
+
+    `name` is the display form with any prefix stripped (`fix/60-x` → `60-x`),
+    which is what every existing caller prints. `ref` is the full branch as git
+    knows it, because `git log <name>` on a stripped name resolves nothing and a
+    missing commit date reads as ambiguity — which votes LIVE, so a stale
+    `feat/`-prefixed branch would never be reportable as stale.
+    """
     num = str(n)
+    name = ref = ""
     branches = sh("git", "branch", "-a", "--list", f"*{num}-*")
     if branches:
-        name = branches.splitlines()[0].strip().lstrip("* ").split("/")[-1]
-        return name
-    worktrees = sh("git", "worktree", "list")
-    for line in worktrees.splitlines():
-        if f"/{num}-" in line or f"/{num.zfill(3)}-" in line:
-            return line.split()[0].split("/")[-1]
+        ref = branches.splitlines()[0].strip().lstrip("* ")
+        name = ref.split("/")[-1]
+    wts = worktrees()
+    if name:
+        for path, branch in wts:
+            if branch == name:
+                return name, path, ref
+    for path, branch in wts:
+        if f"/{num}-" in path or f"/{num.zfill(3)}-" in path:
+            base = name or path.rstrip("/").split("/")[-1]
+            return base, path, ref or base
+    return name, "", ref
+
+
+def find_worktree_or_branch(n):
+    return locate(n)[0]
+
+
+def tip_commit(ref):
+    """(short sha, unix timestamp) of `ref`'s tip; ("", 0) when unreadable."""
+    parts = sh("git", "log", "-1", "--format=%h %ct", ref, "--").split()
+    if len(parts) == 2 and parts[1].isdigit():
+        return parts[0], int(parts[1])
+    return "", 0
+
+
+def is_dirty(path):
+    """True / False / None — None when the answer could not be obtained.
+
+    None is not False: an unreadable tree is ambiguous, and ambiguity is LIVE.
+    """
+    if not path or not os.path.isdir(path):
+        return None
+    rc, out = sh_rc("git", "-C", path, "status", "--porcelain")
+    return None if rc != 0 else bool(out)
+
+
+def task_progress(name, path):
+    """"4/12" from the feature's `tasks.md`, or "" when there is none."""
+    root = path or "."
+    for cand in sorted(glob.glob(os.path.join(root, "specs", f"{name}*", "tasks.md"))):
+        try:
+            with open(cand, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        done = len(re.findall(r"^\s*[-*]\s*\[[xX]\]", text, re.M))
+        total = done + len(re.findall(r"^\s*[-*]\s*\[ \]", text, re.M))
+        if total:
+            return f"{done}/{total}"
     return ""
+
+
+def age_words(age_sec):
+    if age_sec is None:
+        return "commit date unknown"
+    if age_sec < 90 * 60:
+        return f"last commit {age_sec // 60}m ago"
+    if age_sec < 36 * 3600:
+        return f"last commit {age_sec // 3600}h ago"
+    return f"last commit {age_sec // 86400}d ago"
+
+
+def classify(dirty, age_sec, open_pr, tasks="", window_sec=None):
+    """(state, evidence) for work that exists — "LIVE" or "STALE".
+
+    Pure by construction so the rule is testable without a repo, and so the
+    evidence string and the verdict are built from the same inputs and can
+    never disagree. Every unknown votes LIVE (see the module docstring).
+    """
+    window = LIVE_WINDOW_SEC if window_sec is None else window_sec
+    live = False
+    bits = []
+    if dirty is None:
+        bits.append("tree state unknown")
+        live = True
+    elif dirty:
+        bits.append("uncommitted changes")
+        live = True
+    else:
+        bits.append("clean")
+    bits.append(age_words(age_sec))
+    if age_sec is None or age_sec < window:
+        live = True
+    if open_pr:
+        bits.append("open PR")
+        live = True
+    else:
+        bits.append("no open PR")
+    if tasks:
+        bits.append(f"{tasks} tasks done")
+    return ("LIVE" if live else "STALE"), ", ".join(bits)
+
+
+_LIVE_CACHE = {}
+
+
+def liveness(n):
+    """(state, name, evidence) for issue #N; ("", "", "") when nothing exists.
+
+    Cached: `eligibility_reason()` and the explicit-issue verdict both need it
+    for the same issue in one run, and it costs several git calls plus a `gh`.
+    """
+    if n in _LIVE_CACHE:
+        return _LIVE_CACHE[n]
+    name, path, ref = locate(n)
+    if not name:
+        result = ("LIVE", f"PR referencing #{n}", "open PR, no branch or worktree") \
+            if has_open_pr(n) else ("", "", "")
+    else:
+        sha, ts = tip_commit(ref or name)
+        age = max(0, int(time.time()) - ts) if ts else None
+        state, ev = classify(is_dirty(path), age, has_open_pr(n),
+                             task_progress(name, path))
+        head = f"commit {sha}" if sha else "no commit"
+        result = (state, name, f"{head}, {ev}")
+    _LIVE_CACHE[n] = result
+    return result
 
 
 def in_progress(n):
-    """Return a description if issue #N already has a branch, worktree, or
-    open PR — any one signal is enough, unconditionally (see module
-    docstring: existence alone means skip, never "prove it's dead first")."""
-    name = find_worktree_or_branch(n)
-    if name:
-        return name
-    if has_open_pr(n):
-        return f"PR referencing #{n}"
-    return ""
+    """Legacy shim: a description when #N has a branch, worktree, or open PR."""
+    return liveness(n)[1]
 
 
 _THREAD_CACHE = {}
@@ -465,9 +660,9 @@ def eligibility_reason(i, explain=False, cross_repo=False, open_numbers=frozense
     deps = blocked_by(i, open_numbers)
     if deps:
         return "blocked-by:" + ",".join(f"#{d}" for d in deps)
-    wip = in_progress(n)
-    if wip:
-        return f"in-progress:{wip}"
+    state, name, ev = liveness(n)
+    if state:
+        return f"in-progress:{name} ({state.lower()} — {ev})"
     if cross_repo:
         pr = delivered_by(n)
         if pr:
@@ -475,14 +670,30 @@ def eligibility_reason(i, explain=False, cross_repo=False, open_numbers=frozense
     return ""
 
 
-def validate_one(issues, target, cross_repo=False):
+def validate_one(issues, target, cross_repo=False, headless=None):
     match = next((i for i in issues if i.get("number") == target), None)
     if match is None:
         print(f"SKIP: #{target} not open or not found")
         return
+    headless = unattended() if headless is None else headless
     reason = eligibility_reason(match, explain=True, cross_repo=cross_repo,
                                 open_numbers={i.get("number") for i in issues})
     if reason:
+        # A human typed this number. If the only thing standing in the way is
+        # work that the evidence says is dead, refusing with nothing to act on
+        # is the dead end issue #60 reports — hand back the two commands that
+        # resolve it instead. Unattended, the refusal stands: there is nobody
+        # to choose, and reaping a sibling run's worktree is unrecoverable.
+        state, name, ev = liveness(target)
+        if state == "STALE" and not headless and reason.startswith("in-progress:"):
+            path = locate(target)[1]
+            print(f"STALE: #{target} {name} — {ev}")
+            print(f"RESUME: {target} {name} {path or '-'}")
+            clean = f"git branch -D {name}"
+            if path:
+                clean = f"git worktree remove {path} && {clean}"
+            print(f"CLEAN: {target} {clean}")
+            return
         print(f"SKIP: #{target} {reason}")
         if reason.startswith("delivered — "):
             print(f"DELIVERED: {target} {reason[len('delivered — '):]}")
@@ -526,9 +737,13 @@ def auto_pick(issues, cross_repo=False):
             blocked_deps.append(f"#{n}(needs {', '.join(f'#{d}' for d in deps)})")
             continue
 
-        wip = in_progress(n)
-        if wip:
-            in_prog.append(f"#{n}({wip})")
+        # Auto-pick keeps the hard skip for LIVE *and* STALE: nobody is reading
+        # this log at the moment it is written, so resume-or-clean has no one to
+        # offer itself to. The state is recorded so a human reading the log
+        # afterwards can see which leftovers are worth cleaning up.
+        state, name, _ev = liveness(n)
+        if state:
+            in_prog.append(f"#{n}({name}: {state.lower()})")
             continue
 
         candidates.append((rank_key(i, seq), i))
@@ -585,7 +800,11 @@ def main():
     # ever being mistaken for the issue-number positional.
     argv = sys.argv[1:]
     cross_repo = "--cross-repo" in argv
-    argv = [a for a in argv if a != "--cross-repo"]
+    # Explicit flags beat the environment in both directions, so a caller that
+    # knows which it is never has to unset a variable it did not set.
+    headless = True if "--unattended" in argv else (False if "--attended" in argv else None)
+    argv = [a for a in argv
+            if a not in ("--cross-repo", "--unattended", "--attended")]
 
     if not argv:
         print("SKIP: no issues file given")
@@ -604,8 +823,8 @@ def main():
         except ValueError:
             print(f"SKIP: bad issue number {argv[1]!r}")
             return
-        wip = in_progress(n)
-        print(f"LIVE: {wip}" if wip else "CLEAR")
+        state, name, ev = liveness(n)
+        print(f"{state}: {name} — {ev}" if state else "CLEAR")
         return
 
     try:
@@ -620,14 +839,25 @@ def main():
         except ValueError:
             print(f"SKIP: bad issue number {argv[1]!r}")
             return
-        validate_one(issues, target, cross_repo=cross_repo)
+        validate_one(issues, target, cross_repo=cross_repo, headless=headless)
         return
 
     auto_pick(issues, cross_repo=cross_repo)
 
 
+def _capture(fn, *a, **kw):
+    """Run `fn` and return what it printed — the verdict lines ARE the contract."""
+    buf, old = io.StringIO(), sys.stdout
+    sys.stdout = buf
+    try:
+        fn(*a, **kw)
+    finally:
+        sys.stdout = old
+    return buf.getvalue()
+
+
 def selftest():
-    """Dependency parsing, wrapped and unwrapped. `--selftest` runs it."""
+    """Dependency parsing, liveness, and ranking. `--selftest` runs it."""
     open_numbers = {43, 44, 99}
 
     def deps(body, number=50):
@@ -670,6 +900,45 @@ def selftest():
     assert rank_reason(fe) == "p2 default, frontend"
     assert rank_reason(issue(3, "p0", "bug", "backend")) == "p0, bug, backend"
     assert rank_reason(issue(4)) == "p2 default"
+
+    # issue #60: stale vs live is decided from evidence, and ambiguity is live.
+    DAY = 86400
+    assert classify(False, 3 * DAY, False)[0] == "STALE"
+    assert classify(True, 3 * DAY, False)[0] == "LIVE"      # dirty tree
+    assert classify(False, 60, False)[0] == "LIVE"          # committed a minute ago
+    assert classify(False, 3 * DAY, True)[0] == "LIVE"      # open PR
+    assert classify(None, 3 * DAY, False)[0] == "LIVE"      # tree unreadable
+    assert classify(False, None, False)[0] == "LIVE"        # commit date unreadable
+    assert "4/12 tasks done" in classify(False, 3 * DAY, False, "4/12")[1]
+    assert "no open PR" in classify(False, 3 * DAY, False)[1]
+
+    # …and the verdict it produces on the explicit-issue path depends on who is
+    # reading. This is the whole of issue #60: the operator pasted an issue URL
+    # and got `SKIP: #237 in-progress:237-…` with nothing to act on.
+    real_liveness, real_locate = liveness, locate
+    issues = [{"number": 237, "title": "uniqueness", "body": "do the thing",
+               "labels": []}]
+    try:
+        globals()["liveness"] = lambda n: (
+            "STALE", "237-contacts", "commit abc1234, clean, last commit 3d ago, no open PR")
+        globals()["locate"] = lambda n: ("237-contacts", "/tmp/wt/237-contacts", "237-contacts")
+
+        attended = _capture(validate_one, issues, 237, headless=False)
+        assert attended.startswith("STALE: #237 237-contacts — commit abc1234"), attended
+        assert "RESUME: 237 237-contacts /tmp/wt/237-contacts" in attended, attended
+        assert "CLEAN: 237 git worktree remove /tmp/wt/237-contacts" in attended, attended
+
+        # Unattended, the hard SKIP stands — with the evidence attached.
+        headless = _capture(validate_one, issues, 237, headless=True)
+        assert headless.startswith("SKIP: #237 in-progress:237-contacts (stale — "), headless
+
+        # A LIVE verdict never downgrades, attended or not.
+        globals()["liveness"] = lambda n: (
+            "LIVE", "237-contacts", "uncommitted changes, last commit 4m ago, no open PR")
+        live = _capture(validate_one, issues, 237, headless=False)
+        assert live.startswith("SKIP: #237 in-progress:237-contacts (live — "), live
+    finally:
+        globals()["liveness"], globals()["locate"] = real_liveness, real_locate
 
     print("OK: preflight-issues selftest")
 

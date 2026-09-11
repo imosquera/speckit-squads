@@ -498,9 +498,15 @@ def locate(n):
     The globs anchor the number to the start of the branch name, or of any
     `/`-delimited segment of it. git matches `*` across `/`, so `*/416-*`
     reaches `origin/416-slug` and `origin/feature/fix/416-deep` alike. Matching
-    is against the *shortened* refname, which is also what `%(refname:short)`
-    prints: `origin/416-slug`, never `remotes/origin/416-slug`, and `git log`
-    resolves it. A bare `*416-*` also matched
+    is against the *shortened* refname, which is what `%(refname:short)` prints
+    too: `origin/416-slug` rather than `remotes/origin/416-slug`, unless another
+    ref shares the name, when git qualifies it (`heads/416-slug`,
+    `remotes/origin/416-slug`). The globs still match a qualified name, and
+    `git log` resolves it to the branch rather than to a tag of the same name,
+    which the old bare parse did not. `--sort=refname` keeps local branches ahead
+    of remotes: without it a `branch.sort` setting such as `-committerdate` put
+    `origin/416-slug` first and had its tip read in place of the local branch's.
+    A bare `*416-*` also matched
     `v2.416-x` and `foo-416-bar` — the same tokenizer-class bug `has_open_pr`
     carried, and the other half of #102. The zero-padded glob is added back
     because a branch for issue 82 is named `082-slug`, coverage the old leading
@@ -509,7 +515,7 @@ def locate(n):
     num, pad = str(n), str(n).zfill(3)
     name = ref = ""
     branches = sh("git", "branch", "-a", "--list", "--no-column",
-                  "--format=%(refname:short)",
+                  "--sort=refname", "--format=%(refname:short)",
                   f"{num}-*", f"*/{num}-*", f"{pad}-*", f"*/{pad}-*")
     if branches:
         ref = branches.splitlines()[0].strip()
@@ -1176,8 +1182,10 @@ def selftest():
     # the SHORTENED refname (`origin/x`, so a `remotes/` pattern selects
     # nothing); `*` crosses `/`, because git's `match_pattern` calls wildmatch
     # without `WM_PATHNAME`; and `--format=%(refname:short)` with `--no-column`
-    # prints exactly those short names, one per line, with no marker and no
-    # colour even under `color.ui=always` and `column.ui=always`. `fnmatchcase`,
+    # prints those short names, one per line, with no marker and no colour even
+    # under `color.ui=always` and `column.ui=always`. Git qualifies a name
+    # (`heads/x`) only when another ref shares it, and no fixture here does.
+    # `sorted()` stands in for `--sort=refname`. `fnmatchcase`,
     # not `fnmatch`: the latter normcases, and git is case-sensitive by default.
     import fnmatch
 
@@ -1189,17 +1197,21 @@ def selftest():
         globals()["worktrees"] = lambda: []
 
         def fake_sh(*a):
-            # The two flags are #104's fix: without --format the output carries
-            # markers and colour, and without --no-column a column setting packs
-            # several names onto the one line this reads.
-            assert a[:6] == ("git", "branch", "-a", "--list", "--no-column",
-                             "--format=%(refname:short)"), a
+            # The three flags are #104's fix, and this fake models none of what
+            # they prevent, so this assertion is the only thing guarding them;
+            # their effect was checked against real git, not here. Without
+            # --format the output carries markers and colour, without --no-column
+            # a column setting packs several names onto the one line this reads,
+            # and without --sort=refname a `branch.sort` setting can put a
+            # remote ahead of the local branch.
+            assert a[:7] == ("git", "branch", "-a", "--list", "--no-column",
+                             "--sort=refname", "--format=%(refname:short)"), a
             return "\n".join(m for m in sorted(REFS)
-                             if any(fnmatch.fnmatchcase(m, g) for g in a[6:]))
+                             if any(fnmatch.fnmatchcase(m, g) for g in a[7:]))
 
         globals()["sh"] = fake_sh
-        # The local branch sorts first and wins, and `ref` is the bare name
-        # `git log` resolves.
+        # Under --sort=refname the local branch sorts ahead of any remote and
+        # wins, and `ref` is the bare name `git log` resolves.
         assert locate(416)[0] == "416-picker-number-collision", locate(416)
         assert locate(416)[2] == "416-picker-number-collision", locate(416)
         # `*` crosses `/`, so `*/416-*` still reaches a nested remote branch, and
@@ -1211,8 +1223,9 @@ def selftest():
         REFS[:] = ["v2.416-x", "269-unreadable-416-cart", "4416-something"]
         assert locate(416) == ("", "", ""), locate(416)
         # Each glob on its own, for an issue whose padded and unpadded forms
-        # differ. For 416 the two are the same string, which is how a test using
-        # only 416 let any one glob be deleted and still pass (#104).
+        # differ. For 416 the two are the same string, so only `{pad}-*` had a
+        # case of its own (`082-fix-thing`) and deleting any of the other three
+        # still passed (#104).
         for only, found in (("82-x", "82-x"),                    # {num}-*
                             ("origin/82-x", "82-x"),             # */{num}-*
                             ("082-fix-thing", "082-fix-thing"),  # {pad}-*

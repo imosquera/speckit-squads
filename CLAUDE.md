@@ -207,7 +207,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   LIVE like `None` but is reported as a truncated search rather than a failed
   one (issue #104). `locate()` anchors its globs to the start of a `/`-delimited
   segment for the same class of reason, and reads branch names from
-  `git branch --no-column --format='%(refname:short)'` rather than from the
+  `git branch --no-column --sort=refname --format='%(refname:short)'` rather than from the
   output meant for people, whose `* `/`+ ` markers, colour codes and columns
   each broke the parse. The `+ ` git prints for a branch checked out in another
   worktree meant no worktree-backed branch could ever be reported STALE.

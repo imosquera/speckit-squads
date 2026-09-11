@@ -392,23 +392,50 @@ def unattended():
 
 
 def has_open_pr(n):
-    """True / False / None — None when the lookup itself could not answer.
+    r"""True / False / None — None when the lookup itself could not answer.
 
     Mirrors `is_dirty`: `gh` failing on auth, network, or an API error is not
     evidence that no PR exists, and handing that `False` to `classify()` as if
     it were would let a worktree with an open PR be reported STALE and offered
     for deletion — the one direction that is unrecoverable. Ambiguity votes LIVE
     (PR #98 review), so the failure has to survive as its own state.
+
+    GitHub's full-text search tokenizes a bare number, so searching `401` matched
+    every open PR whose prose mentions an HTTP **401** — unrelated PRs, none of
+    them referencing the issue — and issue 401 was refused forever with no tree
+    state a human could clean up (#102). HTTP statuses, ports, and years
+    all collide this way.
+
+    The local `#N\b` regex is what decides. The `#` in the query buys nothing —
+    GitHub strips it during tokenization, so `#401` and `401` return the same
+    candidates — it is there to say what is being looked for, and the regex is
+    the whole of the fix. `\b` keeps `#401` off `#4010`.
+
+    That removes false *positives*. Recall still rests entirely on the search:
+    a PR the search does not return is one the regex never sees, and the answer
+    would be `False` — the unrecoverable direction. So a result set that came
+    back at the `--limit` is reported as `None`, because a truncated page and an
+    empty one are indistinguishable from here.
     """
+    cap = 100
     rc, out = sh_rc("gh", "pr", "list", "--state", "open",
-                    "--search", f"{n} in:title,body",
-                    "--json", "number,headRefName")
+                    "--search", f"#{n} in:title,body", "--limit", str(cap),
+                    "--json", "title,body")
     if rc != 0:
         return None
     try:
-        return bool(json.loads(out)) if out else False
+        prs = json.loads(out) if out else []
+        ref = re.compile(rf"#{n}\b")
+        hit = any(ref.search(f"{p.get('title') or ''}\n{p.get('body') or ''}")
+                  for p in prs)
     except Exception:
+        # Not just a parse error: a payload that is valid JSON but not a list of
+        # objects (`{"message": "rate limited"}`, `null`, `[1]`) walks straight
+        # into `p.get` and raises. `main()` has no top-level handler and
+        # `autopilot-run.sh` discards stderr, so an escape here does not answer
+        # one issue wrong — it collapses the whole preflight to empty output.
         return None
+    return hit or (None if len(prs) >= cap else False)
 
 
 def worktrees():
@@ -439,12 +466,32 @@ def locate(n):
     knows it, because `git log <name>` on a stripped name resolves nothing and a
     missing commit date reads as ambiguity — which votes LIVE, so a stale
     `feat/`-prefixed branch would never be reportable as stale.
+
+    That was the theory; `lstrip("* ")` did not deliver it. Since git 2.23
+    `git branch --list` marks a branch checked out in **another worktree** with
+    `+ `, not `* `, and every feature branch is in that state when preflight runs
+    from the main checkout. The `+` survived, so `ref` was `+ 368-slug`, which
+    `git log` cannot resolve → no commit date → ambiguity → LIVE. No
+    worktree-backed branch could ever be reported STALE, and the `CLEAN:` line
+    offered the operator `git branch -D + 368-slug`. Both markers strip now.
+
+    The globs anchor the number to the start of the branch name, or of any
+    `/`-delimited segment of it — git matches `*` across `/`, so `*/416-*`
+    reaches `origin/416-slug` and `origin/feature/fix/416-deep` alike. (Match is
+    against the *shortened* refname: a remote branch prints as
+    `remotes/origin/416-slug` but is matched as `origin/416-slug`, so the
+    `remotes/` form as a pattern selects nothing.) A bare `*416-*` also matched
+    `v2.416-x` and `foo-416-bar` — the same tokenizer-class bug `has_open_pr`
+    carried, and the other half of #102. The zero-padded glob is added back
+    because a branch for issue 82 is named `082-slug`, coverage the old leading
+    `*` gave away for free.
     """
-    num = str(n)
+    num, pad = str(n), str(n).zfill(3)
     name = ref = ""
-    branches = sh("git", "branch", "-a", "--list", f"*{num}-*")
+    branches = sh("git", "branch", "-a", "--list",
+                  f"{num}-*", f"*/{num}-*", f"{pad}-*", f"*/{pad}-*")
     if branches:
-        ref = branches.splitlines()[0].strip().lstrip("* ")
+        ref = branches.splitlines()[0].strip().lstrip("*+ ")
         name = ref.split("/")[-1]
     wts = worktrees()
     if name:
@@ -1033,17 +1080,118 @@ def selftest():
 
     # PR #98 review, P2: a failed `gh pr list` is not evidence of "no PR".
     real_sh_rc = sh_rc
+
+    argv = []
+
+    def prs(*items):
+        """Stand in for `gh pr list`, capturing argv so the query is testable."""
+        payload = json.dumps([p if isinstance(p, dict) else {"body": p}
+                              for p in items])
+
+        def fake(*a):
+            argv.append(list(a))
+            return 0, payload
+        return fake
+
     try:
         globals()["sh_rc"] = lambda *a: (1, "")           # gh could not answer
         assert has_open_pr(7) is None
         globals()["sh_rc"] = lambda *a: (0, "[]")         # answered: none open
         assert has_open_pr(7) is False
-        globals()["sh_rc"] = lambda *a: (0, '[{"number":3}]')
+        globals()["sh_rc"] = prs("Closes #7")
         assert has_open_pr(7) is True
         globals()["sh_rc"] = lambda *a: (0, "not json")   # answered nonsense
         assert has_open_pr(7) is None
+        # Valid JSON that is not a list of objects reaches `p.get` and raises.
+        # Before #102's fix that escaped the function, and because
+        # `autopilot-run.sh` discards stderr it emptied the whole preflight.
+        for payload in ('{"message":"rate limited"}', "null", "5", "[1]", '["#7"]'):
+            globals()["sh_rc"] = lambda *a, _p=payload: (0, _p)
+            assert has_open_pr(7) is None, payload
+
+        # Issue #102: the regex decides, not GitHub's tokenizer. A PR whose prose
+        # mentions the bare number is not a PR about issue #N — searching `401`
+        # matched every open PR discussing the HTTP status, and refused #401
+        # forever with no tree state a human could clear.
+        globals()["sh_rc"] = prs("returns a 401 when unauthenticated",
+                                 "retries on 401 then gives up")
+        assert has_open_pr(401) is False
+        globals()["sh_rc"] = prs("returns 401 — see #401 for the gate")
+        assert has_open_pr(401) is True
+        # `\b` keeps #401 off #4010; the title counts as well as the body; and a
+        # payload with no `body` key at all exercises the `or ''` coalesce.
+        globals()["sh_rc"] = prs("supersedes #4010")
+        assert has_open_pr(401) is False
+        globals()["sh_rc"] = prs({"title": "Closes #401"})
+        assert has_open_pr(401) is True
+        # The query itself is part of the fix, and a mock that ignores argv would
+        # let a revert to the bare-number search pass green.
+        assert "#401 in:title,body" in argv[-1], argv[-1]
+        assert "--limit" in argv[-1], argv[-1]
+        # A full page is a truncated page as far as this function can tell, and
+        # "not found" here is the direction that gets a live worktree deleted.
+        globals()["sh_rc"] = prs(*["no reference here"] * 100)
+        assert has_open_pr(401) is None
+        globals()["sh_rc"] = prs(*(["no reference here"] * 99 + ["Closes #401"]))
+        assert has_open_pr(401) is True
     finally:
         globals()["sh_rc"] = real_sh_rc
+
+    # Issue #102, the other half. `fake_sh` stands in for `git branch -a --list`
+    # rather than for the glob list, so this exercises the patterns AND the name
+    # parsing below them — asserting on the argv alone is a change detector that
+    # cannot tell a correct glob from a wrong one.
+    #
+    # Two behaviours it has to reproduce, both confirmed against git 2.50.1 in
+    # this repo. Matching is against the SHORTENED refname — a remote branch
+    # prints `remotes/origin/x` but is matched as `origin/x`, so the `remotes/`
+    # form as a pattern selects nothing — and `*` crosses `/`, because git's
+    # `match_pattern` calls wildmatch without `WM_PATHNAME`. `fnmatchcase`, not
+    # `fnmatch`: the latter normcases, and git is case-sensitive by default.
+    import fnmatch
+
+    # (shortened refname, display prefix) — `+ ` is a branch checked out in
+    # another worktree, `* ` the one checked out here.
+    REFS = [("416-picker-number-collision", "* "), ("082-fix-thing", "  "),
+            ("origin/feature/fix/416-deep", "  "), ("v2.416-x", "  "),
+            ("269-unreadable-416-cart", "  "), ("4416-something", "  ")]
+    real_sh, real_worktrees = sh, worktrees
+    try:
+        globals()["worktrees"] = lambda: []
+
+        def fake_sh(*a):
+            assert a[:4] == ("git", "branch", "-a", "--list"), a
+            hits = [(m, pre) for m, pre in sorted(REFS)
+                    if any(fnmatch.fnmatchcase(m, g) for g in a[4:])]
+            return "\n".join(
+                pre + ("remotes/" + m if m.startswith("origin/") else m)
+                for m, pre in hits)
+
+        globals()["sh"] = fake_sh
+        # The local branch sorts first and wins; `* ` is stripped off both the
+        # name and the ref, or `git log <ref>` resolves nothing.
+        assert locate(416)[0] == "416-picker-number-collision", locate(416)
+        assert locate(416)[2] == "416-picker-number-collision", locate(416)
+        # A branch for issue 82 is named `082-slug`, so the padded glob is what
+        # finds it — the old leading `*` used to cover this for free.
+        assert locate(82)[0] == "082-fix-thing", locate(82)
+        # `+ ` marks a branch held by ANOTHER worktree, which is every feature
+        # branch when preflight runs from the main checkout. `lstrip("* ")` left
+        # the `+` on, so `ref` was unresolvable and no such branch could ever be
+        # reported STALE.
+        REFS[:] = [("368-preview-cleanup", "+ ")]
+        assert locate(368) == ("368-preview-cleanup", "", "368-preview-cleanup"), locate(368)
+        # `*` crosses `/`, so `*/416-*` still reaches a nested remote branch...
+        REFS[:] = [("origin/feature/fix/416-deep", "  ")]
+        assert locate(416)[0] == "416-deep", locate(416)
+        assert locate(416)[2] == "remotes/origin/feature/fix/416-deep", locate(416)
+        # ...while all three of these matched the old `*416-*` and none of them
+        # is issue #102's work.
+        REFS[:] = [("v2.416-x", "  "), ("269-unreadable-416-cart", "  "),
+                   ("4416-something", "  ")]
+        assert locate(416) == ("", "", ""), locate(416)
+    finally:
+        globals()["sh"], globals()["worktrees"] = real_sh, real_worktrees
     assert cls(False, 3 * DAY, None, touched=3 * DAY)[0] == "LIVE"
     assert "PR lookup failed" in cls(False, 3 * DAY, None, touched=3 * DAY)[1]
     assert "no open PR" not in cls(False, 3 * DAY, None, touched=3 * DAY)[1]

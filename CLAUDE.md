@@ -199,6 +199,15 @@ on first run in a project that still tracks it, so the migration is automatic.
   `has_open_pr()` is tri-state for the same reason: a `gh pr list` that failed on
   auth or network returns `None`, not `False` — collapsing it would have let a
   worktree with an open PR be offered for deletion, and every unknown votes LIVE.
+  **A bare issue number is not a reference to it.** GitHub's search tokenizes the
+  number, so `has_open_pr(401)` matched every open PR that discussed an HTTP 401
+  and refused that issue forever, with no tree state to clean up (issue #102). A
+  local `#N\b` regex over title and body decides now; the search only narrows, and
+  a result set that reaches the `--limit` cap answers `None`, because a truncated
+  page and an empty one look alike. `locate()` anchors its globs to the start of a
+  `/`-delimited segment for the same class of reason, and strips the `+ ` git
+  prints for a branch checked out in another worktree as well as `* `. With the
+  `+` left on, no worktree-backed branch could ever be reported STALE.
   `preflight-issues.py --cross-repo` (passed by both the skill and the wrapper) is the
   cleanup net for deliveries that already exist — it scans an issue's own thread for
   PR links, resolves them with `gh pr view --repo`, and skips an issue already

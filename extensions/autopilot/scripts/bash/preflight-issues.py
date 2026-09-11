@@ -391,8 +391,22 @@ def unattended():
     return v not in ("", "0", "false", "no", "off")
 
 
+# How many open PRs one `has_open_pr` search may return before a miss stops
+# meaning anything. `gh pr list --limit` caps exactly, so a page that comes back
+# full may have left the matching PR off the end.
+PR_SEARCH_CAP = 100
+
+# `has_open_pr`'s fourth answer: the search answered but came back full, so its
+# "not found" proves nothing. It votes LIVE exactly as `None` does, because it
+# is an unknown, but it is not a failed lookup, and reporting it as one sent the
+# operator to debug `gh` auth when the cause was a hundred PRs sharing a token
+# (#104). A string, so it is readable wherever it surfaces, and truthy, so every
+# reader has to test for it before testing `open_pr` for truth.
+TRUNCATED = "truncated"
+
+
 def has_open_pr(n):
-    r"""True / False / None — None when the lookup itself could not answer.
+    r"""True / False / None / TRUNCATED — None when the lookup could not answer.
 
     Mirrors `is_dirty`: `gh` failing on auth, network, or an API error is not
     evidence that no PR exists, and handing that `False` to `classify()` as if
@@ -414,12 +428,12 @@ def has_open_pr(n):
     That removes false *positives*. Recall still rests entirely on the search:
     a PR the search does not return is one the regex never sees, and the answer
     would be `False` — the unrecoverable direction. So a result set that came
-    back at the `--limit` is reported as `None`, because a truncated page and an
-    empty one are indistinguishable from here.
+    back at the `--limit` is reported as `TRUNCATED`, because a truncated page and
+    an empty one are indistinguishable from here. It votes LIVE like `None`; only
+    the words it produces differ.
     """
-    cap = 100
     rc, out = sh_rc("gh", "pr", "list", "--state", "open",
-                    "--search", f"#{n} in:title,body", "--limit", str(cap),
+                    "--search", f"#{n} in:title,body", "--limit", str(PR_SEARCH_CAP),
                     "--json", "title,body")
     if rc != 0:
         return None
@@ -435,7 +449,7 @@ def has_open_pr(n):
         # `autopilot-run.sh` discards stderr, so an escape here does not answer
         # one issue wrong — it collapses the whole preflight to empty output.
         return None
-    return hit or (None if len(prs) >= cap else False)
+    return hit or (TRUNCATED if len(prs) >= PR_SEARCH_CAP else False)
 
 
 def worktrees():
@@ -467,20 +481,32 @@ def locate(n):
     missing commit date reads as ambiguity — which votes LIVE, so a stale
     `feat/`-prefixed branch would never be reportable as stale.
 
-    That was the theory; `lstrip("* ")` did not deliver it. Since git 2.23
-    `git branch --list` marks a branch checked out in **another worktree** with
-    `+ `, not `* `, and every feature branch is in that state when preflight runs
-    from the main checkout. The `+` survived, so `ref` was `+ 368-slug`, which
-    `git log` cannot resolve → no commit date → ambiguity → LIVE. No
-    worktree-backed branch could ever be reported STALE, and the `CLEAN:` line
-    offered the operator `git branch -D + 368-slug`. Both markers strip now.
+    Names come from `--format=%(refname:short)`, never from the default output,
+    which is written for people and broke the parse three ways. It prefixes a
+    marker: `* ` here, and since git 2.23 `+ ` for a branch checked out in
+    **another worktree**, which is every feature branch when preflight runs from
+    the main checkout. Stripping only `* ` left `ref` as `+ 368-slug`, which
+    `git log` cannot resolve, so the age read as unknown and no worktree-backed
+    branch could ever be reported STALE (#102). `color.ui=always` wraps names in
+    escape codes. And `column.ui=always` packs several branches onto one line, so
+    the "first line" held two names and the parse could hand back another
+    issue's branch (#104). The format atom prints the bare short refname and
+    nothing else. `--no-column` is load-bearing rather than tidy: a column
+    setting still packs `--format` output. Nothing is stripped, so nothing can be
+    stripped wrong.
 
     The globs anchor the number to the start of the branch name, or of any
-    `/`-delimited segment of it — git matches `*` across `/`, so `*/416-*`
-    reaches `origin/416-slug` and `origin/feature/fix/416-deep` alike. (Match is
-    against the *shortened* refname: a remote branch prints as
-    `remotes/origin/416-slug` but is matched as `origin/416-slug`, so the
-    `remotes/` form as a pattern selects nothing.) A bare `*416-*` also matched
+    `/`-delimited segment of it. git matches `*` across `/`, so `*/416-*`
+    reaches `origin/416-slug` and `origin/feature/fix/416-deep` alike. Matching
+    is against the *shortened* refname, which is what `%(refname:short)` prints
+    too: `origin/416-slug` rather than `remotes/origin/416-slug`, unless another
+    ref shares the name, when git qualifies it (`heads/416-slug`,
+    `remotes/origin/416-slug`). The globs still match a qualified name, and
+    `git log` resolves it to the branch rather than to a tag of the same name,
+    which the old bare parse did not. `--sort=refname` keeps local branches ahead
+    of remotes: without it a `branch.sort` setting such as `-committerdate` put
+    `origin/416-slug` first and had its tip read in place of the local branch's.
+    A bare `*416-*` also matched
     `v2.416-x` and `foo-416-bar` — the same tokenizer-class bug `has_open_pr`
     carried, and the other half of #102. The zero-padded glob is added back
     because a branch for issue 82 is named `082-slug`, coverage the old leading
@@ -488,10 +514,11 @@ def locate(n):
     """
     num, pad = str(n), str(n).zfill(3)
     name = ref = ""
-    branches = sh("git", "branch", "-a", "--list",
+    branches = sh("git", "branch", "-a", "--list", "--no-column",
+                  "--sort=refname", "--format=%(refname:short)",
                   f"{num}-*", f"*/{num}-*", f"{pad}-*", f"*/{pad}-*")
     if branches:
-        ref = branches.splitlines()[0].strip().lstrip("*+ ")
+        ref = branches.splitlines()[0].strip()
         name = ref.split("/")[-1]
     wts = worktrees()
     if name:
@@ -639,6 +666,10 @@ def classify(dirty, age_sec, open_pr, tasks="", window_sec=None, touched_sec=Non
     if open_pr is None:
         bits.append("PR lookup failed")
         live = True
+    elif open_pr is TRUNCATED:
+        # Truthy, so it has to be caught here or `elif open_pr` calls it a PR.
+        bits.append(f"PR search truncated at {PR_SEARCH_CAP} results")
+        live = True
     elif open_pr:
         bits.append("open PR")
         live = True
@@ -669,6 +700,9 @@ def liveness(n):
         pr = has_open_pr(n)
         if pr is None:
             result = ("LIVE", f"#{n}", "PR lookup failed, no branch or worktree")
+        elif pr is TRUNCATED:
+            result = ("LIVE", f"#{n}", f"PR search truncated at {PR_SEARCH_CAP} "
+                      "results, no branch or worktree")
         elif pr:
             result = ("LIVE", f"PR referencing #{n}", "open PR, no branch or worktree")
         else:
@@ -1102,9 +1136,10 @@ def selftest():
         assert has_open_pr(7) is True
         globals()["sh_rc"] = lambda *a: (0, "not json")   # answered nonsense
         assert has_open_pr(7) is None
-        # Valid JSON that is not a list of objects reaches `p.get` and raises.
-        # Before #102's fix that escaped the function, and because
-        # `autopilot-run.sh` discards stderr it emptied the whole preflight.
+        # Valid JSON that is not a list of objects reaches `p.get` and raises, and
+        # the `except` answers None. Before #102 nothing here raised at all:
+        # `bool(json.loads(out))` answered True for `{"message":…}`, `5` and `[1]`
+        # and False for `null`, the unsafe direction, with no error to see.
         for payload in ('{"message":"rate limited"}', "null", "5", "[1]", '["#7"]'):
             globals()["sh_rc"] = lambda *a, _p=payload: (0, _p)
             assert has_open_pr(7) is None, payload
@@ -1130,71 +1165,98 @@ def selftest():
         assert "--limit" in argv[-1], argv[-1]
         # A full page is a truncated page as far as this function can tell, and
         # "not found" here is the direction that gets a live worktree deleted.
-        globals()["sh_rc"] = prs(*["no reference here"] * 100)
-        assert has_open_pr(401) is None
+        # TRUNCATED rather than None, so the operator is told why (#104).
+        globals()["sh_rc"] = prs(*["no reference here"] * PR_SEARCH_CAP)
+        assert has_open_pr(401) is TRUNCATED
         globals()["sh_rc"] = prs(*(["no reference here"] * 99 + ["Closes #401"]))
         assert has_open_pr(401) is True
     finally:
         globals()["sh_rc"] = real_sh_rc
 
-    # Issue #102, the other half. `fake_sh` stands in for `git branch -a --list`
-    # rather than for the glob list, so this exercises the patterns AND the name
-    # parsing below them — asserting on the argv alone is a change detector that
-    # cannot tell a correct glob from a wrong one.
+    # Issue #102's other half, and #104. `fake_sh` stands in for
+    # `git branch -a --list` rather than for the glob list, so this exercises the
+    # patterns AND the name parsing below them. Asserting on the argv alone is a
+    # change detector that cannot tell a correct glob from a wrong one.
     #
-    # Two behaviours it has to reproduce, both confirmed against git 2.50.1 in
-    # this repo. Matching is against the SHORTENED refname — a remote branch
-    # prints `remotes/origin/x` but is matched as `origin/x`, so the `remotes/`
-    # form as a pattern selects nothing — and `*` crosses `/`, because git's
-    # `match_pattern` calls wildmatch without `WM_PATHNAME`. `fnmatchcase`, not
-    # `fnmatch`: the latter normcases, and git is case-sensitive by default.
+    # What it reproduces, all confirmed against git 2.50.1: matching is against
+    # the SHORTENED refname (`origin/x`, so a `remotes/` pattern selects
+    # nothing); `*` crosses `/`, because git's `match_pattern` calls wildmatch
+    # without `WM_PATHNAME`; and `--format=%(refname:short)` with `--no-column`
+    # prints those short names, one per line, with no marker and no colour even
+    # under `color.ui=always` and `column.ui=always`. Git qualifies a name
+    # (`heads/x`) only when another ref shares it, and no fixture here does.
+    # `sorted()` stands in for `--sort=refname`. `fnmatchcase`,
+    # not `fnmatch`: the latter normcases, and git is case-sensitive by default.
     import fnmatch
 
-    # (shortened refname, display prefix) — `+ ` is a branch checked out in
-    # another worktree, `* ` the one checked out here.
-    REFS = [("416-picker-number-collision", "* "), ("082-fix-thing", "  "),
-            ("origin/feature/fix/416-deep", "  "), ("v2.416-x", "  "),
-            ("269-unreadable-416-cart", "  "), ("4416-something", "  ")]
+    REFS = ["416-picker-number-collision", "082-fix-thing",
+            "origin/feature/fix/416-deep", "v2.416-x",
+            "269-unreadable-416-cart", "4416-something"]
     real_sh, real_worktrees = sh, worktrees
     try:
         globals()["worktrees"] = lambda: []
 
         def fake_sh(*a):
-            assert a[:4] == ("git", "branch", "-a", "--list"), a
-            hits = [(m, pre) for m, pre in sorted(REFS)
-                    if any(fnmatch.fnmatchcase(m, g) for g in a[4:])]
-            return "\n".join(
-                pre + ("remotes/" + m if m.startswith("origin/") else m)
-                for m, pre in hits)
+            # The three flags are #104's fix, and this fake models none of what
+            # they prevent, so this assertion is the only thing guarding them;
+            # their effect was checked against real git, not here. Without
+            # --format the output carries markers and colour, without --no-column
+            # a column setting packs several names onto the one line this reads,
+            # and without --sort=refname a `branch.sort` setting can put a
+            # remote ahead of the local branch.
+            assert a[:7] == ("git", "branch", "-a", "--list", "--no-column",
+                             "--sort=refname", "--format=%(refname:short)"), a
+            return "\n".join(m for m in sorted(REFS)
+                             if any(fnmatch.fnmatchcase(m, g) for g in a[7:]))
 
         globals()["sh"] = fake_sh
-        # The local branch sorts first and wins; `* ` is stripped off both the
-        # name and the ref, or `git log <ref>` resolves nothing.
+        # Under --sort=refname the local branch sorts ahead of any remote and
+        # wins, and `ref` is the bare name `git log` resolves.
         assert locate(416)[0] == "416-picker-number-collision", locate(416)
         assert locate(416)[2] == "416-picker-number-collision", locate(416)
-        # A branch for issue 82 is named `082-slug`, so the padded glob is what
-        # finds it — the old leading `*` used to cover this for free.
-        assert locate(82)[0] == "082-fix-thing", locate(82)
-        # `+ ` marks a branch held by ANOTHER worktree, which is every feature
-        # branch when preflight runs from the main checkout. `lstrip("* ")` left
-        # the `+` on, so `ref` was unresolvable and no such branch could ever be
-        # reported STALE.
-        REFS[:] = [("368-preview-cleanup", "+ ")]
-        assert locate(368) == ("368-preview-cleanup", "", "368-preview-cleanup"), locate(368)
-        # `*` crosses `/`, so `*/416-*` still reaches a nested remote branch...
-        REFS[:] = [("origin/feature/fix/416-deep", "  ")]
+        # `*` crosses `/`, so `*/416-*` still reaches a nested remote branch, and
+        # its ref is the short `origin/...` form, which `git log` resolves.
+        REFS[:] = ["origin/feature/fix/416-deep"]
         assert locate(416)[0] == "416-deep", locate(416)
-        assert locate(416)[2] == "remotes/origin/feature/fix/416-deep", locate(416)
-        # ...while all three of these matched the old `*416-*` and none of them
-        # is issue #102's work.
-        REFS[:] = [("v2.416-x", "  "), ("269-unreadable-416-cart", "  "),
-                   ("4416-something", "  ")]
+        assert locate(416)[2] == "origin/feature/fix/416-deep", locate(416)
+        # All three of these matched the old `*416-*`; none is issue 416's work.
+        REFS[:] = ["v2.416-x", "269-unreadable-416-cart", "4416-something"]
         assert locate(416) == ("", "", ""), locate(416)
+        # Each glob on its own, for an issue whose padded and unpadded forms
+        # differ. For 416 the two are the same string, so only `{pad}-*` had a
+        # case of its own (`082-fix-thing`) and deleting any of the other three
+        # still passed (#104).
+        for only, found in (("82-x", "82-x"),                    # {num}-*
+                            ("origin/82-x", "82-x"),             # */{num}-*
+                            ("082-fix-thing", "082-fix-thing"),  # {pad}-*
+                            ("origin/082-x", "082-x")):          # */{pad}-*
+            REFS[:] = [only]
+            assert locate(82)[0] == found, (only, locate(82))
     finally:
         globals()["sh"], globals()["worktrees"] = real_sh, real_worktrees
     assert cls(False, 3 * DAY, None, touched=3 * DAY)[0] == "LIVE"
     assert "PR lookup failed" in cls(False, 3 * DAY, None, touched=3 * DAY)[1]
     assert "no open PR" not in cls(False, 3 * DAY, None, touched=3 * DAY)[1]
+    # TRUNCATED votes LIVE like None, but says what happened. It is truthy, so a
+    # `classify` that forgot it would fall through and report an open PR (#104).
+    assert cls(False, 3 * DAY, TRUNCATED, touched=3 * DAY)[0] == "LIVE"
+    assert "truncated" in cls(False, 3 * DAY, TRUNCATED, touched=3 * DAY)[1]
+    assert "open PR" not in cls(False, 3 * DAY, TRUNCATED, touched=3 * DAY)[1]
+    # `liveness` reads `has_open_pr` itself when there is no branch or worktree,
+    # without going through `classify`, so it needs its own check. Without one a
+    # truncated search printed "open PR", the exact misreport TRUNCATED exists
+    # to prevent.
+    real_locate, real_has_open_pr = locate, has_open_pr
+    try:
+        globals()["locate"] = lambda n: ("", "", "")
+        globals()["has_open_pr"] = lambda n: TRUNCATED
+        _LIVE_CACHE.pop(9104, None)
+        state, name, ev = liveness(9104)
+        assert state == "LIVE", (state, name, ev)
+        assert "truncated" in ev and "open PR" not in ev, ev
+    finally:
+        globals()["locate"], globals()["has_open_pr"] = real_locate, real_has_open_pr
+        _LIVE_CACHE.pop(9104, None)
 
     # …and the verdict it produces on the explicit-issue path depends on who is
     # reading. This is the whole of issue #60: the operator pasted an issue URL

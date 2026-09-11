@@ -203,11 +203,14 @@ on first run in a project that still tracks it, so the migration is automatic.
   number, so `has_open_pr(401)` matched every open PR that discussed an HTTP 401
   and refused that issue forever, with no tree state to clean up (issue #102). A
   local `#N\b` regex over title and body decides now; the search only narrows, and
-  a result set that reaches the `--limit` cap answers `None`, because a truncated
-  page and an empty one look alike. `locate()` anchors its globs to the start of a
-  `/`-delimited segment for the same class of reason, and strips the `+ ` git
-  prints for a branch checked out in another worktree as well as `* `. With the
-  `+` left on, no worktree-backed branch could ever be reported STALE.
+  a result set that reaches the `--limit` cap answers `TRUNCATED`, which votes
+  LIVE like `None` but is reported as a truncated search rather than a failed
+  one (issue #104). `locate()` anchors its globs to the start of a `/`-delimited
+  segment for the same class of reason, and reads branch names from
+  `git branch --no-column --sort=refname --format='%(refname:short)'` rather than from the
+  output meant for people, whose `* `/`+ ` markers, colour codes and columns
+  each broke the parse. The `+ ` git prints for a branch checked out in another
+  worktree meant no worktree-backed branch could ever be reported STALE.
   `preflight-issues.py --cross-repo` (passed by both the skill and the wrapper) is the
   cleanup net for deliveries that already exist — it scans an issue's own thread for
   PR links, resolves them with `gh pr view --repo`, and skips an issue already

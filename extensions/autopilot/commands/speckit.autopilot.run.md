@@ -602,7 +602,8 @@ Run `/speckit-implement`. Then, because you're unattended:
 ## Step 8 — Review
 
 Run `/speckit-review-run` on the working diff (it fans out the specialized
-reviewers — code, tests, errors, comments, types, simplify — in parallel). Triage the
+reviewers — code, arch, tests, errors, comments, types, simplify — in parallel, and
+applies ponytail's behaviour-preserving cuts itself). Triage the
 findings: **apply** the clear correctness and test-coverage fixes; **record a
 decision** ("keep — because …") for anything you deliberately leave, the same way a
 human reviewer would. Re-run the gates after applying fixes.

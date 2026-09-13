@@ -48,7 +48,10 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    history, minus commit_exclude) are compared against the fetched origin/<base> instead of a hand-typed
                    path list that differed every run (issue #49); UNKNOWN, or a check that cannot run at all, is a refusal
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
-  review/          Multi-agent code review (run/code/comments/tests/errors/types/simplify/pr)
+  review/          Multi-agent code review, one engine for every scope: /speckit-review-run covers the feature branch, working
+                   directory, or a GitHub PR (--pr N, optional --comment). Agents: code (incl. security & performance), arch,
+                   comments, tests, errors, types, simplify (ponytail review + audit; cuts applied unless --no-fix).
+                   2.0.0 removes /speckit-review-pr — use /speckit-review-run --pr N
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)
 
 presets/      # Spec Kit presets (template + command overrides)
@@ -60,6 +63,7 @@ presets/      # Spec Kit presets (template + command overrides)
   diff-minimal/                 Minimum-diff mandate: re-derive the issue against main, then specify the smallest change; adds a mandatory Corrections + machine-checkable Scope discipline section and holds the plan to it
   spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
   library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
+  ponytail-plan/                plan wrapper applying the ponytail ladder (YAGNI → reuse → stdlib → native → installed dep → one line → new code): cuts or rewrites proposed files/abstractions/deps in plan.md, mandatory ## Ladder table, checked deterministically
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes the ponytail:ponytail skill before /speckit-implement starts
@@ -109,6 +113,7 @@ specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/diff-minimal"
 specify preset add --dev "$SQUADS/presets/spec-ui-preview"
 specify preset add --dev "$SQUADS/presets/library-research"
+specify preset add --dev "$SQUADS/presets/ponytail-plan" --priority 8
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 specify preset add --dev "$SQUADS/presets/implement-prelude-skills"

@@ -102,6 +102,7 @@ preset_priority() {
     graphify-on-implement)      echo 6  ;;
     progress-report)            echo 7  ;;
     implement-prelude-skills)   echo 8  ;;
+    ponytail-plan)              echo 8  ;;  # speckit.plan only: outside library-research (10) and parse-dont-validate (9)
     parse-dont-validate)        echo 9  ;;
     graph-first-navigation)     echo 12 ;;
     explicit-task-dependencies) echo 20 ;;

@@ -394,9 +394,14 @@ on first run in a project that still tracks it, so the migration is automatic.
   with `SPECKIT_SKIP_GRAPH=1`) — graph-first navigation was switching itself off in
   exactly the checkout where feature work starts. It passes the worktree path
   explicitly, because a bare `graphify update` rebuilds whichever project the CWD
-  resolves to, and it keeps the rebuild out of version control (`info/exclude` plus
-  `skip-worktree` on any already-tracked `graphify-out` files), since a committed
-  graph makes the freshness gate report STALE forever.
+  resolves to. Version control follows the repo's own choice: an **untracked**
+  `graphify-out/` goes in `info/exclude` so a rebuild is never committed by
+  accident, while a **tracked** one is left tracked and visible (no exclude, no
+  `skip-worktree`, and an earlier run that hid it is healed) — a repo that commits
+  its graph so every checkout and CI runner shares one is making a deliberate
+  choice, and the freshness gate no longer calls that graph stale. Same logic as
+  the graph-first-navigation preset's `post-install.sh`, duplicated because it
+  lives in another installable's script tree; `./test-graph-tracking.sh` checks both.
   `install-deps.sh` is its sibling on the same two creation sites (same
   best-effort contract, skippable with `SPECKIT_SKIP_INSTALL=1`): a linked
   worktree gets the tracked files and nothing else, so six autopilot runs in
@@ -662,13 +667,26 @@ on first run in a project that still tracks it, so the migration is automatic.
   rebuild at the top of every run; every remedy it prints carries the
   **absolute path** (`graphify update <checkout>`), since a bare
   `graphify update` rebuilds whichever project the CWD resolves to and has
-  already rebuilt the wrong worktree; and a **committed** `graphify-out/` is
-  reported as its own condition, because it is stale by construction. That last
-  one is prevented rather than reported by `post-install.sh`, which excludes
-  `graphify-out/` in the repo's `info/exclude` and `skip-worktree`s any tracked
-  graph files — the same thing the git extension's `seed-graph.sh` does per
-  worktree, duplicated because it lives in another installable's script tree.
-  `./test-graph-freshness.sh` is the check.
+  already rebuilt the wrong worktree; and **HEAD past `built_at_commit` is STALE
+  only if a commit since touched something outside `graphify-out/`**. Comparing
+  the two shas alone made a committed graph stale by construction — the commit
+  that carries the graph moves HEAD past it — and that false premise was the whole
+  case for hiding a committed graph. A built commit absent from the clone (shallow
+  CI, unfetched branch) is `UNKNOWN`, not a silent STALE.
+  **A tracked graph is the repo's choice, not a mistake to hide.** `post-install.sh`
+  used to exclude `graphify-out/` and `skip-worktree` its tracked files, and every
+  `./install.sh --force` re-hid a graph a consumer commits on purpose so every
+  checkout and CI runner shares one. Now only an *untracked* graph is excluded; a
+  tracked one is left visible, and the install heals an earlier one (clears
+  `skip-worktree`, removes only our `info/exclude` stanza, matched by the same
+  expression `pre-uninstall.sh` uses). The git extension's `seed-graph.sh` carries
+  the same logic per worktree, duplicated because it lives in another
+  installable's script tree. The one committed file that *is* a mistake is
+  `graphify-out/.graphify_root`: it holds an absolute checkout path that graphify's
+  post-commit/post-checkout hooks rebuild, so a committed copy makes every checkout
+  rebuild whichever worktree last committed it. All three scripts warn with the fix
+  (`git rm --cached` it, gitignore it) and never untrack it themselves.
+  `./test-graph-freshness.sh` and `./test-graph-tracking.sh` are the checks.
   **The seeded CLAUDE.md block is written to a temp file, not captured with
   `$(cat <<EOF)`.** Inside a command substitution bash still scans the heredoc
   body for quotes, so an odd number of apostrophes in that prose was a syntax

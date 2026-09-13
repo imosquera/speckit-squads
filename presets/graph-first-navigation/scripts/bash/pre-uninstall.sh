@@ -53,9 +53,12 @@ if [[ -n "$COMMON_DIR" ]]; then
 import re, sys, pathlib
 p = pathlib.Path(sys.argv[1])
 t = p.read_text(encoding="utf-8")
+# Our stanza, in both its old and current wording: the "# Local knowledge
+# graph" header line, one comment line, then the pattern. post-install.sh and
+# the git extension's seed-graph.sh match it with this same expression.
 p.write_text(re.sub(
-    r"\n*# Local knowledge graph.*?\n# A committed graph makes the freshness gate report STALE forever\.\ngraphify-out/\n",
-    "\n", t, flags=re.S), encoding="utf-8")
+    r"\n*# Local knowledge graph[^\n]*\n# [^\n]*\ngraphify-out/\n",
+    "\n", t), encoding="utf-8")
 PYEOF
     echo "  removed the graphify-out/ exclusion from $EXCLUDE"
   fi

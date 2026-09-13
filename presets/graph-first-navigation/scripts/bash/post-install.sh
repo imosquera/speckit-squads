@@ -57,15 +57,19 @@ else
   fi
 fi
 
-# ------------------------------------------------- keep graphify-out out of git
-# The graph is local, per-checkout, and rebuilt constantly. Committed, it is
-# stale by construction (every commit moves HEAD past its built_at_commit) and
-# every rebuild dirties the tree, which is exactly the hand-scrub the freshness
-# gate kept demanding. Excluding it here makes the rebuild free.
-#   * untracked output      -> the repo's info/exclude (shared by every worktree)
-#   * already-tracked files -> skip-worktree in this checkout's index
-# Best effort: a project that deliberately commits its graph is not our call to
-# break, and neither failure is worth aborting an install over.
+# ------------------------------------------------- graphify-out and git
+# Whether the repo tracks a graph at HEAD decides which way this goes:
+#   * UNTRACKED -> exclude graphify-out/ in the repo's info/exclude (shared by
+#     every worktree), so a rebuild is never swept into a commit by accident.
+#   * TRACKED   -> the repo committed its graph on purpose (one graph shared by
+#     every checkout and CI runner). Leave it visible: no exclude, no
+#     skip-worktree. Earlier installs hid it with both, and every `--force`
+#     re-hid it, so heal that — clear skip-worktree and remove only OUR
+#     info/exclude stanza (matched exactly as pre-uninstall.sh matches it).
+# A tracked graph is not stale by construction: the freshness gate ignores
+# commits that touch only graphify-out/. The same logic lives in the git
+# extension's seed-graph.sh (a separate installable) — keep the two in step.
+# Best effort: nothing here is worth aborting an install over.
 COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null || true)"
 if [[ -n "$COMMON_DIR" ]]; then
   case "$COMMON_DIR" in
@@ -73,24 +77,46 @@ if [[ -n "$COMMON_DIR" ]]; then
     *) COMMON_DIR="$(cd "$COMMON_DIR" && pwd)" ;;
   esac
   EXCLUDE="$COMMON_DIR/info/exclude"
-  mkdir -p "$COMMON_DIR/info" 2>/dev/null || true
-  if ! grep -qxF 'graphify-out/' "$EXCLUDE" 2>/dev/null; then
-    {
-      echo ''
-      echo '# Local knowledge graph — rebuilt per checkout, never committed.'
-      echo '# A committed graph makes the freshness gate report STALE forever.'
-      echo 'graphify-out/'
-    } >> "$EXCLUDE" 2>/dev/null && echo "  excluded graphify-out/ in $EXCLUDE"
-  fi
+  TRACKED="$(git ls-files -- graphify-out 2>/dev/null || true)"
 
-  TRACKED="$(git ls-files -- graphify-out 2>/dev/null)"
-  if [[ -n "$TRACKED" ]]; then
-    if printf '%s\n' "$TRACKED" | tr '\n' '\0' \
-         | xargs -0 git update-index --skip-worktree -- 2>/dev/null; then
-      echo "  skip-worktree'd $(printf '%s\n' "$TRACKED" | wc -l | tr -d ' ') tracked graphify-out files"
-      echo "        (they are still committed — \`git rm -r --cached graphify-out\` to finish the job)"
-    else
-      echo "  warn: could not skip-worktree the tracked graphify-out files" >&2
+  if [[ -z "$TRACKED" ]]; then
+    mkdir -p "$COMMON_DIR/info" 2>/dev/null || true
+    if ! grep -qxF 'graphify-out/' "$EXCLUDE" 2>/dev/null; then
+      {
+        echo ''
+        echo '# Local knowledge graph — rebuilt per checkout, not tracked by this repo.'
+        echo '# Excluded so a rebuild is never committed by accident.'
+        echo 'graphify-out/'
+      } >> "$EXCLUDE" 2>/dev/null && echo "  excluded graphify-out/ in $EXCLUDE"
+    fi
+  else
+    if [[ -f "$EXCLUDE" ]] && grep -qxF 'graphify-out/' "$EXCLUDE" && command -v python3 >/dev/null 2>&1; then
+      python3 - "$EXCLUDE" <<'PYEOF' || true
+import re, sys, pathlib
+p = pathlib.Path(sys.argv[1])
+t = p.read_text(encoding="utf-8")
+new = re.sub(r"\n*# Local knowledge graph[^\n]*\n# [^\n]*\ngraphify-out/\n", "\n", t)
+if new != t:
+    p.write_text(new, encoding="utf-8")
+    print(f"  removed our graphify-out/ exclusion from {p} (the repo tracks its graph)")
+PYEOF
+    fi
+    SKIPPED="$(git ls-files -v -- graphify-out 2>/dev/null | sed -n 's/^S //p')"
+    if [[ -n "$SKIPPED" ]]; then
+      if printf '%s\n' "$SKIPPED" | tr '\n' '\0' \
+           | xargs -0 git update-index --no-skip-worktree -- 2>/dev/null; then
+        echo "  cleared skip-worktree on the tracked graphify-out files"
+      else
+        echo "  warn: could not clear skip-worktree on the tracked graphify-out files" >&2
+      fi
+    fi
+    echo "  graphify-out/ is tracked here ($(printf '%s\n' "$TRACKED" | wc -l | tr -d ' ') files) — left tracked and visible (no exclude, no skip-worktree)"
+    if [[ -n "$(git ls-files -- graphify-out/.graphify_root 2>/dev/null || true)" ]]; then
+      echo "  WARNING: graphify-out/.graphify_root is committed. It holds an absolute checkout path that" >&2
+      echo "           graphify's post-commit/post-checkout hooks rebuild, so every checkout rebuilds" >&2
+      echo "           whichever worktree last committed it. Fix: \`git rm --cached graphify-out/.graphify_root\`" >&2
+      echo "           and add graphify-out/.graphify_root to .gitignore (graphify rewrites it on every" >&2
+      echo "           build and falls back to the checkout root when it is absent)." >&2
     fi
   fi
 fi
@@ -197,22 +223,25 @@ Four verdicts, and only one of them is a demand:
 
 | Verdict | Exit | Means |
 | --- | --- | --- |
-| `FRESH` | 0 | the graph matches HEAD and the tree is clean — trust it |
+| `FRESH` | 0 | the graph matches HEAD (or every commit since touches only `graphify-out/`) and the tree is clean — trust it |
 | `STALE` | 1 | provably behind — **rebuild**, never fall back to grep |
 | `ABSENT` | 2 | no graph here — build one; grep only until you do |
-| `UNKNOWN` | 3 | freshness is *unanswerable*, not failed — an older build recording no `built_at_commit`, or no HEAD to compare against. The graph may well be current; rebuild to get a comparable one, and until then treat only **negative** answers as unverified |
+| `UNKNOWN` | 3 | freshness is *unanswerable*, not failed — an older build recording no `built_at_commit`, a built commit that is not in this clone, or no HEAD to compare against. The graph may well be current; rebuild to get a comparable one, and until then treat only **negative** answers as unverified |
 
 Every verdict prints the remedy with its path (`graphify update <checkout>`).
 Run it exactly as printed: a bare `graphify update` rebuilds whichever project
 the CWD resolves to, which from a worktree has already been the wrong one.
 
-A graph is local to its checkout — keep it out of version control. Installing this
-preset excludes `graphify-out/` in the repo's `info/exclude` and, if the repo
-already tracks a graph, marks those files `skip-worktree` in this checkout, so a
-rebuild costs nothing and never has to be hand-scrubbed before a commit. A
-committed `graphify-out/` is stale by construction: every commit moves HEAD past
-its `built_at_commit`. `/speckit-git-worktree` and `/speckit-git-feature` do the
-same at worktree creation and build the graph there (`seed-graph.sh`, skippable
+Whether `graphify-out/` is committed is the repo's call. If it is **not**
+tracked, installing this preset excludes it in the repo's `info/exclude`, so a
+rebuild is never committed by accident. If it **is** tracked, it is left tracked
+and visible: a commit that only carries or refreshes the graph does not make it
+stale, because the gate ignores commits that touch only `graphify-out/`. Never
+commit `graphify-out/.graphify_root`, though. It holds an absolute checkout path
+that graphify's git hooks rebuild, so every checkout would rebuild whichever
+worktree last committed it (`git rm --cached graphify-out/.graphify_root`, then
+gitignore it). `/speckit-git-worktree` and `/speckit-git-feature` apply the same
+rule at worktree creation and build the graph there (`seed-graph.sh`, skippable
 with `SPECKIT_SKIP_GRAPH=1`).
 
 A PreToolUse hook reminds — never blocks — when a Grep/Glob/`rg` looks

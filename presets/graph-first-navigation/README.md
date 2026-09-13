@@ -83,7 +83,7 @@ Before trusting a negative answer — "nothing else reads this" — run:
 means rebuild it, not fall back to grep.** Every wrapper says so, and the hook
 prints the built-commit / HEAD divergence when it detects one.
 
-Two things keep the gate from crying wolf, which matters because it opens the
+Three things keep the gate from crying wolf, which matters because it opens the
 plan phase of every unattended run and a gate that always cries stale is one
 people route around:
 
@@ -96,13 +96,27 @@ people route around:
   a bare `graphify update`, which rebuilds whichever project the CWD resolves
   to and has already rebuilt the wrong worktree.
 
-And a committed `graphify-out/` is reported as its own condition rather than as
-staleness, because it is stale by construction — every commit moves HEAD past
-the graph's `built_at_commit`, and the rebuild then dirties the tree, which is
-where the per-run hand-scrubbing came from. `post-install.sh` heads that off:
-it adds `graphify-out/` to the repo's `info/exclude` and marks any already-
-tracked graph files `skip-worktree` in this checkout. `pre-uninstall.sh`
-reverses both.
+- **HEAD past `built_at_commit` is STALE only if code moved too.** The gate
+  diffs the built commit against HEAD excluding `graphify-out/`; an empty diff
+  means the commits since touched only the graph (typically the commit that
+  carries it) and the verdict proceeds to the clean-tree check and `FRESH`. A
+  built commit missing from the clone is `UNKNOWN`, not `STALE`.
+
+Whether `graphify-out/` is committed is the repo's call. `post-install.sh`
+excludes an **untracked** graph in the repo's `info/exclude`, so a rebuild is
+never committed by accident. A **tracked** graph is left tracked and visible —
+no exclude, no `skip-worktree` — and an earlier install that hid it is healed.
+Hiding it was justified only by the gate calling a committed graph stale by
+construction, which it no longer does. `pre-uninstall.sh` removes our exclude
+stanza and any `skip-worktree` bits.
+
+The one file that must not be committed is `graphify-out/.graphify_root`: it
+holds an absolute checkout path that graphify's post-commit/post-checkout hooks
+rebuild, so a committed copy makes every checkout rebuild whichever worktree last
+committed it. The gate and `post-install.sh` warn with the fix —
+`git rm --cached graphify-out/.graphify_root`, then add it to `.gitignore`
+(graphify rewrites it on every build and falls back to the checkout root when it
+is absent) — and never untrack it in a consumer themselves.
 
 ## When grep remains correct
 

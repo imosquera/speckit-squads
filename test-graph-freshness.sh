@@ -63,10 +63,38 @@ echo dirty > "$REPO/c.txt"
 out="$(cd "$REPO" && "$GATE" .)"
 contains "relative-arg run" "graphify update $REPO" "$out"
 
-echo "6. a committed graphify-out is called out as its own condition"
+echo "6. a commit touching only graphify-out/ after the build -> FRESH, not STALE"
+rm -f "$REPO/c.txt"
 git -C "$REPO" add -f graphify-out && git -C "$REPO" commit -qm graph
-out="$("$GATE" "$REPO")"
-contains "committed graph" "graphify-out/ is committed here" "$out"
+out="$("$GATE" "$REPO")"; rc=$?
+check "graph-only commit" "exit code" 0 "$rc"
+contains "graph-only commit" "touch only graphify-out/" "$out"
+if grep -q 'WARNING' <<<"$out"; then echo "  FAIL: warned with no .graphify_root tracked" >&2; fail=1; fi
+
+echo "7. a tracked graphify-out/.graphify_root is warned about, verdict unchanged"
+echo "$REPO" > "$REPO/graphify-out/.graphify_root"
+git -C "$REPO" add -f graphify-out/.graphify_root && git -C "$REPO" commit -qm root
+out="$("$GATE" "$REPO")"; rc=$?
+check ".graphify_root" "exit code" 0 "$rc"
+contains ".graphify_root" "WARNING: graphify-out/.graphify_root is committed" "$out"
+contains ".graphify_root" "git rm --cached graphify-out/.graphify_root" "$out"
+git -C "$REPO" rm -q --cached graphify-out/.graphify_root && git -C "$REPO" commit -qm unroot
+rm -f "$REPO/graphify-out/.graphify_root"
+
+echo "8. a code commit after the build -> STALE, listing the code file only"
+echo code > "$REPO/d.txt" && git -C "$REPO" add d.txt && git -C "$REPO" commit -qm code
+out="$("$GATE" "$REPO")"; rc=$?
+check "code commit" "exit code" 1 "$rc"
+contains "code commit" "d.txt" "$out"
+if grep -q '^graphify-out/' <<<"$out"; then echo "  FAIL: STALE listing includes graphify-out/" >&2; fail=1; fi
+
+echo "9. built_at_commit not in this clone -> UNKNOWN, not STALE"
+printf '{"built_at_commit": "%s", "nodes": []}' "0123456789abcdef0123456789abcdef01234567" \
+  > "$REPO/graphify-out/graph.json"
+out="$("$GATE" "$REPO")"; rc=$?
+check "missing built commit" "exit code" 3 "$rc"
+contains "missing built commit" "not a commit in this clone" "$out"
+contains "missing built commit" "graphify update $REPO" "$out"
 
 if [[ $fail -eq 0 ]]; then echo "graph freshness check: ok"; else
   echo "graph freshness check: FAILED" >&2; fi

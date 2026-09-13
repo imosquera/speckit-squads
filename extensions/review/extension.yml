@@ -3,11 +3,11 @@ schema_version: "1.0"
 extension:
   id: "review"
   name: "Review Extension"
-  version: "1.3.0"
-  description: "Code review extension combining a GitHub PR-oriented 4-pass review (architecture, implementation, testing/security, simplicity) with specialized post-implementation agents for code quality, comments, tests, error handling, type design, and simplification. The PR review will additionally invoke the `ponytail` skill (DietrichGebert/ponytail marketplace) when it is available locally. Use /speckit-review-run for local-changes review across all agents, or /speckit-review-pr for a synthesized review of a GitHub PR."
+  version: "2.0.0"
+  description: "Multi-agent code review with one engine for every scope — the current feature branch, the working directory, or a GitHub pull request (/speckit-review-run --pr N). Specialized agents cover code quality (incl. security and performance), architecture & API design, comments, tests, error handling, type design, and simplification; the simplify agent runs the `ponytail` review and audit skills (DietrichGebert/ponytail marketplace) when available, and the coordinator applies their behaviour-preserving cuts unless --no-fix. 2.0.0 removes /speckit-review-pr: use /speckit-review-run --pr N."
   author: "beadbits"
   repository: "local"
-  license: "MIT (upstream agents) and same-as-project (pr command)"
+  license: "MIT (upstream agents) and same-as-project (arch command, PR mode)"
   homepage: "https://github.com/ismaelJimenez/spec-kit-review"
   upstream:
     source: "https://github.com/ismaelJimenez/spec-kit-review"
@@ -36,10 +36,13 @@ provides:
   commands:
     - name: "speckit.review.run"
       file: "commands/run.md"
-      description: "Comprehensive code review using specialized agents (coordinator)"
+      description: "Comprehensive code review using specialized agents (coordinator) — local changes or a GitHub PR (--pr N)"
+    - name: "speckit.review.arch"
+      file: "commands/arch.md"
+      description: "Architecture & API design review — public interfaces, exported types, contract and backward-compatibility changes, consistency with existing patterns"
     - name: "speckit.review.code"
       file: "commands/code.md"
-      description: "General code quality review — project guideline compliance, bug detection, code quality"
+      description: "General code quality review — project guideline compliance, bug detection, security, performance"
     - name: "speckit.review.comments"
       file: "commands/comments.md"
       description: "Code comment accuracy verification, documentation completeness, comment rot detection"
@@ -54,10 +57,7 @@ provides:
       description: "Type design analysis — encapsulation, invariant expression, usefulness, and enforcement"
     - name: "speckit.review.simplify"
       file: "commands/simplify.md"
-      description: "Code simplification suggestions — clarity, unnecessary complexity, redundant abstractions"
-    - name: "speckit.review.pr"
-      file: "commands/pr.md"
-      description: "Four-pass PR code review (architecture, implementation, testing/security, simplicity) against a GitHub PR via gh"
+      description: "Code simplification suggestions — clarity, unnecessary complexity, redundant abstractions, ponytail review + audit"
 
 hooks:
   after_implement:
@@ -78,6 +78,7 @@ tags:
 defaults:
   agents:
     code: true
+    arch: true
     comments: true
     tests: true
     errors: true

@@ -31,7 +31,7 @@ Usage (verbs):
       all five phases done (card shows "done")
 
 Phases : specify plan tasks implement review
-Substeps (review): code comments tests errors types simplify pr
+Substeps (review): code arch comments tests errors types simplify pr
 Status : done | active | pending | blocked   (nothing else)
 
 --items-json takes a JSON array; each element is an object with keys:
@@ -73,7 +73,7 @@ def log(msg: str) -> None:
         pass
 
 PHASES = ["specify", "plan", "tasks", "implement", "review"]
-SUBSTEPS = ["code", "comments", "tests", "errors", "types", "simplify", "pr"]
+SUBSTEPS = ["code", "arch", "comments", "tests", "errors", "types", "simplify", "pr"]
 STATUSES = {"done", "active", "pending", "blocked"}
 ITEM_KEYS = ("id", "title", "description", "status")
 

@@ -456,7 +456,33 @@ on first run in a project that still tracks it, so the migration is automatic.
   delete. `./test-verify-landed.sh` is the check.
   `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.sh` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`), and **`scrub-commit-exclude.sh` is the single handler for them** — it unstages those paths, restores tracked edits to HEAD, drops untracked output, and reports every line it discarded. The untracked list is re-read **after** the unstage, never before: `git restore --staged` turns a staged *addition* into an untracked file, so the one reading taken up front is stale in exactly the case this exists for — a freshly generated dated snapshot swept up by the flow's own `git add -A` — and the scrub reported success while leaving `?? graphify-out/` for the next `git add` to commit. `auto-commit.sh`, `create-pr.sh` and `clean.sh` all call it, and the auto-commit call happens **before the config is read**, which is the whole fix: the `:(exclude)` pathspec only ever governed commits that hook made, so in a project whose `auto_commit.default` is `false` — the default — the commits come from the flow's own `git add` and the exclusion had no effect at all (issue #62). One handler also replaces the six improvisations each phase had for a background graph rebuild dirtying the tree on its own, which blocked the squash, the pull, and the cleanup step in three different ways; a rebuild **in flight** is waited for on a bounded timeout rather than raced, and `--require-clean` exits 2 when anything outside the excluded paths is dirty, since that is real work and the caller should still refuse (issue #55). `create-pr.sh` additionally resets them to the base before opening the PR: the working tree is the handler's job, but a divergence already **committed** on the branch is invisible to it. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. `./test-commit-exclude.sh` is the check. The extension ships **bash only** (see *No PowerShell* above) — the twin was deleted rather than taught the same rules, since a second copy of a handler whose whole point is being the single one is a second place for it to drift. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
-- `review` — multi-agent code review (run/code/comments/tests/errors/types/simplify/pr).
+- `review` — multi-agent code review, **one engine for every scope**: `/speckit-review-run`
+  reviews the feature branch (Mode A), the working directory (Mode B), or a GitHub PR
+  (`--pr N`, Mode C) with the same agents (code — incl. security/performance — arch,
+  comments, tests, errors, types, simplify). `/speckit-review-pr` was deleted in 2.0.0:
+  it was a second, weaker engine (four inline passes, no scope contract, no hang
+  recovery) that drifted from the first and competed for the same triggers.
+  **Mode C resolves where the PR can be read, not just what changed.** Files come from
+  `gh pr diff`, `diff_base` is the merge-base of `origin/<base>` and the head sha
+  (fetched if absent; unobtainable is exit 1, never an empty review). If a local
+  worktree has the head branch checked out, `repo_root` is that worktree
+  (`checkout: worktree`) and the coordinator verifies its HEAD **sha**, not the branch
+  name — a local branch behind the PR reviews a stale copy that reads exactly like the
+  PR. Otherwise `checkout: none`: reviewers read only through git objects
+  (`git show <head>:<path>`), and the report says it was read-only. Worktree paths are
+  read whole from `git worktree list --porcelain` (they contain spaces), and a fork
+  PR's branch name never binds a same-named local worktree. `--comment` posts the
+  final report with `gh pr comment --body-file`.
+  **The coordinator applies ponytail cuts; reviewers never edit.** `simplify` runs
+  `ponytail:ponytail-review` on the change and `ponytail:ponytail-audit` on the touched
+  files **whole** — never the repo, which would break `diff-minimal`'s scope — only when
+  listed as available skills, and does both passes by hand otherwise. Step 8 applies
+  the behaviour-preserving ones after every reviewer returns (an earlier edit races the
+  reviewers), snapshots files first and restores from the snapshot rather than git
+  (Modes A/B hold uncommitted work), reverts any cut that breaks a gate that passed at
+  baseline, and reports `net: -N lines`. Never in Mode C `checkout: none`; `--no-fix`
+  opts out. `progress-report`'s `SUBSTEPS` carries `arch`; keep it in sync with the
+  aspect list, since an unknown substep key is a hard exit there.
   **The coordinator hands each reviewer its scope; it never lets one infer it.** A
   subagent inherits the session cwd — regularly the main checkout on `main`, not the
   feature worktree — so a reviewer once produced confident findings about an unrelated
@@ -529,6 +555,20 @@ on first run in a project that still tracks it, so the migration is automatic.
   layers in id order, and the stripper never touches either new section
 - `spec-ui-preview` — adds a GitHub-safe inline HTML UI preview to UI-touching specs (split out of `spec-minimal`)
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
+- `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
+  (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the
+  phase where new files, abstractions, dependencies and config knobs get committed
+  to — the implement prelude can only shrink what the plan already chose, and
+  `library-research` pushes the other way. Every proposed addition is climbed; a
+  rung-1 item is cut and a rung-2–6 item is rewritten in `plan.md`, not merely
+  noted. The record is a mandatory `## Ladder` table (`Item | Kind | Rung | Reason`)
+  or `None — extends existing code only.`; a new dependency (rung 7) needs a
+  `**Dependency justification:**` line. `check-ladder.sh` checks only the mechanical
+  half. **Priority 8**, so it wraps outside `parse-dont-validate` (9) and every
+  default-10 plan layer and judges what they wrote; sharing 8 with
+  `implement-prelude-skills` is harmless since that one targets implement only. The
+  ladder is embedded, so the plugin is optional. `selftest-ponytail-plan.sh` is the
+  check
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes the `ponytail:ponytail` skill (when available) as a mandatory prelude before implementation begins. Implementation-discipline skills only: a prose-register skill compresses the very audit trail an unattended `/speckit-autopilot-run` depends on, so it does not belong in the prelude (issue #72)

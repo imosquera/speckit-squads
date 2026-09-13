@@ -559,6 +559,18 @@ on first run in a project that still tracks it, so the migration is automatic.
   adds a prompt layer; both sit at the default priority 10 and compose as `wrap`
   layers in id order, and the stripper never touches either new section
 - `spec-ui-preview` — adds a GitHub-safe inline HTML UI preview to UI-touching specs (split out of `spec-minimal`)
+- `button-design` — `wrap` layers on `speckit.specify` and `speckit.plan` that hold
+  every UI-touching feature to button-design rules. The spec gets a mandatory
+  `## Actions & Buttons` table (screen, label, `button`/`link`, primary/secondary/
+  tertiary, destructive safeguard) or an explicit `None — no user-facing UI.`; the
+  plan gets `## Button System` with five populated markers (Component, Color roles,
+  States, Touch targets, Placement). `check-buttons.sh spec|plan` is the gate and
+  checks only what is mechanical: at most one primary per screen, links take no
+  role, 1–3 word non-generic button labels, destructive labels name their object and
+  carry a confirm/type/undo safeguard, no touch target under 44×44. Jargon,
+  "match the moment", and placement quality stay prompt-only, because a checker
+  that guesses at prose cries wolf. A screen with buttons and no primary is a
+  note, not a failure: a toolbar has none. `selftest-button-design.sh` is the check
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
   (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the

@@ -1,0 +1,42 @@
+schema_version: "1.0"
+
+preset:
+  id: "button-design"
+  name: "Button Design"
+  version: "1.0.0"
+  description: "Holds every UI-touching feature to established button-design rules. The /speckit-specify layer requires an `## Actions & Buttons` table — one primary per screen, buttons vs links, specific 1–3 word labels, a safeguard on every destructive action; the /speckit-plan layer requires a `## Button System` section — component reuse, color roles, states and contrast, 44×44 touch targets, placement. Both are checked deterministically. See presets/button-design/README.md."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "check-buttons.sh"
+      file: "scripts/bash/check-buttons.sh"
+      executable: true
+    - name: "selftest-button-design.sh"
+      file: "scripts/bash/selftest-button-design.sh"
+      executable: true
+
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "Composable wrapper for /speckit-specify that requires a checked `## Actions & Buttons` table for UI-touching features."
+      strategy: "wrap"
+
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Composable wrapper for /speckit-plan that requires a checked `## Button System` section when the spec declares user-facing actions."
+      strategy: "wrap"
+
+tags:
+  - "ui"
+  - "buttons"
+  - "ux"
+  - "spec"
+  - "plan"

@@ -62,6 +62,7 @@ presets/      # Spec Kit presets (template + command overrides)
   spec-minimal/                 Artifact minimalism: strips spec sections, keeps the feature tree to spec/plan/tasks
   diff-minimal/                 Minimum-diff mandate: re-derive the issue against main, then specify the smallest change; adds a mandatory Corrections + machine-checkable Scope discipline section and holds the plan to it
   spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
+  button-design/                specify + plan wrappers holding UI features to button-design rules: one primary per screen, buttons vs links, specific labels, guarded destructive actions, a reusable button system; checked deterministically
   library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
   ponytail-plan/                plan wrapper applying the ponytail ladder (YAGNI → reuse → stdlib → native → installed dep → one line → new code): cuts or rewrites proposed files/abstractions/deps in plan.md, mandatory ## Ladder table, checked deterministically
   portfolio-audit/              Portfolio-wide analyze override
@@ -112,6 +113,7 @@ specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/diff-minimal"
 specify preset add --dev "$SQUADS/presets/spec-ui-preview"
+specify preset add --dev "$SQUADS/presets/button-design"
 specify preset add --dev "$SQUADS/presets/library-research"
 specify preset add --dev "$SQUADS/presets/ponytail-plan" --priority 8
 specify preset add --dev "$SQUADS/presets/portfolio-audit"

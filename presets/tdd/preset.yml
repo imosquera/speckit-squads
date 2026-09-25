@@ -1,0 +1,36 @@
+schema_version: "1.0"
+
+preset:
+  id: "tdd"
+  name: "Test-Driven Development"
+  version: "1.0.0"
+  description: "Wraps /speckit-implement in the Red-Green-Refactor cycle: list the scenarios, then for each one write a failing test, watch it fail for the expected reason, write the simplest code that passes, and refactor with the suite green. Gated at the end by a full test run and check-tests-accompany.sh, which fails when production code changed with no test change. See presets/tdd/README.md."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "check-tests-accompany.sh"
+      file: "scripts/bash/check-tests-accompany.sh"
+      command: "speckit.implement"
+      executable: true
+    - name: "selftest-tdd.sh"
+      file: "scripts/bash/selftest-tdd.sh"
+      executable: true
+
+  templates:
+    - type: "command"
+      name: "speckit.implement"
+      file: "commands/speckit.implement.md"
+      description: "Composable wrapper for /speckit-implement that drives every task through Red-Green-Refactor and gates completion on a green suite with tests accompanying every production change."
+      strategy: "wrap"
+
+tags:
+  - "implement"
+  - "tdd"
+  - "testing"
+  - "governance"

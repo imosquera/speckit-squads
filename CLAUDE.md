@@ -571,6 +571,21 @@ on first run in a project that still tracks it, so the migration is automatic.
   "match the moment", and placement quality stay prompt-only, because a checker
   that guesses at prose cries wolf. A screen with buttons and no primary is a
   note, not a failure: a toolbar has none. `selftest-button-design.sh` is the check
+- `tdd` — `wrap` layer on `speckit.implement` that runs every behaviour-changing
+  task through Red-Green-Refactor: list the scenarios, then per scenario write one
+  test, run the whole suite and see it fail **for the expected reason** (a syntax
+  error or broken harness is not Red; a test that passes at once is flawed or the
+  behaviour exists, never Red), write the simplest code that passes, refactor test
+  and production code with the suite green, commit, repeat. The cycle block is
+  copied verbatim into every subagent prompt, and with `explicit-task-dependencies`
+  a story's test tasks are the Red wave, confirmed failing before the
+  implementation wave starts. **Priority 11**, inside `parse-dont-validate` (9),
+  outside `graph-first-navigation` (12). Gated on a green suite and
+  `check-tests-accompany.sh` (exit 1 when production source changed since the
+  merge-base with no test file changed; 4 on an empty change set, which is not a
+  pass). Red-before-green itself is recorded per scenario in the report, not
+  checked mechanically. That same release made tests mandatory in
+  `explicit-task-dependencies`' tasks template. `selftest-tdd.sh` is the check
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
   (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the

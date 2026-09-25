@@ -63,6 +63,7 @@ presets/      # Spec Kit presets (template + command overrides)
   diff-minimal/                 Minimum-diff mandate: re-derive the issue against main, then specify the smallest change; adds a mandatory Corrections + machine-checkable Scope discipline section and holds the plan to it
   spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
   button-design/                specify + plan wrappers holding UI features to button-design rules: one primary per screen, buttons vs links, specific labels, guarded destructive actions, a reusable button system; checked deterministically
+  tdd/                          implement wrapper: Red-Green-Refactor per scenario (failing test first, simplest green, refactor on green); gated on a green suite and tests accompanying every production change
   library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
   ponytail-plan/                plan wrapper applying the ponytail ladder (YAGNI → reuse → stdlib → native → installed dep → one line → new code): cuts or rewrites proposed files/abstractions/deps in plan.md, mandatory ## Ladder table, checked deterministically
   portfolio-audit/              Portfolio-wide analyze override
@@ -114,6 +115,7 @@ specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/diff-minimal"
 specify preset add --dev "$SQUADS/presets/spec-ui-preview"
 specify preset add --dev "$SQUADS/presets/button-design"
+specify preset add --dev "$SQUADS/presets/tdd" --priority 11
 specify preset add --dev "$SQUADS/presets/library-research"
 specify preset add --dev "$SQUADS/presets/ponytail-plan" --priority 8
 specify preset add --dev "$SQUADS/presets/portfolio-audit"
@@ -187,7 +189,7 @@ Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensio
 
 ### The `/speckit-implement` ordering contract
 
-Seven presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
+Eight presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
 
 | Priority | Preset | Strategy | Role |
 |---|---|---|---|
@@ -196,10 +198,11 @@ Seven presets target `speckit.implement`, so their install priorities are **load
 | 7 | `progress-report` | wrap | dashboard card |
 | 8 | `implement-prelude-skills` | wrap | prelude runs just before implementation |
 | 9 | `parse-dont-validate` | wrap | discipline + AST gate hug the implementation |
+| 11 | `tdd` | wrap | Red-Green-Refactor cycle per scenario; green-suite + tests-accompany gate |
 | 12 | `graph-first-navigation` | wrap | LSP/graph scoping pass sits closest to the first edit |
 | 20 | `explicit-task-dependencies` | **replace** | the executor base, innermost |
 
-Resulting execution order: worktree `cd` → progress card → prelude skills → parse-don't-validate discipline → graph/LSP scoping pass → **implement** (wave DAG, or the stock loop when `explicit-task-dependencies` isn't installed) → AST scan gate → progress card → `graphify update`.
+Resulting execution order: worktree `cd` → progress card → prelude skills → parse-don't-validate discipline → TDD cycle → graph/LSP scoping pass → **implement** (wave DAG, or the stock loop when `explicit-task-dependencies` isn't installed) → TDD gate → AST scan gate → progress card → `graphify update`.
 
 `explicit-task-dependencies` stays `replace` because it genuinely substitutes wave-DAG subagent fan-out for the stock serial loop — wrapping it would execute every task twice. It sorts last so it becomes the base rather than swallowing the wrappers.
 

@@ -104,6 +104,7 @@ preset_priority() {
     implement-prelude-skills)   echo 8  ;;
     ponytail-plan)              echo 8  ;;  # speckit.plan only: outside library-research (10) and parse-dont-validate (9)
     parse-dont-validate)        echo 9  ;;
+    tdd)                        echo 11 ;;  # Red-Green-Refactor hugs the implementation, inside pdv, outside graph/LSP scoping
     graph-first-navigation)     echo 12 ;;
     explicit-task-dependencies) echo 20 ;;
     *)                          echo 10 ;;

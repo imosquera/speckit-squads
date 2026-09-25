@@ -57,7 +57,6 @@ extensions/   # Spec Kit extensions (commands + hooks)
 presets/      # Spec Kit presets (template + command overrides)
   claude-ask-questions/         Interactive clarify/checklist for Claude
   explicit-task-dependencies/   tasks-template with explicit dependency edges
-  graphify-on-implement/        implement override that always runs graphify update last
   functional-constitution/      constitution override that enforces FP governance
   spec-minimal/                 Artifact minimalism: strips spec sections, keeps the feature tree to spec/plan/tasks
   diff-minimal/                 Minimum-diff mandate: re-derive the issue against main, then specify the smallest change; adds a mandatory Corrections + machine-checkable Scope discipline section and holds the plan to it
@@ -70,7 +69,6 @@ presets/      # Spec Kit presets (template + command overrides)
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes the ponytail:ponytail skill before /speckit-implement starts
   parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python ast + TS Compiler API); the gate is one command, `scan --new-only`, and a scan that examined zero files exits 2/3/4 rather than looking clean
-  graph-first-navigation/       plan/tasks/implement wrappers + a PreToolUse hook making graph queries the default navigation instrument, grep the stated fallback
   progress-report/           wraps the 5 cycle commands to keep a per-branch status card in ~/Code/agent-os current (pair with the progress extension for tasks/implement)
 ```
 
@@ -109,7 +107,6 @@ specify extension add --dev "$SQUADS/extensions/stale-tasks-guard"
 # presets
 specify preset add --dev "$SQUADS/presets/claude-ask-questions"
 specify preset add --dev "$SQUADS/presets/explicit-task-dependencies"
-specify preset add --dev "$SQUADS/presets/graphify-on-implement"
 specify preset add --dev "$SQUADS/presets/functional-constitution"
 specify preset add --dev "$SQUADS/presets/spec-minimal"
 specify preset add --dev "$SQUADS/presets/diff-minimal"
@@ -122,7 +119,6 @@ specify preset add --dev "$SQUADS/presets/portfolio-audit"
 specify preset add --dev "$SQUADS/presets/worktree-isolation"
 specify preset add --dev "$SQUADS/presets/implement-prelude-skills"
 specify preset add --dev "$SQUADS/presets/parse-dont-validate"
-specify preset add --dev "$SQUADS/presets/graph-first-navigation"
 specify preset add --dev "$SQUADS/presets/progress-report"
 ```
 
@@ -189,20 +185,18 @@ Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensio
 
 ### The `/speckit-implement` ordering contract
 
-Eight presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
+Six presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
 
 | Priority | Preset | Strategy | Role |
 |---|---|---|---|
 | 5 | `worktree-isolation` | wrap | outermost — the `cd` must precede every write |
-| 6 | `graphify-on-implement` | wrap | post-seam `graphify update` lands last |
 | 7 | `progress-report` | wrap | dashboard card |
 | 8 | `implement-prelude-skills` | wrap | prelude runs just before implementation |
 | 9 | `parse-dont-validate` | wrap | discipline + AST gate hug the implementation |
 | 11 | `tdd` | wrap | Red-Green-Refactor cycle per scenario; green-suite + tests-accompany gate |
-| 12 | `graph-first-navigation` | wrap | graph scoping pass sits closest to the first edit |
 | 20 | `explicit-task-dependencies` | **replace** | the executor base, innermost |
 
-Resulting execution order: worktree `cd` → progress card → prelude skills → parse-don't-validate discipline → TDD cycle → graph scoping pass → **implement** (wave DAG, or the stock loop when `explicit-task-dependencies` isn't installed) → TDD gate → AST scan gate → progress card → `graphify update`.
+Resulting execution order: worktree `cd` → progress card → prelude skills → parse-don't-validate discipline → TDD cycle → **implement** (wave DAG, or the stock loop when `explicit-task-dependencies` isn't installed) → TDD gate → AST scan gate → progress card.
 
 `explicit-task-dependencies` stays `replace` because it genuinely substitutes wave-DAG subagent fan-out for the stock serial loop — wrapping it would execute every task twice. It sorts last so it becomes the base rather than swallowing the wrappers.
 

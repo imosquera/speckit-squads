@@ -17,9 +17,8 @@ Tests target the project's own code, not the libraries it calls.
 
 ## Composition
 
-- **Priority 11**: inside `parse-dont-validate` (9), outside
-  `graph-first-navigation` (12) and the `explicit-task-dependencies` executor
-  (20). See the ordering contract in the top-level `README.md`.
+- **Priority 11**: inside `parse-dont-validate` (9), outside the
+  `explicit-task-dependencies` executor (20). See the ordering contract in the top-level `README.md`.
 - With `explicit-task-dependencies`, a story's test tasks are the Red wave and
   its implementation tasks are Green + Refactor. The wrapper confirms the tests
   fail before the implementation wave starts. Every subagent prompt carries the

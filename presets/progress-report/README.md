@@ -8,8 +8,7 @@ site renders it in the "Active branches" panel.
 It works by **wrapping** the five cycle commands (`strategy: wrap`), so the card
 updates whether **autopilot or a human** drives the cycle — both invoke the same
 `/speckit-*` commands. Because it wraps (not replaces), it composes with the other
-presets that touch these commands (`spec-minimal`, `parse-dont-validate`,
-`graphify-on-implement`, …).
+presets that touch these commands (`spec-minimal`, `parse-dont-validate`, `tdd`, …).
 
 ### Companion `progress` extension (install both)
 

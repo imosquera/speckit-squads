@@ -30,8 +30,8 @@ toolbar legitimately has no primary.
 ## Composition
 
 Both layers are `strategy: wrap` at the default priority, so they stack with
-`spec-minimal`, `diff-minimal`, `spec-ui-preview`, `library-research`, and
-`graph-first-navigation` in id order. `spec-minimal`'s stripper never touches
+`spec-minimal`, `diff-minimal`, `spec-ui-preview`, and `library-research` in id
+order. `spec-minimal`'s stripper never touches
 either section. With `spec-ui-preview` installed, the preview must show the
 same hierarchy as the table.
 

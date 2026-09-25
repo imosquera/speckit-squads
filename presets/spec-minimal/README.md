@@ -46,7 +46,7 @@ specify preset add --dev ~/Code/speckit-squads/presets/spec-minimal
 
 ## Stacking
 
-`spec-minimal` composes with the stock `speckit.specify` and `speckit.plan` flows instead of replacing them, so it stacks cleanly with implement-focused presets such as `worktree-isolation` and `graphify-on-implement`.
+`spec-minimal` composes with the stock `speckit.specify` and `speckit.plan` flows instead of replacing them, so it stacks cleanly with implement-focused presets such as `worktree-isolation` and `tdd`.
 
 Presets that wrap the *same* command nest rather than collide: the engine orders wrappers by priority ascending, then alphabetically by preset id, and each wrapper's core-flow seam expands to the next one in. That makes `spec-minimal` + `spec-ui-preview` + `library-research` a valid stack — each layer sees the stock flow (plus the inner layers) at its seam.
 

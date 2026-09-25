@@ -16,9 +16,6 @@
 #     exclude, no skip-worktree) and heal earlier runs that hid it. A tracked
 #     graph is not stale by construction: the freshness gate ignores commits
 #     that touch only graphify-out/.
-# The graph-first-navigation preset's post-install.sh carries the same logic (a
-# separate installable script tree) — keep the two in step.
-#
 # Best effort throughout. A worktree without a graph is a worse worktree; a
 # worktree that failed to be created is no worktree at all, so nothing here is
 # allowed to fail the caller.

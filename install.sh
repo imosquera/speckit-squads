@@ -75,19 +75,18 @@ shopt -s nullglob
 # base is the nearest `replace` layer scanning from highest precedence down;
 # only layers above the base compose at all.
 #
-# Seven presets target speckit.implement. Without explicit priorities they all sit
+# Six presets target speckit.implement. Without explicit priorities they all sit
 # at the default 10 and the alphabetical tie-break decides, which is how
 # explicit-task-dependencies came to win outright and silently kill the other
 # five (issue #25). These numbers are therefore load-bearing, not cosmetic:
 #
 #   5  worktree-isolation          outermost — the cd must precede every write
-#   6  graphify-on-implement       post-seam `graphify update` lands last
 #   7  progress-report             dashboard card wrap
 #   8  implement-prelude-skills    prelude runs just before implementation
 #   9  parse-dont-validate         discipline + AST gate hug the implementation
-#  12  graph-first-navigation      graph scoping pass sits closest to the first edit
 #                                  (9 is not free: parse-dont-validate's priority also
 #                                   orders the /speckit-constitution pair)
+#  11  tdd                         Red-Green-Refactor cycle hugs the implementation
 #  20  explicit-task-dependencies  `replace` — the executor base, innermost
 #
 # explicit-task-dependencies must sort LAST so it becomes the base rather than
@@ -99,13 +98,11 @@ shopt -s nullglob
 preset_priority() {
   case "$1" in
     worktree-isolation)         echo 5  ;;
-    graphify-on-implement)      echo 6  ;;
     progress-report)            echo 7  ;;
     implement-prelude-skills)   echo 8  ;;
     ponytail-plan)              echo 8  ;;  # speckit.plan only: outside library-research (10) and parse-dont-validate (9)
     parse-dont-validate)        echo 9  ;;
-    tdd)                        echo 11 ;;  # Red-Green-Refactor hugs the implementation, inside pdv, outside graph scoping
-    graph-first-navigation)     echo 12 ;;
+    tdd)                        echo 11 ;;  # Red-Green-Refactor hugs the implementation, inside pdv
     explicit-task-dependencies) echo 20 ;;
     *)                          echo 10 ;;
   esac

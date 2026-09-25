@@ -50,8 +50,7 @@ specify preset add --dev presets/ponytail-plan --priority 8
 Wrappers compose with the lowest priority number outermost, so its post-seam
 text runs **last**. At 8 it sits outside `parse-dont-validate` (9) and
 `library-research`, `diff-minimal`, `spec-minimal`, `button-design` (default 10),
-and judges what they wrote. `graph-first-navigation` (12) is inside too. The
-ladder never cuts `parse-dont-validate`'s trust-boundary parsers. Sharing 8 with
+and judges what they wrote. The ladder never cuts `parse-dont-validate`'s trust-boundary parsers. Sharing 8 with
 `implement-prelude-skills` is harmless: that one targets only `speckit.implement`.
 
 ## Ponytail is optional

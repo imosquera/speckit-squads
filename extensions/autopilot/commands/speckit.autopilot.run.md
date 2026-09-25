@@ -595,7 +595,7 @@ Run `/speckit-implement`. Then, because you're unattended:
 - **Post a progress comment** summarizing what shipped: files added/changed, test
   counts, and any task deliberately deferred (with why).
 - **Run the `after_implement` hooks** — the auto-commit (answer **yes**), plus any
-  preset-supplied refresh (e.g. `graphify-on-implement` runs `graphify update`).
+  preset-supplied refresh.
   `speckit.review.run` is also registered here; Step 8 is that hook, so running it
   there satisfies the slot — don't run the reviewers twice.
 

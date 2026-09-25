@@ -102,7 +102,7 @@ Anything that must reach *outside* `specify` — the Claude Code harness
 owns it. `install.sh` runs every executable one it finds after registration, and
 `uninstall.sh` runs the matching `scripts/bash/pre-uninstall.sh` before
 de-registering. Both are auto-discovered; both must be idempotent, since
-`--force` re-runs them. `graph-first-navigation` is the first user.
+`--force` re-runs them.
 
 `uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
 
@@ -399,9 +399,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   accident, while a **tracked** one is left tracked and visible (no exclude, no
   `skip-worktree`, and an earlier run that hid it is healed) — a repo that commits
   its graph so every checkout and CI runner shares one is making a deliberate
-  choice, and the freshness gate no longer calls that graph stale. Same logic as
-  the graph-first-navigation preset's `post-install.sh`, duplicated because it
-  lives in another installable's script tree; `./test-graph-tracking.sh` checks both.
+  choice. `./test-graph-tracking.sh` is the check.
   `install-deps.sh` is its sibling on the same two creation sites (same
   best-effort contract, skippable with `SPECKIT_SKIP_INSTALL=1`): a linked
   worktree gets the tracked files and nothing else, so six autopilot runs in
@@ -514,7 +512,6 @@ on first run in a project that still tracks it, so the migration is automatic.
 **Presets**
 - `claude-ask-questions` — interactive clarify/checklist for Claude
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
-- `graphify-on-implement` — `/speckit-implement` override that always runs `graphify update` as the final mandatory step
 - `functional-constitution` — `/speckit-constitution` **wrapper** that injects and normalizes a mandatory functional-programming governance section. Stacks with `parse-dont-validate`'s constitution layer: both match their section by title (not roman numeral) and renumber all principle sections sequentially, so neither clobbers the other (issue #37)
 - `spec-minimal` — one job: artifact minimalism. Wraps `/speckit-specify` to strip `## Assumptions`, `### Key Entities`, and `## Success Criteria` from `spec.md`; wraps `/speckit-plan` to hold the feature tree to `spec.md`, `plan.md`, `tasks.md`, `checklists/`, and optional `quickstart.md`/`research.md` — only `data-model.md` and `contracts/` are forbidden. `checklists/requirements.md` is written by core's own `/speckit-specify` and `research.md` by the stacked `library-research` preset, so forbidding either made the enforcer delete a file another shipped item had just written; the allow-list is `ALLOWED` in `enforce-minimal-tree.sh` and this line has been wrong often enough to get the same bug filed three times (#27, #31, #46). Enforced by a mandatory prompt rule plus the self-healing `scripts/bash/enforce-minimal-tree.sh`, which folds any forbidden artifact into `plan.md` under a sentinel block and deletes it; unknown top-level entries only warn, so stacking is safe
 - `diff-minimal` — sibling to `spec-minimal`, and the distinction is the whole
@@ -580,7 +577,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   copied verbatim into every subagent prompt, and with `explicit-task-dependencies`
   a story's test tasks are the Red wave, confirmed failing before the
   implementation wave starts. **Priority 11**, inside `parse-dont-validate` (9),
-  outside `graph-first-navigation` (12). Gated on a green suite and
+  outside `explicit-task-dependencies` (20). Gated on a green suite and
   `check-tests-accompany.sh` (exit 1 when production source changed since the
   merge-base with no test file changed; 4 on an empty change set, which is not a
   pass). Red-before-green itself is recorded per scenario in the report, not
@@ -631,90 +628,6 @@ on first run in a project that still tracks it, so the migration is automatic.
   `node_modules` scans while the driver stays anchored at the repo root for git
   paths — no `NODE_PATH` bridging. `./test-pdv-changeset.sh`
   is the check
-- `graph-first-navigation` — makes knowledge-graph queries the default
-  navigation instrument and demotes grep to a **stated** fallback. Two halves,
-  and the harness half is the one that binds:
-  a **PreToolUse hook on `Grep|Glob|Bash`** written into the consumer's
-  `.claude/settings.json`, which fires regardless of what any agent decides,
-  plus `wrap` layers on `speckit.plan` (a mandatory `## Navigation` section
-  recording each touched module's callers and dependents *as the graph reported
-  them*), `speckit.tasks` (fold those edges into task coverage and ordering),
-  and `speckit.implement` (scope renames/signature/type changes with
-  `graphify query` **before** the first edit, then run the project's typecheck
-  once to catch every call site, not by compiling in a loop).
-  Deliberately a new preset rather than an extension of
-  `implement-prelude-skills`: that one is registered against `speckit.implement`
-  alone and exists to load skills — see `presets/graph-first-navigation/README.md`
-  for the full decision.
-  **The hook is tuned not to cry wolf, because one that does gets disabled
-  within a day.** It fires only when `graphify-out/graph.json` exists, never
-  blocks (no `permissionDecision` — the search runs), and fires only on
-  identifier-shaped patterns: whitespace, a quote, or `://` in the pattern marks
-  a literal-string search and is left alone, as is any search already scoped to
-  non-code files, and Glob trips only on source extensions. It spends a budget of
-  3 reminders per session and then goes quiet, and exits 0 silently on any
-  internal error.
-  **`built_at_commit` is megabytes into `graph.json`, not at the top** — reading
-  the first 8KB finds nothing. The guard mmaps and byte-scans; `graph-freshness.sh`
-  uses `grep -m1 -oa`. Neither parses the JSON.
-  **There is no language server any more (2.0.0, issue #114).** The preset
-  used to require `typescript-language-server` on the agent's `PATH`, reached
-  through an installed resolver shim, and told the agent to run LSP
-  `findReferences` before every TypeScript rename. TypeScript 7 ships no
-  `tsserver`, which that server is built on, and the shim cost an install hook,
-  an uninstall hook and pages of `ENOENT`/cold-server guidance. The graph scopes
-  a rename (`graphify query "what calls <symbol>"`) and one run of the
-  project's typecheck lists every call site it broke. `post-install.sh` and
-  `pre-uninstall.sh` both source `remove-lsp-shim.sh`, which deletes a shim an
-  older install left — only a regular file carrying the old
-  `speckit:graph-first-navigation:lsp-shim` marker, looked for in
-  `$SPECKIT_LSP_BIN_DIR`, `~/.local/bin`, `~/bin` and wherever `command -v`
-  resolves the name, so a real server binary is never touched. The hook's
-  "first TypeScript edit" reminder went with it, and the matcher is back to
-  `Grep|Glob|Bash`.
-  **The staleness rule is the one legitimate reason to break the rule, and it
-  resolves the other way:** a stale graph means **rebuild** (`graphify update`),
-  never fall back to grep. Every layer says so.
-  **But the gate must not cry wolf, because it opens the plan phase of every
-  unattended run** (issue #67). Three rules keep it honest: a graph with no
-  `built_at_commit` is `UNKNOWN` (exit 3), not `STALE` — an unanswerable
-  question, not a failed one, and reporting it as staleness bought a full
-  rebuild at the top of every run; every remedy it prints carries the
-  **absolute path** (`graphify update <checkout>`), since a bare
-  `graphify update` rebuilds whichever project the CWD resolves to and has
-  already rebuilt the wrong worktree; and **HEAD past `built_at_commit` is STALE
-  only if a commit since touched something outside `graphify-out/`**. Comparing
-  the two shas alone made a committed graph stale by construction — the commit
-  that carries the graph moves HEAD past it — and that false premise was the whole
-  case for hiding a committed graph. A built commit absent from the clone (shallow
-  CI, unfetched branch) is `UNKNOWN`, not a silent STALE.
-  **A tracked graph is the repo's choice, not a mistake to hide.** `post-install.sh`
-  used to exclude `graphify-out/` and `skip-worktree` its tracked files, and every
-  `./install.sh --force` re-hid a graph a consumer commits on purpose so every
-  checkout and CI runner shares one. Now only an *untracked* graph is excluded; a
-  tracked one is left visible, and the install heals an earlier one (clears
-  `skip-worktree`, removes only our `info/exclude` stanza, matched by the same
-  expression `pre-uninstall.sh` uses). The git extension's `seed-graph.sh` carries
-  the same logic per worktree, duplicated because it lives in another
-  installable's script tree. The one committed file that *is* a mistake is
-  `graphify-out/.graphify_root`: it holds an absolute checkout path that graphify's
-  post-commit/post-checkout hooks rebuild, so a committed copy makes every checkout
-  rebuild whichever worktree last committed it. All three scripts warn with the fix
-  (`git rm --cached` it, gitignore it) and never untrack it themselves.
-  `./test-graph-freshness.sh` and `./test-graph-tracking.sh` are the checks.
-  **The seeded CLAUDE.md block is written to a temp file, not captured with
-  `$(cat <<EOF)`.** Inside a command substitution bash still scans the heredoc
-  body for quotes, so an odd number of apostrophes in that prose was a syntax
-  error reported a hundred lines further down — it bit twice in one session
-  before the shape changed. `check-cli-usage.sh` also runs `bash -n` over every
-  shipped script now, so a broken installer fails pre-flight instead of at a
-  consumer.
-  Presets cannot declare harness hooks and extension `hooks:` cover only Spec Kit
-  lifecycle phases, so the settings.json and CLAUDE.md edits ship as
-  `scripts/bash/post-install.sh` / `pre-uninstall.sh` — run by a **generic**
-  auto-discovered step in `install.sh`/`uninstall.sh` (`scripts/bash/post-install.sh`
-  in any extension or preset is run with the project dir), so there is still no
-  list to maintain
 - `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
 
 `spec-minimal` 2.0.0 is a breaking split: UI preview → `spec-ui-preview`, issue sync → the `git` extension. See the migration note in `README.md`.

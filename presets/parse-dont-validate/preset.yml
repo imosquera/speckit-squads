@@ -3,7 +3,7 @@ schema_version: "1.0"
 preset:
   id: "parse-dont-validate"
   name: "Parse, Don't Validate"
-  version: "1.0.0"
+  version: "1.0.1"
   description: "Overrides /speckit-constitution, /speckit-plan, and /speckit-implement to enforce the 'parse, don't validate' discipline across TypeScript and Python — untrusted input stays untyped-safe (`unknown` / unparsed) at the boundary, parsers return branded/nominal domain types, and a deterministic scanner gates completion by flagging `any`/`Any`, stray deserialization, boolean validators, and casts outside parser modules."
   author: "speckit-squads"
   repository: "local"

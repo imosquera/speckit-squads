@@ -138,5 +138,31 @@ else
   echo "  ok   the completion report admits the verified exit-4 case"
 fi
 
+# TypeScript 7 ships no JS compiler API (issue #113). A package on TS 7 must
+# fall through to a TS 5 install further out, and TS 7 alone must exit 3 with
+# the install hint instead of crashing on a missing createSourceFile.
+echo "TypeScript 7 resolution"
+TSR="$(mktemp -d)"
+mkdir -p "$TSR/node_modules/typescript" "$TSR/pkg/node_modules/typescript"
+echo 'module.exports = { version: "7.0.2" };' > "$TSR/pkg/node_modules/typescript/index.js"
+cat > "$TSR/node_modules/typescript/index.js" <<'JS'
+module.exports = {
+  version: "5.9.3", ScriptTarget: { Latest: 99 }, SyntaxKind: {},
+  // Proves this copy was picked; a real AST walk needs the real compiler.
+  createSourceFile: () => { throw new Error("resolved-ts5"); },
+};
+JS
+echo 'export const x = 1;' > "$TSR/pkg/a.ts"
+job='{"files":[{"path":"pkg/a.ts","parser":false}]}'
+out="$(cd "$TSR" && printf '%s' "$job" | node "$TS_HELPER" 2>&1)"
+if grep -q resolved-ts5 <<<"$out"; then echo "  ok   TS 7 in the package falls through to TS 5 at the root"
+else echo "  FAIL TS 7 in the package did not fall through to TS 5"; echo "$out" | sed 's/^/       /'; fail=1; fi
+rm -rf "$TSR/node_modules"
+out="$(cd "$TSR" && printf '%s' "$job" | node "$TS_HELPER" 2>&1)"; st=$?
+check "TS 7 alone exits 3" 3 "$st" "$out"
+if grep -q 'TS 5.x' <<<"$out"; then echo "  ok   the exit-3 message names the TS 5.x requirement"
+else echo "  FAIL the exit-3 message does not name the TS 5.x requirement"; echo "$out" | sed 's/^/       /'; fail=1; fi
+rm -rf "$TSR"
+
 [[ $fail -eq 0 ]] && echo "test-pdv-changeset: PASS" || echo "test-pdv-changeset: FAIL"
 exit $fail

@@ -34,13 +34,22 @@ function loadTypeScript(bases) {
   // Node walks up from there, so a monorepo package that carries its own
   // `node_modules/typescript` is found even though the driver runs from the
   // repo root (it must, for git paths). Then the cwd, then this helper.
+  //
+  // TypeScript 7 (the native compiler) ships no JS compiler API, so a copy
+  // without `createSourceFile` is skipped, not returned: a package on TS 7
+  // falls through to a TS 5 install further out, e.g. at the repo root.
+  const hasApi = (mod) => mod && typeof mod.createSourceFile === 'function';
   for (const base of bases) {
     try {
       const req = createRequire(path.join(base, '__pdv_resolve__.cjs'));
-      return req('typescript');
+      const mod = req('typescript');
+      if (hasApi(mod)) return mod;
     } catch (_) { /* try next base */ }
   }
-  try { return require('typescript'); } catch (_) { return null; }
+  try {
+    const mod = require('typescript');
+    return hasApi(mod) ? mod : null;
+  } catch (_) { return null; }
 }
 
 let ts = null;
@@ -187,8 +196,9 @@ function main() {
   ts = loadTypeScript(bases);
   if (!ts) {
     fail(3,
-      'cannot scan TypeScript — the `typescript` package is not installed in ' +
-      'this project. Add it (e.g. `npm i -D typescript`) so the parser can ' +
+      'cannot scan TypeScript — no `typescript` install with a compiler API ' +
+      'was found. TypeScript 7 ships none, so keep a TS 5.x install alongside ' +
+      'it (e.g. `npm i -D typescript@5` at the repo root) so the parser can ' +
       'build an AST.');
   }
 

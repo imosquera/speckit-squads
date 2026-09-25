@@ -256,7 +256,7 @@ _ensure_base_local() {
 # Reconcile `commit_exclude` paths before anything inspects the working tree.
 #
 # (a) The working tree is scrubbed by the shared handler — the same one
-# auto-commit.sh and clean.sh call, so no two steps can improvise a different
+# clean.sh calls, so no two steps can improvise a different
 # reconcile or forget to do one at all (issues #62, #55). Without it the squash
 # path below aborts on "working tree has uncommitted changes" over output a
 # background rebuild wrote by itself.

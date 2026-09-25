@@ -41,7 +41,7 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    is always mock-first (static fixtures, no network) and outranks its backend sibling in autopilot's picker,
                    while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
                    commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches — one handler,
-                   scrub-commit-exclude.sh, called by auto-commit/create-pr/clean, enforced even when auto_commit is off;
+                   scrub-commit-exclude.sh, called by create-pr/clean; auto-commit only holds them out of its commit (#109);
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json);
                    /speckit-git-clean refuses every destructive step until verify-landed.sh proves the branch's work is
                    on the base — a squash merge leaves no ancestry, so the branch's own touched paths (from its commit

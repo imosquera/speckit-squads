@@ -42,7 +42,8 @@ pr_session_footer: true
 #
 # `graphify-out/` is listed by default: a graph refresh running inside a
 # feature worktree would otherwise let `git add .` sweep the regenerated
-# snapshot onto the branch — the exact case these comments describe. Remove it only in a project whose graph is not repo-tracked.
+# snapshot onto the branch — the exact case these comments describe.
+# Remove it only in a project whose graph is not repo-tracked.
 commit_exclude:
   - graphify-out
 

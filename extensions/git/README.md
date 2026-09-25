@@ -13,10 +13,11 @@ This extension provides Git operations as an optional, self-contained module. It
 - **`commit_exclude`** — repo-tracked generated artifacts that CI rebuilds on the
   default branch. One handler, `scrub-commit-exclude.sh`, restores those paths to
   HEAD — unstaging, discarding tracked edits, dropping untracked output — and is
-  called by `auto-commit.sh`, `create-pr.sh` and `clean.sh` alike, **before the
-  auto-commit config is even read**, so the exclusion holds in a project whose
-  `auto_commit.default` is `false` (issue #62) and no phase improvises its own
-  recovery from a background rebuild's churn (issue #55). A rebuild in flight is
+  called by `create-pr.sh` and `clean.sh`, so the exclusion holds even where
+  `auto_commit.default` is `false` (issue #62) and no step improvises its own
+  recovery from a background rebuild's churn (issue #55). `auto-commit.sh` does
+  not scrub, so a graph rebuild survives across phases; it only holds the paths
+  out of its own commit (issue #109). A rebuild in flight is
   waited for rather than raced. `create-pr.sh` additionally resets the paths to
   the base branch, since the working tree says nothing about what already landed
   in the branch's history

@@ -1,7 +1,6 @@
 # graph-first-navigation
 
-Make knowledge-graph queries and the TypeScript language server the default way
-an agent navigates a codebase. Grep is demoted to a stated fallback, not
+Make knowledge-graph queries the default way an agent navigates a codebase. Grep is demoted to a stated fallback, not
 forbidden.
 
 ## The problem
@@ -11,9 +10,17 @@ structural questions — who calls this function, what imports this type, which
 modules read this collection. The graph stores those edges definitively, having
 been built by parsing rather than text matching, so grep is the slower and
 noisier instrument for exactly the questions the graph exists to answer. The
-same gap exists for the language server: agents run `tsc --noEmit` in a loop to
-discover breakage that `findReferences` would have enumerated before the first
-edit.
+same gap exists for typed refactors: agents edit blind and run `tsc --noEmit` in
+a loop to discover a blast radius that `graphify query "what calls <symbol>"`
+would have scoped before the first edit.
+
+A language server used to be part of this preset (LSP `findReferences` before
+every TypeScript rename, reached through a `PATH` shim). 2.0.0 dropped it:
+TypeScript 7 ships no `tsserver`, which `typescript-language-server` is built
+on, and the graph plus one run of the project's typecheck cover the same
+ground — the graph scopes the change, the compiler lists every call site the
+edit broke. Installing or reinstalling 2.0.0 removes a shim an older version
+left on `PATH`, and so does uninstalling.
 
 ## Why a new preset, not an extension of `implement-prelude-skills`
 
@@ -24,8 +31,8 @@ not stretch:
   `speckit.plan` and `speckit.tasks` as well — the plan is where callers and
   dependents have to be recorded, and it is upstream of implementation.
 - Its one job is *loading skills* before implementation, and it says so in its
-  own wrapper text. Folding a navigation discipline, a freshness gate, and an
-  LSP requirement into it would make "prelude skills" a lie and leave one file
+  own wrapper text. Folding a navigation discipline and a freshness gate
+  into it would make "prelude skills" a lie and leave one file
   that two unrelated concerns have to share.
 - The load-bearing half of this feature is a **harness** hook, not a Spec Kit
   layer at all. It needs its own `post-install.sh`; bolting that onto the
@@ -39,7 +46,7 @@ So: a separate preset, three thin wrappers, one shared script directory.
 | Piece | Where it lands | What it does |
 | --- | --- | --- |
 | `scripts/python/graph_first_guard.py` | `.specify/presets/graph-first-navigation/` | PreToolUse hook body |
-| `.claude/settings.json` entry | consumer project | fires the guard on `Grep\|Glob` |
+| `.claude/settings.json` entry | consumer project | fires the guard on `Grep\|Glob\|Bash` |
 | `CLAUDE.md` block | consumer project | the standing rule, sentinel-delimited |
 | `commands/speckit.{plan,tasks,implement}.md` | preset templates | the phase obligations |
 | `scripts/bash/graph-freshness.sh` | `.specify/presets/graph-first-navigation/` | the staleness verdict |
@@ -127,21 +134,9 @@ wrong. Grep is the right instrument for:
 - config values, env-var names, and anything inside `.env`/`.yml`/`.json`
 - generated, vendored, or minified files
 - languages and file formats the graph does not model
-- confirming an exact textual occurrence at a site the graph or LSP already
+- confirming an exact textual occurrence at a site the graph already
   identified
 - any project with no `graphify-out/` at all
-- any checkout where `command -v typescript-language-server` comes up empty:
-  the LSP tool spawns a bare command name **from the agent process**, so an
-  unprobed call fails with `ENOENT` rather than answering. Probe, then either
-  re-run `post-install.sh` (it installs the resolver shim on `PATH`) or fall
-  back and record which instrument the call sites came from. An
-  `export PATH=…` in a shell tool does **not** work: shell state does not
-  persist between tool calls, and the agent process's own `PATH` is fixed at
-  startup
-- a *negative* cross-file answer from a cold language server: it loads the
-  project lazily, so the first `findReferences` across files can under-report.
-  Warm it with a query in the target file, and cross-check "nothing else uses
-  this" against the graph
 
 Those are real gaps, not a hedge. Measured against a built graph: a config
 file is a node and so are its *keys* (`dependencies` at `web/package.json:L19`),

@@ -25,13 +25,20 @@ ok()   { echo "  ok: $1"; }
 bad()  { echo "  FAIL: $1" >&2; fail=1; }
 expect() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 
-# post-install.sh also registers a settings.json hook, a CLAUDE.md block and a
-# language-server shim; confine all of that to the temp dir.
+# post-install.sh also registers a settings.json hook and a CLAUDE.md block, and
+# both scripts remove the language-server shim a pre-2.0.0 install left on PATH;
+# confine all of that to the temp dir. PATH drops every directory holding a
+# typescript-language-server, so `command -v` can never reach this machine's own.
 mkdir -p "$TMP/home" "$TMP/bin" "$TMP/fakebin"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$TMP/fakebin/graphify"
 chmod +x "$TMP/fakebin/graphify"
-run_post() { HOME="$TMP/home" SPECKIT_LSP_BIN_DIR="$TMP/bin" bash "$POST" "$1" 2>&1; }
-run_pre()  { HOME="$TMP/home" bash "$PRE" "$1" 2>&1; }
+SAFE_PATH=""
+IFS=: read -r -a _dirs <<<"$PATH"
+for _d in "${_dirs[@]}"; do
+  [[ -n "$_d" && ! -e "$_d/typescript-language-server" ]] && SAFE_PATH="${SAFE_PATH:+$SAFE_PATH:}$_d"
+done
+run_post() { PATH="$SAFE_PATH" HOME="$TMP/home" SPECKIT_LSP_BIN_DIR="$TMP/bin" bash "$POST" "$1" 2>&1; }
+run_pre()  { PATH="$SAFE_PATH" HOME="$TMP/home" SPECKIT_LSP_BIN_DIR="$TMP/bin" bash "$PRE" "$1" 2>&1; }
 run_seed() { PATH="$TMP/fakebin:$PATH" bash "$SEED" "$1" 2>&1; }
 
 mkrepo() { # mkrepo <dir> [tracked]
@@ -100,6 +107,38 @@ run_post "$R" >/dev/null
 expect "precondition: excluded" '[[ "$(stanza_count "$R")" == 1 ]]'
 run_pre "$R" >/dev/null
 expect "stanza removed" '[[ "$(stanza_count "$R")" == 0 ]]'
+
+# The language server is gone (issue #114): nothing may install a shim, and both
+# scripts remove one an older install left — but never a real server binary.
+plant_shim() { # plant_shim <path>: what a pre-2.0.0 post-install.sh wrote
+  mkdir -p "$(dirname "$1")"
+  printf '%s\n' '#!/usr/bin/env bash' \
+    '# speckit:graph-first-navigation:lsp-shim — do not edit; reinstalled by post-install.sh' \
+    'exit 0' > "$1"; chmod +x "$1"
+}
+plant_real() { mkdir -p "$(dirname "$1")"; printf '#!/usr/bin/env node\n// real server\n' > "$1"; chmod +x "$1"; }
+
+echo "post-install: installs no shim, and removes an old one"
+R="$TMP/shim-post"; mkrepo "$R"
+out="$(run_post "$R")"
+expect "no shim installed" '[[ ! -e "$TMP/bin/typescript-language-server" && ! -e "$TMP/home/.local/bin/typescript-language-server" ]]'
+expect "hook matcher has no Edit|Write" '! grep -qF "Edit" "$R/.claude/settings.json" || ! command -v jq >/dev/null'
+expect "seeded CLAUDE.md names no LSP tool" '! grep -qiE "lsp|findReferences|language.server" "$R/CLAUDE.md"'
+plant_shim "$TMP/bin/typescript-language-server"
+plant_shim "$TMP/home/.local/bin/typescript-language-server"
+out="$(run_post "$R")"
+expect "old shim removed from SPECKIT_LSP_BIN_DIR" '[[ ! -e "$TMP/bin/typescript-language-server" ]]'
+expect "old shim removed from ~/.local/bin" '[[ ! -e "$TMP/home/.local/bin/typescript-language-server" ]]'
+expect "says so" 'grep -qF "removed the retired typescript-language-server shim" <<<"$out"'
+
+echo "pre-uninstall: removes an old shim, never a real server"
+R="$TMP/shim-pre"; mkrepo "$R"; run_post "$R" >/dev/null
+plant_shim "$TMP/bin/typescript-language-server"
+plant_real "$TMP/home/bin/typescript-language-server"
+run_pre "$R" >/dev/null
+expect "old shim removed" '[[ ! -e "$TMP/bin/typescript-language-server" ]]'
+expect "real server kept" '[[ -f "$TMP/home/bin/typescript-language-server" ]]'
+rm -f "$TMP/home/bin/typescript-language-server"
 
 if [[ $fail -eq 0 ]]; then echo "graph tracking check: ok"; else
   echo "graph tracking check: FAILED" >&2; fi

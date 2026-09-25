@@ -3,8 +3,8 @@ schema_version: "1.0"
 preset:
   id: "graph-first-navigation"
   name: "Graph-First Navigation"
-  version: "1.1.0"
-  description: "Makes knowledge-graph queries and the TypeScript language server the default way an agent navigates a codebase, with grep demoted to a stated fallback. Wraps /speckit-plan (records graph-derived callers and dependents per module in a mandatory ## Navigation section), /speckit-tasks (folds those edges into task coverage and ordering), and /speckit-implement (scopes renames, signature changes, and type changes with LSP findReferences before the first edit rather than by compiling in a loop). Ships the harness-level half too: a non-blocking PreToolUse hook on Grep|Glob, registered in the consumer's .claude/settings.json by post-install.sh, that fires only when graphify-out/ exists and only on structurally-shaped patterns. Every layer states the staleness rule (a stale graph means rebuild, not fall back to grep) and the exceptions where grep remains correct."
+  version: "2.0.0"
+  description: "Makes knowledge-graph queries the default way an agent navigates a codebase, with grep demoted to a stated fallback. Wraps /speckit-plan (records graph-derived callers and dependents per module in a mandatory ## Navigation section), /speckit-tasks (folds those edges into task coverage and ordering), and /speckit-implement (scopes renames, signature changes, and type changes with graphify query before the first edit, then catches every call site with one run of the project's typecheck rather than compiling in a loop). Ships the harness-level half too: a non-blocking PreToolUse hook on Grep|Glob|Bash, registered in the consumer's .claude/settings.json by post-install.sh, that fires only when graphify-out/ exists and only on structurally-shaped patterns. Every layer states the staleness rule (a stale graph means rebuild, not fall back to grep) and the exceptions where grep remains correct."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"
   license: "MIT"
@@ -22,22 +22,22 @@ provides:
     - name: "graph_first_guard.py"
       file: "scripts/python/graph_first_guard.py"
       executable: true
-      description: "PreToolUse hook body. Reads the hook payload on stdin and emits a non-blocking reminder (hookSpecificOutput.additionalContext) redirecting structural Grep/Glob calls to graphify query / the LSP tool. Fires only when graphify-out/graph.json exists, only on identifier-shaped patterns (never on whitespace/quoted/URL literals or non-code file scopes), and at most 3 times per session. Any internal error exits 0 silently."
-
-    - name: "lsp-shim.sh"
-      file: "scripts/bash/lsp-shim.sh"
-      executable: true
-      description: "Installed by post-install.sh onto the agent's PATH as `typescript-language-server`. Resolves a project-local language server at spawn time — cwd walk-up, then $CLAUDE_PROJECT_DIR, then the repo's main worktree via --git-common-dir (a feature worktree has no node_modules of its own), then npx. The LSP tool spawns a bare command name from the agent process, whose PATH is fixed at startup, so a name on that PATH is the only seam; the name is stable and the target is resolved per spawn, so nothing goes stale."
+      description: "PreToolUse hook body. Reads the hook payload on stdin and emits a non-blocking reminder (hookSpecificOutput.additionalContext) redirecting structural Grep/Glob calls (and grep/rg shelled through Bash) to graphify query. Fires only when graphify-out/graph.json exists, only on identifier-shaped patterns (never on whitespace/quoted/URL literals or non-code file scopes), and at most 3 times per session. Any internal error exits 0 silently."
 
     - name: "post-install.sh"
       file: "scripts/bash/post-install.sh"
       executable: true
-      description: "Run by install.sh after the preset is registered. Idempotently adds the Grep|Glob PreToolUse hook to the project's .claude/settings.json and the graph-first navigation rule to its CLAUDE.md (sentinel-delimited block). Presets cannot declare harness hooks, so this is the only seam for the enforcement half."
+      description: "Run by install.sh after the preset is registered. Idempotently adds the Grep|Glob|Bash PreToolUse hook to the project's .claude/settings.json and the graph-first navigation rule to its CLAUDE.md (sentinel-delimited block). Presets cannot declare harness hooks, so this is the only seam for the enforcement half. Also removes the typescript-language-server shim a pre-2.0.0 install put on PATH (via remove-lsp-shim.sh)."
+
+    - name: "remove-lsp-shim.sh"
+      file: "scripts/bash/remove-lsp-shim.sh"
+      executable: true
+      description: "Sourced by post-install.sh and pre-uninstall.sh. Removes the typescript-language-server shim installed by versions before 2.0.0 ($SPECKIT_LSP_BIN_DIR, ~/.local/bin, ~/bin, or wherever command -v resolves it) — only a regular file carrying the old shim's marker line, never a real language server binary."
 
     - name: "pre-uninstall.sh"
       file: "scripts/bash/pre-uninstall.sh"
       executable: true
-      description: "Run by uninstall.sh before the preset is removed. Reverses post-install.sh: drops the hook entry from .claude/settings.json and the sentinel block from CLAUDE.md, touching nothing else."
+      description: "Run by uninstall.sh before the preset is removed. Reverses post-install.sh: drops the hook entry from .claude/settings.json and the sentinel block from CLAUDE.md, touching nothing else, and removes a retired pre-2.0.0 language-server shim."
 
   templates:
     - type: "command"
@@ -56,13 +56,11 @@ provides:
       name: "speckit.implement"
       file: "commands/speckit.implement.md"
       strategy: "wrap"
-      description: "Composable wrapper for /speckit-implement that requires LSP findReferences/incomingCalls to scope renames, signature changes, and type changes before the first edit."
+      description: "Composable wrapper for /speckit-implement that scopes renames, signature changes, and type changes with graphify query before the first edit, then catches every call site with one run of the project's typecheck."
 
 tags:
   - "navigation"
   - "graphify"
   - "knowledge-graph"
-  - "lsp"
-  - "language-server"
   - "hooks"
   - "governance"

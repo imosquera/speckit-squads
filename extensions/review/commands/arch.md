@@ -26,7 +26,7 @@ Otherwise, you **MUST** execute the `{SCRIPT}` with `--json` to detect changed f
 
 ## Navigation
 
-Find the dependents of every changed public symbol before judging a contract change — a knowledge-graph query (`graphify query "what calls <symbol>"`) or LSP `findReferences` when available, grep only as a stated fallback. A contract change with no callers is a different finding from one with forty.
+Find the dependents of every changed public symbol before judging a contract change — a knowledge-graph query (`graphify query "what calls <symbol>"`), grep only as a stated fallback. A contract change with no callers is a different finding from one with forty.
 
 ## Core Review Responsibilities
 

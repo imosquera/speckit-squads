@@ -1,5 +1,5 @@
 ---
-description: "Scope renames, signature changes, and type changes with the language server before the first edit"
+description: "Scope renames, signature changes, and type changes with the graph before the first edit, then catch every call site with the typecheck"
 strategy: "wrap"
 ---
 
@@ -7,10 +7,9 @@ strategy: "wrap"
 
 This preset wraps `/speckit-implement`. It adds one obligation, before any
 implementation work starts: renames, signature changes, and type changes are
-scoped with the **language server**, not discovered afterwards by compiling in
-a loop. The language server has to be **reachable** for that to be a real
-obligation rather than a slogan, so step 2 probes for it and names the fallback
-when it is absent.
+scoped with the **knowledge graph** before the first edit, and every call site
+is then caught by **one** run of the project's typecheck — not discovered by
+editing blind and compiling in a loop.
 
 ## User Input
 
@@ -35,52 +34,38 @@ You **MUST** consider the user input before proceeding (if not empty).
    project the CWD resolves to, which from a worktree is regularly another one.
    `UNKNOWN` → freshness is unanswerable, not failed; carry on and treat only
    negative findings ("nothing else calls this") as unverified. `ABSENT` → no
-   graph in this project; fall back to the language server if the probe in
-   step 2 finds it, and to grep if it does not — and say which.
+   graph in this project; build one (`graphify update <this worktree>`), and
+   use grep only until it exists — and say which.
 
 2. **Enumerate the blast radius of every identity-changing edit** — every
    rename, signature change, type change, moved export, or deleted symbol the
    tasks call for.
 
-   **Establish availability with the probe, not with a failed call:**
+   Scope each one with the graph:
 
    ```bash
-   command -v typescript-language-server
+   graphify query "what calls <symbol>"
+   graphify query "what imports <module>"
+   graphify explain "<module>"
    ```
 
-   Not found → do not call the LSP tool; it fails with `ENOENT`. Use the graph
-   and grep, and record that provenance. `CLAUDE.md` has the bootstrap that makes
-   the probe succeed — this preset's `post-install.sh` puts a resolver shim under
-   that name on `PATH`; an `export PATH=…` from a shell tool never reaches the
-   agent process the LSP tool spawns from. Found → the LSP tool is the
-   **required** instrument:
-
-   - `findReferences` — every reference to the symbol
-   - `incomingCalls` — every caller of the function
-   - `goToImplementation` — every implementer of the interface
-   - `goToDefinition` — the one true definition, before assuming there is one
-
-   For module- and system-level questions ("what reads this collection", "what
-   depends on this package"), use the graph: `graphify query "what imports
-   <module>"`, `graphify explain "<module>"`.
-
-   **Warm it before believing a negative.** `typescript-language-server` loads a
-   project lazily, so the first cross-file `findReferences` can report "2
-   references across 1 file" for a symbol that has 26 across 4 once the callers
-   are loaded. Run a query inside the target file first, and cross-check any
-   "nothing else uses this" against `graphify query` before acting on it — the
-   same rule the graph's own freshness check exists to enforce.
+   The graph gives the shape of the blast radius — which modules and symbols
+   depend on the one changing — so the edit plan covers them before the first
+   keystroke. Never act on a *negative* answer ("nothing else calls this")
+   from a `STALE` or `UNKNOWN` graph; rebuild first.
 
 3. **Record the scope** in the implementation notes or the task's progress entry
-   before editing: symbol, instrument used (LSP operation or graph query), and
-   the number of sites found. That record is what makes the later "everything
+   before editing: symbol, instrument used (graph query, or grep with the
+   reason), and the number of sites found. That record is what makes the later "everything
    updated" claim checkable.
 
 4. **Then edit** — every site from the enumeration, in one pass.
 
-Running `tsc --noEmit` afterwards is a **verification** step, not a discovery
-step. If the compiler surfaces a breakage the scoping pass missed, treat it as a
-signal the pass was skipped or the graph was stale, and re-run it.
+5. **Then typecheck once** — the project's own `typecheck` script where it has
+   one (`package.json`), `tsc --noEmit` otherwise. The compiler lists every call
+   site the edit broke, precisely; fix those and re-run until clean. A breakage
+   the scoping pass did not predict is a signal the pass was skipped or the
+   graph was stale — re-run the pass, not just the compiler.
 
 ### Core Flow
 
@@ -88,19 +73,19 @@ signal the pass was skipped or the graph was stale, and re-run it.
 
 ### Failure Policy
 
-- Do not discover the blast radius by compiling in a loop when an LSP tool is
-  available. That is the failure mode this preset exists to remove.
-- Do not answer "is this symbol used anywhere else" with Grep while a language
-  server or a fresh graph can answer it. If neither is available, say so
-  explicitly in the completion report — an unverified answer must be labelled.
+- Do not discover the blast radius by editing blind and compiling in a loop.
+  Scope with the graph first; the typecheck confirms and pins down call sites.
+- Do not answer "is this symbol used anywhere else" with Grep while a fresh
+  graph can answer it. If none is available, say so explicitly in the
+  completion report — an unverified answer must be labelled.
 - A `STALE` graph is a rebuild instruction, never a licence to fall back to grep.
 
 ### When grep is still correct here
 
 Literal string and comment searches; config values and env-var names; text in
 generated, vendored, or minified files; strings in languages or file formats
-neither the graph nor the language server models; and confirming an exact
-textual occurrence at a site the graph or LSP already identified.
+the graph does not model; and confirming an exact textual occurrence at a site
+the graph already identified.
 
 ## Completion Report
 
@@ -108,5 +93,6 @@ On success, include:
 - The freshness verdict, and whether a rebuild was needed.
 - Each identity-changing edit, the instrument used to scope it, and the number
   of sites updated.
-- Anything scoped without an LSP/graph answer, and why.
+- Anything scoped without a graph answer, and why.
+- The typecheck result after the edit.
 - The normal `/speckit-implement` completion summary.

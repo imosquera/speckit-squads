@@ -64,9 +64,9 @@ Run the core plan flow first so the affected-module list exists.
    ```
 
    Where the module is TypeScript and the change is a rename, a signature
-   change, or a type change, also enumerate exact call sites with the language
-   server (`findReferences` / `incomingCalls` via the LSP tool). The graph gives
-   the shape of the blast radius; the language server gives the precise list.
+   change, or a type change, the graph gives the shape of the blast radius;
+   the implement phase pins down the precise call-site list with one run of the
+   project's typecheck after the edit.
 
 3. **Write `## Navigation` into `plan.md`**, one entry per module:
 
@@ -80,7 +80,7 @@ Run the core plan flow first so the affected-module list exists.
    - **Callers:** <symbol/module list, or "none">
    - **Dependents:** <modules that import or read this, or "none">
    - **Reads/writes:** <collections, tables, endpoints the graph reports, or "none">
-   - **Provenance:** graphify query | LSP findReferences | unverified (graph stale)
+   - **Provenance:** graphify query | unverified (graph stale)
    ```
 
    "none" is a real answer and must be recorded as one — but only from a fresh

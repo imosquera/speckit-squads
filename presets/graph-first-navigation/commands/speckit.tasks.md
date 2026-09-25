@@ -9,7 +9,7 @@ This preset wraps `/speckit-tasks`. It composes over whichever layer owns the
 task body (including `explicit-task-dependencies`, which **replaces** it). It
 adds one obligation: the plan's `## Navigation` section is the authority for
 which modules a task touches, and any structural question raised while writing
-tasks is answered by the graph or the language server, not by a text search.
+tasks is answered by the graph, not by a text search.
 
 ## User Input
 

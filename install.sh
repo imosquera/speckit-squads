@@ -85,7 +85,7 @@ shopt -s nullglob
 #   7  progress-report             dashboard card wrap
 #   8  implement-prelude-skills    prelude runs just before implementation
 #   9  parse-dont-validate         discipline + AST gate hug the implementation
-#  12  graph-first-navigation      LSP/graph scoping pass sits closest to the first edit
+#  12  graph-first-navigation      graph scoping pass sits closest to the first edit
 #                                  (9 is not free: parse-dont-validate's priority also
 #                                   orders the /speckit-constitution pair)
 #  20  explicit-task-dependencies  `replace` — the executor base, innermost
@@ -104,7 +104,7 @@ preset_priority() {
     implement-prelude-skills)   echo 8  ;;
     ponytail-plan)              echo 8  ;;  # speckit.plan only: outside library-research (10) and parse-dont-validate (9)
     parse-dont-validate)        echo 9  ;;
-    tdd)                        echo 11 ;;  # Red-Green-Refactor hugs the implementation, inside pdv, outside graph/LSP scoping
+    tdd)                        echo 11 ;;  # Red-Green-Refactor hugs the implementation, inside pdv, outside graph scoping
     graph-first-navigation)     echo 12 ;;
     explicit-task-dependencies) echo 20 ;;
     *)                          echo 10 ;;

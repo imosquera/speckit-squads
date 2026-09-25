@@ -631,16 +631,17 @@ on first run in a project that still tracks it, so the migration is automatic.
   `node_modules` scans while the driver stays anchored at the repo root for git
   paths — no `NODE_PATH` bridging. `./test-pdv-changeset.sh`
   is the check
-- `graph-first-navigation` — makes knowledge-graph queries and the TypeScript
-  language server the default navigation instruments and demotes grep to a
-  **stated** fallback. Two halves, and the harness half is the one that binds:
-  a **PreToolUse hook on `Grep|Glob`** written into the consumer's
+- `graph-first-navigation` — makes knowledge-graph queries the default
+  navigation instrument and demotes grep to a **stated** fallback. Two halves,
+  and the harness half is the one that binds:
+  a **PreToolUse hook on `Grep|Glob|Bash`** written into the consumer's
   `.claude/settings.json`, which fires regardless of what any agent decides,
   plus `wrap` layers on `speckit.plan` (a mandatory `## Navigation` section
   recording each touched module's callers and dependents *as the graph reported
   them*), `speckit.tasks` (fold those edges into task coverage and ordering),
-  and `speckit.implement` (scope renames/signature/type changes with LSP
-  `findReferences` **before** the first edit, not by compiling in a loop).
+  and `speckit.implement` (scope renames/signature/type changes with
+  `graphify query` **before** the first edit, then run the project's typecheck
+  once to catch every call site, not by compiling in a loop).
   Deliberately a new preset rather than an extension of
   `implement-prelude-skills`: that one is registered against `speckit.implement`
   alone and exists to load skills — see `presets/graph-first-navigation/README.md`
@@ -656,34 +657,21 @@ on first run in a project that still tracks it, so the migration is automatic.
   **`built_at_commit` is megabytes into `graph.json`, not at the top** — reading
   the first 8KB finds nothing. The guard mmaps and byte-scans; `graph-freshness.sh`
   uses `grep -m1 -oa`. Neither parses the JSON.
-  **The language server is reached by a resolver shim, never by `export PATH`
-  and never by a symlink into a project.** The LSP tool spawns
-  `typescript-language-server` as a bare command name from the agent process, so
-  a copy in `node_modules/.bin` is invisible to it and a shell tool's `export`
-  cannot change that — shell state does not persist between calls, the agent's
-  own `PATH` is fixed at startup, a hook runs in its own process, and `env` in
-  `.claude/settings.json` takes literal strings with no `${PATH}` expansion
-  (issue #71). A name on the inherited `PATH` is the only seam, so
-  `post-install.sh` installs `lsp-shim.sh` under that name. The shim resolves the
-  server **per spawn** — cwd walk-up, then `$CLAUDE_PROJECT_DIR`, then the repo's
-  main worktree via `--git-common-dir`, then `npx` — which is what makes one file
-  correct for every repo *and* every feature worktree: a worktree has no
-  `node_modules` of its own, and leg 3 finds its own repo's copy rather than some
-  other project's. A symlink is the wrong shape for exactly that reason: it dies
-  on the next `npm ci` in the project it points into, and takes the language
-  server away from **every** repo on the machine at once — silently, since the
-  `command -v` probe simply starts coming up empty. The wrong-TypeScript half of
-  that warning is narrower than it reads and was overstated until #67's
-  follow-up: `findTypescriptVersion` prefers the *opened* workspace's own
-  `node_modules/typescript`, so the linked project's copy is loaded only in a
-  workspace that has none. Fragility is the argument, not version leakage. An
-  existing non-shim binary on `PATH` is left
-  alone unless `SPECKIT_LSP_SHIM=force`; `SPECKIT_LSP_BIN_DIR` picks the install
-  dir. `pre-uninstall.sh` deliberately does **not** remove the shim — it is
-  machine-level and shared by every project that installed the preset.
-  The seeded block also warns that a **cold** language server loads the project
-  lazily, so a first cross-file `findReferences` can under-report ("2 references"
-  for a symbol with 26) — warm it, and cross-check negatives against the graph.
+  **There is no language server any more (2.0.0, issue #114).** The preset
+  used to require `typescript-language-server` on the agent's `PATH`, reached
+  through an installed resolver shim, and told the agent to run LSP
+  `findReferences` before every TypeScript rename. TypeScript 7 ships no
+  `tsserver`, which that server is built on, and the shim cost an install hook,
+  an uninstall hook and pages of `ENOENT`/cold-server guidance. The graph scopes
+  a rename (`graphify query "what calls <symbol>"`) and one run of the
+  project's typecheck lists every call site it broke. `post-install.sh` and
+  `pre-uninstall.sh` both source `remove-lsp-shim.sh`, which deletes a shim an
+  older install left — only a regular file carrying the old
+  `speckit:graph-first-navigation:lsp-shim` marker, looked for in
+  `$SPECKIT_LSP_BIN_DIR`, `~/.local/bin`, `~/bin` and wherever `command -v`
+  resolves the name, so a real server binary is never touched. The hook's
+  "first TypeScript edit" reminder went with it, and the matcher is back to
+  `Grep|Glob|Bash`.
   **The staleness rule is the one legitimate reason to break the rule, and it
   resolves the other way:** a stale graph means **rebuild** (`graphify update`),
   never fall back to grep. Every layer says so.

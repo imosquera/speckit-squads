@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: keep structural navigation on the graph, and typed refactors on the LSP.
+"""PreToolUse hook: keep structural navigation on the graph.
 
 Reads the Claude Code hook payload on stdin and emits a NON-BLOCKING reminder in
-three situations:
+two situations:
 
   1. A structural search — Grep/Glob, or a `grep`/`rg` shelled through Bash —
      where the question ("what calls X", "who imports Y") is one the knowledge
@@ -10,9 +10,6 @@ three situations:
   2. The same, but the project has NO graph yet (a fresh worktree). The answer
      there is `graphify update <path>`, not a fallback to grep. This is the case
      the old "when graphify-out/ exists" phrasing silently exempted.
-  3. The first edit to a TypeScript file in a session: a rename or signature
-     change should be scoped with LSP findReferences/incomingCalls BEFORE the
-     edit, not with `tsc --noEmit` in a loop afterwards.
 
 Survivability rules (a hook that cries wolf gets disabled within a day):
 
@@ -47,7 +44,7 @@ from pathlib import Path
 
 # Per-category budgets. "absent" is the loudest signal and the cheapest to act
 # on (one command), so it gets fewer fires, not more.
-BUDGETS = {"structural": 3, "absent": 2, "typescript": 1}
+BUDGETS = {"structural": 3, "absent": 2}
 
 # Patterns whose *shape* says "I am looking for a symbol", not "I am looking for
 # a string". At least one identifier-ish token, no whitespace, no quotes.
@@ -59,7 +56,6 @@ CODE_EXTS = {
     "php", "swift", "kt", "kts", "c", "h", "cc", "cpp", "hpp", "cs", "scala",
     "m", "mm", "vue", "svelte",
 }
-TS_EXTS = {".ts", ".tsx", ".mts", ".cts"}
 
 SEARCH_BINS = {"grep", "egrep", "fgrep", "rg", "ripgrep", "ack", "ag"}
 
@@ -144,11 +140,6 @@ def graph_is_expected_here(root: Path) -> bool:
         return False
     primary = Path(common).parent
     return (primary / "graphify-out" / "graph.json").is_file()
-
-
-def touches_typescript(tool_input: dict) -> bool:
-    path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-    return Path(str(path)).suffix in TS_EXTS
 
 
 # ------------------------------------------------------------------ freshness
@@ -252,11 +243,9 @@ def message_structural(tool: str, pattern: str, note: str) -> str:
         "\n"
         f"{DECISION_TABLE}"
         "\n"
-        "For a TypeScript rename or signature change, scope it with the LSP tool "
-        "(findReferences / incomingCalls / goToDefinition) before the first edit "
-        "— but only once `command -v typescript-language-server` finds it; "
-        "unprobed, that call fails with ENOENT. See CLAUDE.md for the "
-        "project-local bootstrap."
+        "For a TypeScript rename or signature change, scope it with "
+        "`graphify query \"what calls <symbol>\"` before the first edit, then "
+        "run the project's typecheck once to catch every call site."
         f"{note}\n"
         "\n"
         "This is a reminder, not a block — the search you asked for is running."
@@ -278,24 +267,6 @@ def message_absent(root: Path, tool: str, pattern: str) -> str:
         f"{DECISION_TABLE}"
         "\n"
         "This is a reminder, not a block — the search you asked for is running."
-    )
-
-
-def message_typescript(path: str) -> str:
-    return (
-        f"Typed-refactor reminder (first TypeScript edit this session: {path}).\n"
-        "\n"
-        "If this edit renames a symbol, changes a signature, or changes a type, "
-        "scope it FIRST with the LSP tool — findReferences / incomingCalls / "
-        "goToDefinition — rather than discovering the breakage afterwards by "
-        "running `tsc --noEmit` in a loop. Probe first — "
-        "`command -v typescript-language-server`; unfound, the LSP tool fails "
-        "with ENOENT and CLAUDE.md has the project-local bootstrap. "
-        "For module-level blast radius, "
-        "`graphify query \"what calls <symbol>\"` covers the same ground across "
-        "languages the language server does not load.\n"
-        "\n"
-        "This is a reminder, not a block — the edit you asked for is running."
     )
 
 
@@ -329,19 +300,6 @@ def main() -> int:
     graph = root / "graphify-out" / "graph.json"
     d = state_dir(str(payload.get("session_id") or ""))
 
-    # ---- the TypeScript half
-    if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
-        if not touches_typescript(tool_input):
-            return 0
-        if already_fired_for(d, tool, tool_input) or budget_spent(d, "typescript"):
-            return 0
-        emit(
-            "typed refactor: scope renames/signature changes with LSP before editing",
-            message_typescript(str(tool_input.get("file_path") or "")),
-        )
-        return 0
-
-    # ---- the search half
     if tool == "Grep":
         fires = structural_grep(tool_input)
         pattern = tool_input.get("pattern") or ""
@@ -374,7 +332,7 @@ def main() -> int:
     if budget_spent(d, "structural"):
         return 0
     emit(
-        "graph-first: structural question — prefer `graphify query` / LSP over grep",
+        "graph-first: structural question — prefer `graphify query` over grep",
         message_structural(tool, pattern[:120], freshness_note(root, graph)),
     )
     return 0

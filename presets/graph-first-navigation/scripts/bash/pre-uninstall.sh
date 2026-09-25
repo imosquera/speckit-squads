@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Undo what post-install.sh registered in a consumer project: the PreToolUse
 # hook entry and the CLAUDE.md sentinel block. Leaves every other setting and
-# every other line of CLAUDE.md untouched.
+# every other line of CLAUDE.md untouched. Also removes the language-server shim
+# an install older than 2.0.0 left on PATH.
 #
 # Usage: pre-uninstall.sh <project-dir>
 set -euo pipefail
 
 PROJECT_DIR="${1:?usage: pre-uninstall.sh <project-dir>}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
 SETTINGS=".claude/settings.json"
@@ -70,10 +72,8 @@ PYEOF
   fi
 fi
 
-# The typescript-language-server shim is machine-level and shared by every
-# project that installed this preset, so one project's uninstall must not remove
-# it. Say where it is instead.
-if shim="$(command -v typescript-language-server 2>/dev/null)" && \
-   grep -qF "speckit:graph-first-navigation:lsp-shim" "$shim" 2>/dev/null; then
-  echo "  note: the language-server shim at $shim is shared across projects — left in place (rm it yourself if nothing else uses it)"
-fi
+# Versions before 2.0.0 installed a typescript-language-server shim onto PATH.
+# The preset no longer uses one, so nothing else depends on it: remove it, but
+# only a file that carries the shim's marker (never a real server binary).
+# shellcheck source=remove-lsp-shim.sh
+. "$SCRIPT_DIR/remove-lsp-shim.sh"

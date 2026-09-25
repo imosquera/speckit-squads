@@ -557,6 +557,20 @@ cases).
 If a question is **irreducibly ambiguous AND a wrong guess is irreversible** (e.g.
 "delete which production dataset?"), that's a hard blocker — see Stop conditions.
 
+## Step 4.5 — `tooling` / `p3` skip plan and tasks
+
+```bash
+gh issue view "$N" --json labels --jq '[.labels[].name] | any(. == "tooling" or . == "p3")'
+```
+
+`true` → **skip Steps 5–7**: do not run `/speckit-plan`, `/speckit-tasks` or
+`/speckit-implement` (implement's prerequisite check hard-requires `plan.md` and
+`tasks.md`). Implement directly against `spec.md` in the worktree, then apply Step 7's
+bullets (gates green, progress comment, `after_implement` hooks) and rejoin at Step 8.
+Say "`tooling`/`p3`: skipping plan and tasks" in the progress comment.
+
+`false` → Step 5 as written.
+
 ## Step 5 — Plan
 
 Run `/speckit-plan`. It gates on the Constitution Check. To avoid the known
@@ -634,6 +648,9 @@ gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
 ```
 
 Then report the same summary to the user, leading with the PR URL.
+
+Waiting on CI? Use `gh pr checks <n> --watch --fail-fast` so the first failure
+returns immediately instead of after every check finishes.
 
 ## Stop conditions (hard blockers only)
 

@@ -257,12 +257,16 @@ function file(name: string, keep: "head" | "tail"): string {
 // project's dependency list. None found is a fallback, not an error.
 const CACHE = join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "speckit-squads", "jev");
 
+// Only asks Bun to resolve from a directory whose node_modules really holds the
+// SDK: from anywhere else, bun auto-installs whatever the registry has.
 function resolveSdk(): string | undefined {
-  for (const base of [process.cwd(), dirname(import.meta.path), CACHE]) {
-    try {
-      const p = Bun.resolveSync(SDK, base);
-      if (existsSync(p)) return p;
-    } catch { /* next */ }
+  for (const start of [process.cwd(), dirname(import.meta.path), CACHE]) {
+    for (let dir = start; ; dir = dirname(dir)) {
+      if (existsSync(join(dir, "node_modules", SDK, "package.json"))) {
+        try { return Bun.resolveSync(SDK, dir); } catch { break; }
+      }
+      if (dir === dirname(dir)) break;
+    }
   }
 }
 

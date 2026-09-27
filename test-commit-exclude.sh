@@ -5,7 +5,8 @@
 # pathspec, which never runs where `auto_commit.default` is false — so the
 # derived data the list exists to keep off a branch landed on it anyway (issue
 # #62), and every phase improvised its own recovery from a background rebuild's
-# churn (issue #55).
+# churn (issue #55). auto-commit.sh no longer scrubs, so a graph rebuild
+# survives across phases (issue #109).
 #
 # Usage: ./test-commit-exclude.sh
 set -uo pipefail
@@ -76,17 +77,22 @@ check staged "index carries no excluded path" "" \
 check staged "real work still staged" "app.txt" \
   "$(git -C "$R" diff --cached --name-only -- app.txt)"
 
-echo "4. the hook enforces it even with auto_commit disabled (issue #62)"
-# auto-commit.sh scrubs BEFORE reading the config, so `default: false` — which
-# exits 0 without committing — must still leave the excluded path clean.
+echo "4. auto-commit leaves excluded paths on disk and out of the commit (issue #109)"
 R="$TMP/r4"; make_repo "$R"
 cp "$ROOT/extensions/git/scripts/bash/auto-commit.sh" \
    "$R/.specify/extensions/git/scripts/bash/"
+printf 'commit_exclude:\n  - graphify-out\nauto_commit:\n  default: true\n' \
+  > "$R/.specify/extensions/git/git-config.yml"
 echo '{"nodes":[7]}' > "$R/graphify-out/graph.json"
+echo '{"cost":1}' > "$R/graphify-out/new.json"
+echo 'edited' > "$R/app.txt"
+git -C "$R" add -A >/dev/null            # already staged by the flow
 (cd "$R" && "$R/.specify/extensions/git/scripts/bash/auto-commit.sh" after_plan >/dev/null 2>&1)
-check auto-commit "excluded path restored despite auto_commit: false" \
-  '{"nodes":[]}' "$(cat "$R/graphify-out/graph.json")"
-check auto-commit "no commit made" "base" "$(git -C "$R" log -1 --pretty=%s)"
+check auto-commit "modified graph survives" '{"nodes":[7]}' "$(cat "$R/graphify-out/graph.json")"
+check auto-commit "untracked graph output survives" '{"cost":1}' "$(cat "$R/graphify-out/new.json")"
+check auto-commit "real work committed" "app.txt" "$(git -C "$R" show --name-only --pretty= HEAD -- app.txt)"
+check auto-commit "commit carries no excluded path" "" \
+  "$(git -C "$R" show --name-only --pretty= HEAD -- graphify-out)"
 
 echo "5. an empty commit_exclude list is a silent no-op"
 R="$TMP/r5"; make_repo "$R" "  []"
@@ -123,8 +129,13 @@ contains lock "Waiting for a rebuild in flight" "$out"
 contains lock "scrubbing anyway" "$out"
 check lock "still scrubs after the timeout" '{"nodes":[]}' "$(cat "$R/graphify-out/graph.json")"
 
-echo "9. every caller reaches the one handler"
-for f in auto-commit.sh create-pr.sh clean.sh; do
+echo "9. create-pr and clean reach the one handler; auto-commit does not (issue #109)"
+if grep -q 'scrub-commit-exclude.sh' "$ROOT/extensions/git/scripts/bash/auto-commit.sh"; then
+  echo "  FAIL: auto-commit.sh still calls scrub-commit-exclude.sh" >&2; fail=1
+else
+  echo "  ok: auto-commit.sh does not scrub"
+fi
+for f in create-pr.sh clean.sh; do
   if grep -q 'scrub-commit-exclude.sh' "$ROOT/extensions/git/scripts/bash/$f"; then
     echo "  ok: $f calls scrub-commit-exclude.sh"
   else

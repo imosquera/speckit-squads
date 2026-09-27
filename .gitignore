@@ -145,3 +145,6 @@ vite.config.ts.timestamp-*
 # Python bytecode (a .pyc for the old preflight-issues.py was committed by accident in #40)
 __pycache__/
 *.pyc
+
+# macOS Finder metadata
+.DS_Store

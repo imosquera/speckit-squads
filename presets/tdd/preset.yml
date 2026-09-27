@@ -3,8 +3,8 @@ schema_version: "1.0"
 preset:
   id: "tdd"
   name: "Test-Driven Development"
-  version: "1.1.1"
-  description: "Wraps /speckit-implement in the Red-Green-Refactor cycle: list the scenarios, then for each one write a failing test, watch it fail for the expected reason, write the simplest code that passes, and refactor with the suite green. Gated at the end by a full test run and check-tests-accompany.ts, which fails when production code changed with no test change. Optional Jev assist (jev-judge.ts, @typesafe-ai/sdk) answers the per-cycle judgment calls when TYPESAFE_API_KEY is set. See presets/tdd/README.md."
+  version: "1.2.0"
+  description: "Wraps /speckit-implement in the Red-Green-Refactor cycle: list the scenarios, then for each one write a failing test, watch it fail for the expected reason, write the simplest code that passes, and refactor with the suite green. Gated at the end by a full test run and check-tests-accompany.ts, which fails when production code changed with no test change. Optional Jev assist (the shared jev.ts helper, @typesafe-ai/sdk installed lazily on first use) answers the per-cycle judgment calls when TYPESAFE_API_KEY is set; SPECKIT_JEV=off disables it. See presets/tdd/README.md."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"
   license: "MIT"
@@ -18,12 +18,9 @@ provides:
       file: "scripts/ts/check-tests-accompany.ts"
       command: "speckit.implement"
       executable: true
-    - name: "jev-judge.ts"
-      file: "scripts/ts/jev-judge.ts"
+    - name: "jev.ts"
+      file: "scripts/ts/jev.ts"
       command: "speckit.implement"
-      executable: true
-    - name: "post-install.ts"
-      file: "scripts/ts/post-install.ts"
       executable: true
     - name: "selftest-tdd.ts"
       file: "scripts/ts/selftest-tdd.ts"

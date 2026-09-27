@@ -10,7 +10,7 @@ presets/<id>/      preset.yml    + commands/ + templates/
 install.ts         install every extension+preset into a Spec Kit project
 uninstall.ts       remove every extension+preset from a Spec Kit project
 check-cli-usage.ts validate `specify <verb>` calls AND every script path in command files
-scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.ts) + check-script-paths.ts
+scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.ts) + check-script-paths.ts + jev.ts (the canonical Jev helper, see *Jev*)
 ```
 
 **Installed layout is not the same shape.** In a consumer project, `specify` copies each
@@ -612,19 +612,12 @@ on first run in a project that still tracks it, so the migration is automatic.
   pass). Red-before-green itself is recorded per scenario in the report, not
   checked mechanically. That same release made tests mandatory in
   `explicit-task-dependencies`' tasks template.
-  **Jev assist (1.1.0, issue #116)** is optional: `jev-judge.ts` answers the
-  four bounded judgment calls (Red reason, baseline regression, scenario
-  coverage, test exemption) with TypeSafe's Jev through `@typesafe-ai/sdk`.
-  Exit 0 acts on the decision; exit 3 (no `TYPESAFE_API_KEY`, no SDK, any API
-  error, confidence under 0.85, `none_of_these`) means decide exactly as before
-  Jev, and every call's `record` goes into the per-scenario record.
-  `red-reason` runs in **shadow mode** until `TDD_JEV_AUTOMATE_RED=1`: it may
-  only decide after `measure` has replayed past Red records. The key comes from
-  the environment only. The SDK is installed by `post-install.ts` into
-  `~/.cache/speckit-squads/tdd-jev`, never into `.specify/` (consumers commit
-  it) or the project's dependencies. The whole preset is TypeScript on bun, and
-  `install.ts` runs a `scripts/ts/post-install.ts` the same way it runs a
-  `scripts/ts/post-install.ts`. `selftest-tdd.ts` is the check
+  **Jev assist (issue #116)** is optional: the shared `jev.ts` (see *Jev* below)
+  answers the four bounded judgment calls (`red-reason`, `baseline`, `covers`,
+  `exempt`), and every call's `record` goes into the per-scenario record.
+  `red-reason` is gated: shadow mode until `SPECKIT_JEV_AUTOMATE=red-reason`
+  (or the legacy `TDD_JEV_AUTOMATE_RED=1`). `selftest-tdd.ts` checks the gate;
+  `scripts/selftest-jev.ts` checks the cases
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
   (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the
@@ -673,6 +666,41 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
 
 `spec-minimal` 2.0.0 is a breaking split: UI preview → `spec-ui-preview`, issue sync → the `git` extension. See the migration note in `README.md`.
+
+## Jev: bounded judgment calls
+
+`scripts/jev.ts` asks TypeSafe's Jev (through `@typesafe-ai/sdk`) the yes/no and
+pick-one questions the pipeline used to pause on, and is the **canonical copy**:
+every item that asks Jev ships a byte-identical `scripts/ts/jev.ts`, because
+items install into a consumer independently. `check-script-paths.ts` fails the
+install on a drifted copy — edit `scripts/jev.ts`, then `cp` it over every copy.
+
+| Case | Asked by | Acts on its own |
+|---|---|---|
+| `red-reason`, `baseline`, `covers`, `exempt` | `tdd` | all but `red-reason` (gated) |
+| `duplicate` | `git` duplicate scan | `distinct` drops a candidate; `duplicate` is gated (a recommendation until automated) |
+| `priority`, `kind`, `layer` | `git` `/speckit-git-issue` | yes — the recommended answer when a human is asked |
+| `fast-path` | `autopilot` Step 2.5 | yes; never over the hard rules (`epic`, spreading past bounds) |
+| `finding`, `same-finding` | `review` coordinator | yes, except dropping a `false_positive` (gated) |
+| `spec-change` | `stale-tasks-guard` | only `wording` (p ≤ 0.15), which skips the halt |
+| `applies-ui`, `applies-library` | `button-design`, `spec-ui-preview`, `library-research` | only `skip` |
+
+The contract is the same everywhere: exit 0 acts on `decision`; exit 3 means
+decide **exactly as before Jev** (no `TYPESAFE_API_KEY`, `SPECKIT_JEV=off`, no
+SDK, any API error, confidence under 0.85, `none_of_these`, or a gated verdict
+in shadow mode); every call prints a `record` that goes into the caller's
+report. Questions stay bounded: one-sentence criteria, and every Choice carries
+`none_of_these`. A gated verdict decides only once its case is in
+`SPECKIT_JEV_AUTOMATE` (comma list or `all`), which is lifted only after
+`jev.ts measure --case C --records F` has replayed past records. The key comes
+from `TYPESAFE_API_KEY`, else the user's key file (`$XDG_CONFIG_HOME/typesafe/key`,
+then `~/.typesafe_key`) — so Jev is on wherever that file exists, including
+launchd runs that never source a shell profile — and never from an argument, a
+log line, or a file in the repo. The SDK is resolved from the
+project, then beside the script, then `~/.cache/speckit-squads/jev`, which the
+first use fills with `bun add` — never `.specify/` (consumers commit it) or the
+project's dependencies. `scripts/selftest-jev.ts` drives every case through the
+real SDK against a fake server and checks the copies.
 
 ## When you add a new extension or preset
 

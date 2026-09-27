@@ -3,8 +3,8 @@ schema_version: "1.0"
 extension:
   id: "review"
   name: "Review Extension"
-  version: "2.0.0"
-  description: "Multi-agent code review with one engine for every scope — the current feature branch, the working directory, or a GitHub pull request (/speckit-review-run --pr N). Specialized agents cover code quality (incl. security and performance), architecture & API design, comments, tests, error handling, type design, and simplification; the simplify agent runs the `ponytail` review and audit skills (DietrichGebert/ponytail marketplace) when available, and the coordinator applies their behaviour-preserving cuts unless --no-fix. 2.0.0 removes /speckit-review-pr: use /speckit-review-run --pr N."
+  version: "2.1.0"
+  description: "Multi-agent code review with one engine for every scope — the current feature branch, the working directory, or a GitHub pull request (/speckit-review-run --pr N). Specialized agents cover code quality (incl. security and performance), architecture & API design, comments, tests, error handling, type design, and simplification; the simplify agent runs the `ponytail` review and audit skills (DietrichGebert/ponytail marketplace) when available, and the coordinator applies their behaviour-preserving cuts unless --no-fix. 2.0.0 removes /speckit-review-pr: use /speckit-review-run --pr N. 2.1.0 adds optional Jev assist (the shared jev.ts helper, @typesafe-ai/sdk installed lazily on first use) to dedupe and triage findings when TYPESAFE_API_KEY is set; SPECKIT_JEV=off disables it."
   author: "beadbits"
   repository: "local"
   license: "MIT (upstream agents) and same-as-project (arch command, PR mode)"
@@ -31,6 +31,10 @@ provides:
   scripts:
     - name: "detect-changed-files.ts"
       file: "scripts/ts/detect-changed-files.ts"
+      executable: true
+    - name: "jev.ts"
+      file: "scripts/ts/jev.ts"
+      command: "speckit.review.run"
       executable: true
 
   commands:

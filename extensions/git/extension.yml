@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: git
   name: "Git Branching Workflow"
-  version: "1.8.0"
+  version: "1.9.0"
   description: "Feature branch creation, worktree management, feature cleanup, auto-commit hooks, and PR creation"
   author: spec-kit-core
   repository: https://github.com/github/spec-kit
@@ -76,6 +76,11 @@ provides:
       executable: true
     - name: find-duplicate-issues.ts
       file: scripts/ts/find-duplicate-issues.ts
+      executable: true
+      command: speckit.git.issue
+    # Byte-identical copy of the repo-root scripts/jev.ts (never edit here).
+    - name: jev.ts
+      file: scripts/ts/jev.ts
       executable: true
       command: speckit.git.issue
     # Libraries sourced by the scripts above; no command invokes them directly.

@@ -49,6 +49,15 @@ when the file has uncommitted local changes), not raw mtime — a plain mtime co
 would be defeated by `git checkout`/clone resetting both files' mtimes to checkout time
 in a fresh worktree.
 
+**Jev assist (wording-only edits).** Before reporting stale, the script hands the
+`spec.md` diff since `tasks.md`'s last commit to its sibling `jev.ts` (`spec-change`).
+When Jev is confident the diff only changes wording, the script exits `0` with a
+`stale-tasks-guard: ... only in wording — proceeding (jev ...)` line on stderr — record
+that line in your report and proceed. Any other answer, a dirty or uncommitted `tasks.md`,
+an empty diff, or any Jev failure keeps the exit-`1` halt (with the Jev record appended to
+the banner when Jev answered). `SPECKIT_JEV=off` disables the assist entirely; `--force`
+works exactly as before.
+
 ## Failure Policy
 
 - Exit `1` from the script is a hard stop before the implementation loop starts for this

@@ -18,6 +18,8 @@ function run(cmd: string[], cwd: string, env: Record<string, string | undefined>
   const base: Record<string, string | undefined> = { ...process.env };
   delete base.SPECIFY_FEATURE;
   delete base.SPECIFY_FEATURE_DIRECTORY;
+  // The operator's shell may export TYPESAFE_API_KEY: never reach the real API.
+  base.SPECKIT_JEV = "off";
   const r = Bun.spawnSync(cmd, { cwd, env: { ...base, ...env }, stdout: "pipe", stderr: "pipe" });
   return { code: r.exitCode ?? -1, out: r.stdout.toString(), err: r.stderr.toString() };
 }
@@ -101,6 +103,52 @@ try {
 
   // 8. SPECIFY_FEATURE overrides the branch.
   check("SPECIFY_FEATURE overrides branch", guard(repo, { SPECIFY_FEATURE: "nope" }), 0, null, /for nope; skipping guard\n$/);
+
+  // 9. Jev assist against a fake Jev. Async spawns: a sync one would block the
+  // in-process server. Repo state from 6/7: tasks.md committed and clean,
+  // spec.md dirty and newer, so a non-empty diff exists.
+  let reply: "ok" | "500" = "ok", p = 0.5, hits = 0;
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      hits++;
+      if (reply === "500") return new Response('{"error":"boom"}', { status: 500 });
+      return Response.json({ model: "jev-fake", answers: { q: { type: "noul", noul: p } }, usage: { input_tokens: 1, output_tokens: 1 } });
+    },
+  });
+  const jevGuard = async (): Promise<Result> => {
+    const env: Record<string, string | undefined> = {
+      ...process.env, SPECKIT_JEV: "", SPECKIT_JEV_AUTOMATE: "",
+      TYPESAFE_BASE_URL: server.url.origin, TYPESAFE_API_KEY: "test-key",
+    };
+    delete env.SPECIFY_FEATURE;
+    delete env.SPECIFY_FEATURE_DIRECTORY;
+    const proc = Bun.spawn(["bun", GUARD], { cwd: repo, env, stdout: "pipe", stderr: "pipe" });
+    const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+    return { code: await proc.exited, out, err };
+  };
+  const STALE_JEV = /^STALE TASKS DETECTED\n[\s\S]*To bypass: \/speckit-implement --force\n   jev spec-change p\(requirement\)=[\d.]+ → .+\n$/;
+  const STALE_ONLY = /^STALE TASKS DETECTED\n[\s\S]*To bypass: \/speckit-implement --force\n$/;
+  try {
+    p = 0.05;
+    check("jev: wording (p=0.05) -> proceed", await jevGuard(), 0, null,
+      /^stale-tasks-guard: spec\.md changed after tasks\.md, but only in wording — proceeding \(jev spec-change p\(requirement\)=0\.05 → wording\)\n$/);
+    p = 0.95;
+    check("jev: requirement (p=0.95) -> halt, record appended", await jevGuard(), 1, STALE_JEV, null);
+    p = 0.5;
+    check("jev: undecided (p=0.5) -> halt, record appended", await jevGuard(), 1, STALE_JEV, null);
+    reply = "500";
+    check("jev: HTTP 500 -> halt as today", await jevGuard(), 1, STALE_ONLY, null);
+    // Dirty tasks.md: no trustworthy baseline, so Jev is never asked.
+    reply = "ok"; p = 0.05;
+    writeFileSync(join(sd, "tasks.md"), "t2\n");
+    setTime(join(sd, "tasks.md"), now - 120);
+    const before = hits;
+    check("jev: dirty tasks.md -> skip Jev, halt", await jevGuard(), 1, STALE_ONLY, null);
+    if (hits !== before) { console.log("FAIL: dirty tasks.md must not call Jev"); failures++; }
+  } finally {
+    server.stop(true);
+  }
 } finally {
   rmSync(WORK, { recursive: true, force: true });
 }

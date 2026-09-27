@@ -184,6 +184,50 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
    - ✅ **Strengths** — what's well-done (be genuine, not perfunctory)
    - 🛠 **Recommended Action** — numbered next-steps list
 
+   **7a. Triage with Jev assist (optional; coordinator only).**
+
+   Jev (TypeSafe's System One model) answers two bounded calls while you merge
+   and bucket the reviewers' findings: are two findings the same problem, and is
+   a finding a defect, a style point, or wrong. **You** make these calls; reviewers
+   never call Jev, and this block never goes into a reviewer prompt. Skip it
+   entirely when the reviewers returned no findings. Ponytail cuts are not
+   triaged here — step 8 has its own rules for them.
+
+   ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   JEV="$PROJECT_DIR/.specify/extensions/review/scripts/ts/jev.ts"
+   bun "$JEV" same-finding --a <finding A file> --b <finding B file>
+   bun "$JEV" finding --finding <finding file> --code <code excerpt file>
+   ```
+
+   Write each finding's text (agent, severity, `file:line`, description) and the
+   code it cites (about 20 lines around the line, read from `<repo_root>` — or with
+   `git -C <repo_root> show <head>:<path>` in Mode C `checkout: none`) to files in a
+   scratch directory, never the repo. Every call prints one JSON line; keep its
+   `record` field, whatever the outcome.
+
+   1. **Dedupe first.** You pick the candidate pairs — the same file and nearby
+      lines, or near-identical titles from different agents; Jev only confirms.
+      `same` → merge into one finding, keep the higher severity, credit both
+      agents. `distinct` → keep both. At most **10** pairs; beyond that, dedupe as
+      you would without Jev.
+   2. **Then triage each finding left**, highest severity first, at most **25**:
+      - `defect` → keeps its bucket.
+      - `style` → capped at 💡 Suggestions: a 🚨 Critical or ⚠️ Important finding
+        moves there; a Suggestion or Optional Polish stays put.
+      - `false_positive` → dropped from the buckets and listed under
+        `Dropped as false positive` (step 9) with its `record`. This verdict is
+        **gated**: it decides (exit 0) only when `SPECKIT_JEV_AUTOMATE` includes
+        `finding` (or `all`). In shadow it exits 3 and the finding stays where it
+        was, annotated `(jev: likely false positive)`.
+   - **Exit 3: triage exactly as you would without Jev** — that covers
+     `SPECKIT_JEV=off`, no `TYPESAFE_API_KEY`, no SDK, an API error, a
+     low-confidence answer, and shadow mode.
+   - **Exit 2**: your call was malformed. Fix it; never read it as a decision.
+
+   Never pass the API key on the command line or put it in a prompt, a file or a
+   record; the helper reads `TYPESAFE_API_KEY` from the environment only.
+
 8. **Apply Ponytail Cuts**
 
    The simplify reviewer's `ponytail-review` (the change) and `ponytail-audit` (the
@@ -241,6 +285,9 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
    ## ✨ Optional Polish
    - [agent-name]: Polish item [file:line]
 
+   Dropped as false positive:
+   - [agent-name]: Issue description [file:line] — <jev record>
+
    ## ✂️ Ponytail Cuts
    Applied:
    - [ponytail-review|ponytail-audit] <tag> file:line — what was cut
@@ -261,7 +308,7 @@ Run a comprehensive review using multiple specialized agents, each focusing on a
    [One paragraph explaining the reasoning]
    ```
 
-   Omit any severity bucket that has nothing to report. List skipped, disabled and degraded aspects under the Overview.
+   Omit any severity bucket that has nothing to report, and the `Dropped as false positive` line when nothing was dropped. List skipped, disabled and degraded aspects under the Overview. When step 7a ran, end the report with a `Jev:` list of every call's `record` line.
 
 10. **Post to the PR** (`--comment`, Mode C only)
 

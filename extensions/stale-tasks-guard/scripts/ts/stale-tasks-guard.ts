@@ -21,11 +21,17 @@
 //       unresolvable feature directory). Implementation may proceed.
 //   1   Stale tasks detected: spec.md is newer than tasks.md.
 //
+// Jev assist: before exiting 1, the spec.md diff since tasks.md's last commit is
+// handed to the sibling jev.ts (`spec-change`). Only a confident `wording`
+// verdict turns the halt into exit 0 (with an advisory on stderr). Dirty or
+// uncommitted tasks.md, no git, an empty diff, SPECKIT_JEV=off, or any Jev
+// failure leaves the halt exactly as it was.
+//
 // Anything printed to stderr on a 0 exit is advisory (e.g. "guard skipped —
 // feature directory unresolvable") and must not be read as staleness.
 
 import { statSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 function git(args: string[], cwd: string): string | null {
   try {
@@ -55,6 +61,49 @@ function effectiveMtime(path: string): number {
     if (commitEpoch) return Number(commitEpoch);
   }
   return statSync(path).mtimeMs / 1000;
+}
+
+// spec.md's diff since the commit that last wrote tasks.md, uncommitted edits
+// included. null when no trustworthy diff exists: no git, tasks.md dirty or
+// never committed, spec.md untracked, or the diff is empty.
+function specDiffSinceTasks(specPath: string, tasksPath: string): string | null {
+  if (git(["status", "--porcelain", "--", tasksPath], ".") !== "") return null;
+  if (git(["ls-files", "--error-unmatch", "--", specPath], ".") === null) return null;
+  const commit = git(["log", "-1", "--format=%H", "--", tasksPath], ".");
+  if (!commit) return null;
+  try {
+    const r = Bun.spawnSync(["git", "diff", commit, "--", specPath], { stdout: "pipe", stderr: "pipe", timeout: 5000 });
+    if (r.exitCode !== 0) return null;
+    const diff = r.stdout.toString();
+    return diff.trim() ? diff : null;
+  } catch {
+    return null;
+  }
+}
+
+type Jev = { code: number; decision: string | null; source: string | null; record: string | null };
+
+// Any failure (spawn error, timeout, unparseable output) is { code: -1 }, which
+// the caller treats exactly like "no Jev".
+function askJev(diff: string): Jev {
+  const none: Jev = { code: -1, decision: null, source: null, record: null };
+  try {
+    const script = join(dirname(import.meta.path), "jev.ts");
+    if (!isFile(script)) return none;
+    const r = Bun.spawnSync([process.execPath, script, "spec-change", "--diff", "-"], {
+      stdin: Buffer.from(diff), stdout: "pipe", stderr: "pipe", timeout: 30_000,
+    });
+    const line = r.stdout.toString().trim().split("\n").pop() ?? "";
+    const out = JSON.parse(line) as { decision?: unknown; source?: unknown; record?: unknown };
+    return {
+      code: r.exitCode ?? -1,
+      decision: typeof out.decision === "string" ? out.decision : null,
+      source: typeof out.source === "string" ? out.source : null,
+      record: typeof out.record === "string" ? out.record : null,
+    };
+  } catch {
+    return none;
+  }
 }
 
 // The branch is the authoritative source, matching spec_kit_resolve_feature in
@@ -91,10 +140,19 @@ function main(): number {
 
   if (specTime > tasksTime) {
     const deltaMinutes = Math.trunc((specTime - tasksTime) / 60);
+    const diff = specDiffSinceTasks(specPath, tasksPath);
+    const jev = diff === null ? null : askJev(diff);
+    if (jev?.code === 0 && jev.decision === "wording") {
+      process.stderr.write(
+        `stale-tasks-guard: spec.md changed after tasks.md, but only in wording — proceeding (${jev.record ?? "jev spec-change"})\n`,
+      );
+      return 0;
+    }
     console.log("STALE TASKS DETECTED");
     console.log(`   spec.md was modified ${deltaMinutes}m after tasks.md was last generated.`);
     console.log("   Run /speckit-tasks to reconcile, then re-run /speckit-implement.");
     console.log("   To bypass: /speckit-implement --force");
+    if (jev?.source === "jev" && jev.record) console.log(`   ${jev.record}`);
     return 1;
   }
   return 0;

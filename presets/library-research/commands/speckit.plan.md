@@ -25,6 +25,19 @@ Run the core plan flow first so that `plan.md` exists before research begins.
 
 ### Research Pass (MANDATORY — runs after the core flow)
 
+0. **Applicability gate.** Ask Jev whether the plan hand-rolls anything a
+   library could provide:
+
+   ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   bun "$PROJECT_DIR/.specify/presets/library-research/scripts/ts/jev.ts" applies-library --plan "$SPECIFY_FEATURE_DIRECTORY/plan.md"
+   ```
+
+   Exit 0 with `decision: "skip"` → take the no-surface-area path in step 1
+   (the `N/A` `research.md`, `plan.md` untouched) without scanning. Exit 0
+   with `"applies"`, exit 3, or any other exit → continue with step 1 as
+   usual. Quote the printed `record` line in the Completion Report.
+
 1. **Scan `plan.md` for technical unknowns.** Look for components the plan
    describes building from scratch that commonly have mature off-the-shelf
    solutions — auth, session/token handling, parsing/validation, queues,
@@ -86,6 +99,7 @@ Run the core plan flow first so that `plan.md` exists before research begins.
 On success, include:
 - Whether research ran, and if so, how many unknowns were identified and
   researched.
+- The Jev `record` line from the applicability gate.
 - Any unknown where the recommendation was "use `<library>`", naming the
   library and the plan section it now replaces.
 - The normal stock `/speckit-plan` completion summary.

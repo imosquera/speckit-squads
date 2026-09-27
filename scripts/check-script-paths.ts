@@ -126,6 +126,14 @@ for (const cf of cmdFiles) {
   });
 }
 
+// Each item that asks Jev ships its own copy of scripts/jev.ts (items install
+// independently); a copy that drifts from the canonical one is a second place
+// for a question to change unreviewed.
+const jev = readFileSync("scripts/jev.ts", "utf8");
+for (const copy of new Bun.Glob("{extensions,presets}/*/scripts/ts/jev.ts").scanSync(".")) {
+  if (readFileSync(copy, "utf8") !== jev) problems.push(`${copy}: differs from scripts/jev.ts — cp scripts/jev.ts ${copy}`);
+}
+
 for (const p of problems) console.error(p);
 if (problems.length > 0) {
   console.error("error: command files reference script paths that do not resolve");

@@ -15,8 +15,18 @@ and behave the same as every other button in the product.
 
 Read `## Actions & Buttons` in `spec.md` first.
 
-- If it says `None.`, or the spec has no such section (it was written without
-  this preset's `speckit.specify` layer), add nothing and say which in your
+- If it says `None.`, add nothing and say so in your report.
+- If the spec has no such section (it was written without this preset's
+  `speckit.specify` layer), ask Jev whether it touches UI:
+
+  ```bash
+  PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+  bun "$PROJECT_DIR/.specify/presets/button-design/scripts/ts/jev.ts" applies-ui --spec "$SPECIFY_FEATURE_DIRECTORY/spec.md"
+  ```
+
+  Exit 0 with `decision: "applies"` → write `## Button System` below from the
+  spec's screens. Exit 0 with `"skip"`, exit 3, or any other exit → add nothing
+  and say so. Either way the check passes; quote the `record` line in your
   report.
 - Otherwise `plan.md` MUST carry a `## Button System` section with these five
   markers, each populated:

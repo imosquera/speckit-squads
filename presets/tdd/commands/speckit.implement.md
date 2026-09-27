@@ -83,7 +83,7 @@ the core flow dispatches (see *Subagents* below):
 >
 > ```bash
 > PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-> JEV="$PROJECT_DIR/.specify/presets/tdd/scripts/ts/jev-judge.ts"
+> JEV="$PROJECT_DIR/.specify/presets/tdd/scripts/ts/jev.ts"
 > bun "$JEV" red-reason --scenario "<scenario line>" --test <test file> --output <suite output file>
 > bun "$JEV" baseline   --failure <this test's failure output file> --baseline <baseline run output file>
 > bun "$JEV" covers     --scenario "<scenario line>" --test <test file>
@@ -104,20 +104,24 @@ the core flow dispatches (see *Subagents* below):
 >     the completion report. `covered` → nothing more.
 >   - `exempt`: `refused` → run the cycle for that file. `exempt` → the
 >     exemption stands.
-> - **Exit 3: decide exactly as you would without Jev.** That covers no
->   `TYPESAFE_API_KEY`, no SDK, an API error, a low-confidence answer, and
->   `red-reason` in shadow mode. Read the output yourself (step 3), rerun
+> - **Exit 3: decide exactly as you would without Jev.** That covers
+>   `SPECKIT_JEV=off`, no `TYPESAFE_API_KEY`, no SDK (the helper installs it
+>   into `~/.cache/speckit-squads/jev` on first use), an API error, a
+>   low-confidence answer, and `red-reason` in shadow mode. Read the output yourself (step 3), rerun
 >   against the base branch (step 5), or keep the exemption you stated.
 > - **Exit 2**: your call was malformed. Fix it; never read it as a decision.
 >
 > Never pass the API key on the command line or put it in a prompt, a file,
 > or a record. The helper reads `TYPESAFE_API_KEY` from the environment only.
 >
-> `red-reason` runs in **shadow mode** until `TDD_JEV_AUTOMATE_RED=1` is set:
-> it logs its answer but always exits 3, so you still make the Red call. Set
-> the variable only after `bun "$JEV" measure --records <file.jsonl>` has been
-> run over past Red records (`{scenario, test, output, label}` per line) and
-> its agreement rate and confident share justify it.
+> `red-reason` runs in **shadow mode** until `SPECKIT_JEV_AUTOMATE=red-reason`
+> (or the legacy `TDD_JEV_AUTOMATE_RED=1`) is set: it logs its answer but
+> always exits 3, so you still make the Red call. Set the variable only after
+> `bun "$JEV" measure --case red-reason --records <file.jsonl>` has been run
+> over past Red records and its agreement rate and confident share justify
+> it. Each record line holds every argument's *content* (not a path) keyed by
+> flag name, plus the right verdict as `label`:
+> `{scenario, test, output, label}`.
 
 ### Tasks that are already split into test and code
 

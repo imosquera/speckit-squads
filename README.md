@@ -77,6 +77,17 @@ Each item is a self-contained directory with its own `extension.yml` or `preset.
 - Extensions: <https://github.com/github/spec-kit/blob/main/extensions/EXTENSION-DEVELOPMENT-GUIDE.md>
 - Presets: <https://github.com/github/spec-kit/blob/main/presets/README.md>
 
+**Jev assist (optional).** `tdd`, `git`, `autopilot`, `review`, `stale-tasks-guard`,
+`button-design`, `spec-ui-preview` and `library-research` ask TypeSafe's Jev the
+bounded yes/no and pick-one questions they used to pause on (Red reason, duplicate
+issue, priority/kind/layer, fast path, finding triage, wording-only spec edit,
+whether a layer applies). It is on whenever `TYPESAFE_API_KEY` is set or a key file
+exists at `~/.config/typesafe/key` or `~/.typesafe_key`; `SPECKIT_JEV=off` turns it
+off. Anything short of a confident answer falls back to the behaviour without Jev.
+Verdicts that would drop work (a Red call, a duplicate merge, a false-positive
+finding) stay in shadow mode until listed in `SPECKIT_JEV_AUTOMATE`. Details in
+`CLAUDE.md` under *Jev*; `bun scripts/selftest-jev.ts` is the check.
+
 ## Prerequisite: the Spec Kit CLI
 
 Everything here installs through Spec Kit's `specify` CLI. Install it once with `uv`, pinned to a release tag:

@@ -86,6 +86,39 @@ The skip notice should read roughly:
 
 The hook stays registered with `optional: false` in `extension.yml`: it is mandatory in the sense that the agent must always *run* it, but running it on a feature with no linked issue is a successful no-op, so it can never break `/speckit-specify` for non-GitHub users.
 
+## Jev Assist (optional)
+
+Four judgment calls in this command are bounded enough for Jev (TypeSafe's System
+One model) to answer in one fast call: is a candidate a **duplicate**, and the
+**priority**, **kind** and **layer** of the work. Jev only replaces those pauses;
+the scripts below still do every write. Call it through the extension's helper:
+
+```bash
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+JEV="$PROJECT_DIR/.specify/extensions/git/scripts/ts/jev.ts"
+bun "$JEV" duplicate --new <new issue file> --candidate <candidate issue file>
+bun "$JEV" priority  --issue <issue file>     # p0 | p1 | p2 | p3
+bun "$JEV" kind      --issue <issue file>     # bug | feature
+bun "$JEV" layer     --spec <spec.md>         # frontend | backend | full_stack | no_layer
+```
+
+The `<issue file>` is `spec.md` inside a feature, or a temp file holding the title
+and description in standalone mode. Every call prints one JSON line; copy its
+`record` field into your output, whatever the outcome.
+
+- **Exit 0: act on `decision`**, as each section below says.
+- **Exit 3: decide exactly as you would without Jev** — `SPECKIT_JEV=off`, no
+  `TYPESAFE_API_KEY`, no SDK, an API error, a low-confidence answer, or a
+  `duplicate` verdict in shadow mode. A non-null `verdict` on exit 3 may still be
+  shown to a human as the recommended answer; it never decides on its own.
+- **Exit 2**: your call was malformed. Fix it; never read it as a decision.
+
+A `duplicate` verdict is **gated**: it decides only when `SPECKIT_JEV_AUTOMATE`
+lists `duplicate` (or `all`); until then it exits 3 with the verdict shadowed.
+`distinct` decides freely, because dropping a candidate only means asking less.
+Never pass the API key on the command line; the helper reads `TYPESAFE_API_KEY`
+from the environment only.
+
 ## Duplicate Scan Before Creating
 
 Nothing in this command ever looked at what the repo already had, so a feature
@@ -139,6 +172,24 @@ already answers half of them.
    closing one of these close the other?*, not *are these about the same file?*
    Two bugs in one module are two issues; the same bug reported twice is one.
 
+   Then ask Jev that same question once per candidate (see **Jev Assist**),
+   writing the prospective title + body and the candidate's title + body to
+   temp files:
+
+   ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   JEV="$PROJECT_DIR/.specify/extensions/git/scripts/ts/jev.ts"
+   NEW=$(mktemp); CAND=$(mktemp)
+   printf '%s\n\n' "<prospective title>" > "$NEW"; cat <feature directory>/spec.md >> "$NEW"
+   gh issue view <n> --json title,body --jq '.title + "\n\n" + .body' > "$CAND"
+   bun "$JEV" duplicate --new "$NEW" --candidate "$CAND"
+   ```
+
+   In standalone mode the new file holds the given title and description.
+   A candidate Jev decides `distinct` (exit 0) is **dropped**. If every
+   candidate is dropped, the scan is clean — step 5, no question asked. Exit 3
+   leaves the candidate to your own reading, as before.
+
 3. **If a real candidate exists, ask the user with `AskUserQuestion`** — this
    decision is never made silently, in either direction. Name the candidate in
    the question (`#47 — [hindsight] Autopilot worktree-isolation guard refuses…`)
@@ -153,7 +204,9 @@ already answers half of them.
    Lead with the option you would have chosen, marked `(Recommended)`, and put
    the candidate's state and title in the option description so the choice can be
    made without opening GitHub. When two or more candidates are strong, ask about
-   the strongest and list the others in the question text.
+   the strongest and list the others in the question text. A `duplicate` verdict
+   from Jev — decided or shadowed — makes **Merge into #N** the Recommended
+   option for that candidate, and it is the one to ask about.
 
    This is its own `AskUserQuestion` call, asked **before** the clarify pass — it
    is not batched with the priority/kind picker, because every question in that
@@ -165,6 +218,12 @@ already answers half of them.
    feature is left unlinked pending a human's call. An unlinked feature is a
    supported configuration; a silently duplicated issue is not, and silently
    rewriting a stranger's issue body is worse than either.
+
+   The one exception is Jev in automate mode: when exactly one candidate came
+   back exit 0 with `decision` `duplicate`, merge into it (see **Merging into an
+   existing issue**) and say in the output that Jev made the call, with its
+   `record`. A shadowed verdict, or two decided duplicates, leaves the rule
+   above unchanged.
 
 5. **No candidates, or none that survive step 2** — say so in one line and carry
    on to the clarify pass. A clean scan is not a reason to invent a relationship.
@@ -338,10 +397,25 @@ Run this on **both** paths — after creating an issue, and after updating an ex
 
 1. **Read what is already there** (`--show`). A priority the human already set is authoritative: leave it alone and do not ask again. Set only the axis that is missing.
 2. **The user supplied a priority or kind in their invocation** (e.g. `/speckit-git-issue p0 bug`, or said so in the turn) → use it verbatim, no question.
-3. **Otherwise, when a human is in the loop, ask.** When the **Clarify Before Creating** pass is running, this question goes in the *same* `AskUserQuestion` call as the issue-shaped ones — do not open a second picker for it. Use `AskUserQuestion` with the priority options `P0 — critical`, `P1 — high`, `P2 — normal`, `P3 — low`, and lead with the one you would have inferred, marked `(Recommended)`, so accepting the default is one keystroke. Ask for the kind in the same call **only when the spec is genuinely ambiguous** — a spec describing broken behaviour is a `bug` and one describing new capability is a `feature`, and asking about the obvious wastes the user's turn.
-4. **When no human is in the loop** — the `after_specify` hook during an unattended run, or any non-interactive session — do **not** block. Infer both from the spec and apply them, then say in your output which values were inferred rather than chosen, so a human skimming the issue can correct a bad guess.
+3. **Otherwise ask Jev first**, for each axis still missing (see **Jev Assist**):
 
-Inference heuristic, used for the recommendation in (3) and the unattended path in (4):
+    ```bash
+    PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+    JEV="$PROJECT_DIR/.specify/extensions/git/scripts/ts/jev.ts"
+    bun "$JEV" priority --issue <feature directory>/spec.md
+    bun "$JEV" kind     --issue <feature directory>/spec.md
+    ```
+
+    In standalone mode pass a temp file holding the title and description instead.
+
+    Its `verdict` (exit 0 or 3) replaces your inference as the Recommended option
+    in (4); a `kind` verdict counts as an unambiguous spec, so kind is not asked.
+    In (5) an exit-0 `decision` replaces the inference outright; exit 3 infers as
+    below.
+4. **Otherwise, when a human is in the loop, ask.** When the **Clarify Before Creating** pass is running, this question goes in the *same* `AskUserQuestion` call as the issue-shaped ones — do not open a second picker for it. Use `AskUserQuestion` with the priority options `P0 — critical`, `P1 — high`, `P2 — normal`, `P3 — low`, and lead with the one you would have inferred, marked `(Recommended)`, so accepting the default is one keystroke. Ask for the kind in the same call **only when the spec is genuinely ambiguous** — a spec describing broken behaviour is a `bug` and one describing new capability is a `feature`, and asking about the obvious wastes the user's turn.
+5. **When no human is in the loop** — the `after_specify` hook during an unattended run, or any non-interactive session — do **not** block. Infer both from the spec and apply them, then say in your output which values were inferred or Jev-decided (with the `record`) rather than chosen, so a human skimming the issue can correct a bad guess.
+
+Inference heuristic, used for the recommendation in (4) and the unattended path in (5) whenever Jev returned no verdict:
 
 | Signal in the spec / issue | Label |
 |---|---|
@@ -386,6 +460,25 @@ Read the spec and classify each functional requirement:
   `--layer frontend` but **not** `mock-first` — there is nothing to mock.
 - **Neither layer applies** (tooling, docs, CI, a library with no UI and no API):
   no layer label, no split.
+
+Ask Jev first (see **Jev Assist**); an exit-0 `decision` replaces the table above:
+
+```bash
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+JEV="$PROJECT_DIR/.specify/extensions/git/scripts/ts/jev.ts"
+bun "$JEV" layer --spec <feature directory>/spec.md
+```
+
+| `decision` | Do |
+|---|---|
+| `frontend` | `--layer frontend`, no split — `--mock-first` unless the API already exists |
+| `backend` | `--layer backend`, no split |
+| `full_stack` | split |
+| `no_layer` | no layer label, no split |
+
+Exit 3 → classify with the table as before, and put the layer in the clarify batch
+when it is still genuinely ambiguous. Jev never decides `mock-first`: whether the
+API already exists is read from the spec and the code, by the rule above.
 
 ### Splitting
 

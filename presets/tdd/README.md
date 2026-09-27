@@ -35,36 +35,38 @@ Tests target the project's own code, not the libraries it calls.
 
 ## Jev assist (optional)
 
-`scripts/ts/jev-judge.ts` answers the cycle's four bounded judgment calls with
-Jev, TypeSafe's System One model, through `@typesafe-ai/sdk` (issue #116):
+`scripts/ts/jev.ts` (the shared helper, a byte-identical copy of the repo's
+`scripts/jev.ts`) answers the cycle's four bounded judgment calls with Jev, TypeSafe's System One model, through `@typesafe-ai/sdk` (issue #116):
 
 | Command | Question | Decides when |
 |---|---|---|
-| `red-reason` | Did the new test fail for the expected reason? (Choice) | confidence ≥ 0.85, not `none_of_these`, and `TDD_JEV_AUTOMATE_RED=1` |
+| `red-reason` | Did the new test fail for the expected reason? (Choice) | confidence ≥ 0.85, not `none_of_these`, and `SPECKIT_JEV_AUTOMATE=red-reason` (or `TDD_JEV_AUTOMATE_RED=1`) |
 | `baseline` | Was this failing test passing at baseline? (Noul) | p ≥ 0.85 (regression) or ≤ 0.15 (not ours) |
 | `covers` | Does this test exercise this scenario? (Noul) | always; < 0.85 flags the pair in the report |
 | `exempt` | Is this file untestable? (Noul) | always; < 0.85 refuses the exemption |
 
 Exit 0 means act on the decision; exit 3 means decide exactly as the preset
-did before Jev. That covers no `TYPESAFE_API_KEY`, no SDK, any API error, a
+did before Jev. That covers `SPECKIT_JEV=off`, no `TYPESAFE_API_KEY`, no SDK, any API error, a
 low-confidence answer, and `red-reason` in shadow mode. Every call's answer
 and confidence go into the per-scenario record.
 
 `red-reason` stays in shadow mode (logs, never decides) until
-`TDD_JEV_AUTOMATE_RED=1`. Turn it on only after
-`bun jev-judge.ts measure --records past-reds.jsonl` reports a good agreement
-rate and confident share over past Red records
-(`{scenario, test, output, label}` per line).
+`SPECKIT_JEV_AUTOMATE=red-reason` (or the legacy `TDD_JEV_AUTOMATE_RED=1`).
+Turn it on only after
+`bun jev.ts measure --case red-reason --records past-reds.jsonl` reports a good
+agreement rate and confident share over past Red records. Each line holds every
+argument's content (not a path) keyed by flag name, plus the right verdict as
+`label`: `{scenario, test, output, label}`.
 
 The key is read from `TYPESAFE_API_KEY` by the SDK and nowhere else.
-`scripts/ts/post-install.ts` installs the SDK with bun into
-`~/.cache/speckit-squads/tdd-jev`, not the project or `.specify/`, which
-consumers commit. The helper prefers a project's own copy.
+The helper prefers a project's own copy of the SDK; otherwise it installs it
+with bun into `~/.cache/speckit-squads/jev` on first use, never into the
+project or `.specify/`, which consumers commit. There is no post-install step.
 
 ## Runtime
 
 Everything in this preset is TypeScript run by bun. Consumers need bun on
 `PATH`.
 
-`bun scripts/ts/selftest-tdd.ts` is the check: the gate, the Jev fallback
-path, and a fixture per use case against a fake Jev server.
+`bun scripts/ts/selftest-tdd.ts` is the check for the gate. The Jev helper is
+checked by the repo's `scripts/selftest-jev.ts`.

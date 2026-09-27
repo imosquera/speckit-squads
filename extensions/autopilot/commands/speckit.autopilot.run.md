@@ -472,14 +472,32 @@ this is a judgement about the change, not about the issue's word count:
 Any doubt on any bullet → **full pipeline**, Steps 3–7 as written. The fast path is
 for changes that are obviously small, not for changes you hope are small.
 
+**Ask Jev for the call, after the hard rules.** An `epic` label is full pipeline
+without asking. Otherwise, once you have read the code, write the issue body and
+your planned change (files, rough line count, what changes) to files and run:
+
+```bash
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+gh issue view "$N" --json title,body --jq '"# " + .title + "\n\n" + .body' > /tmp/autopilot_issue_$N.md
+# /tmp/autopilot_change_$N.md: your planned change, written before this call
+bun "$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/jev.ts" fast-path \
+  --issue /tmp/autopilot_issue_$N.md --change /tmp/autopilot_change_$N.md; echo "exit=$?"
+```
+
+Exit 0 → act on `decision`: `fast_path` or `full_pipeline`. Exit 3 → decide by the
+bullets above exactly as without Jev. Either way keep the JSON's `record` for the
+decision comment. Jev never overrides a hard rule: `epic` stays full pipeline, and
+step 4's bail-out below still applies to a Jev-chosen fast path.
+
 **On the fast path:**
 
 1. **Skip Steps 3–6 entirely** — no `spec.md`, `plan.md`, `tasks.md`, no clarify.
    `create-pr.ts` falls back to the branch name when there is no spec, so nothing
    downstream breaks.
 2. **Post the decision** as the issue comment for this phase: "🤖 Fast path — small
-   change (<what changes, which files>); skipping spec/plan/tasks." That comment is
-   the record a reviewer checks the call against.
+   change (<what changes, which files>); skipping spec/plan/tasks. Jev: `<record>`."
+   That comment is the record a reviewer checks the call against. A full-pipeline
+   call puts the same `Jev: <record>` line in Step 3's first progress comment.
 3. **Implement directly** in the worktree, then rejoin at **Step 8 — Review**.
    Review, commit, and the draft PR are **not** optional on this path: they are the
    only gates left.

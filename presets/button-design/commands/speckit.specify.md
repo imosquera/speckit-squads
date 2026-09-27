@@ -74,6 +74,22 @@ danger color.
 
 {CORE_TEMPLATE}
 
+### Applicability Gate (after `spec.md` is written)
+
+Before writing `## Actions & Buttons`, ask Jev whether the spec touches UI:
+
+```bash
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+bun "$PROJECT_DIR/.specify/presets/button-design/scripts/ts/jev.ts" applies-ui --spec "$SPECIFY_FEATURE_DIRECTORY/spec.md"
+```
+
+- **exit 0, `decision: "skip"`**: write only `None — no user-facing UI.` under
+  `## Actions & Buttons`, then run the post-flight check.
+- **exit 0, `decision: "applies"`**: apply the rules above and write the table.
+- **exit 3** (or any other exit): decide from the spec yourself, as without Jev.
+
+Quote the printed `record` line in your final report.
+
 ### Post-Flight Check (MANDATORY — LAST STEP)
 
 After the entire core flow above has completed and `spec.md` has been written,

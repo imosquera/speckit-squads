@@ -1,5 +1,5 @@
 ---
-description: "Take the highest-priority eligible open GitHub issue (or a given issue number) from backlog to a reviewed draft PR by driving the full speckit pipeline unattended: pick → worktree → specify → clarify (auto-answered) → plan → tasks → implement → review → draft PR, posting progress to the issue at every stage."
+description: "Take the highest-priority eligible open GitHub issue (or a given issue number) from backlog to a reviewed draft PR by driving the full speckit pipeline unattended: pick → worktree → specify → clarify (auto-answered) → plan → tasks → implement → review → draft PR, gating on the project's own checks (typecheck/tests/lint for web, Node or Python; xcodebuild against an iOS Simulator or swift build/test for an iOS/Swift repo), and posting progress to the issue at every stage."
 ---
 
 # Issue Backlog Autopilot
@@ -105,6 +105,47 @@ step after writing code is worse than one that never starts.
    is always a deliberate user action. (If the script is absent or this isn't macOS,
    skip silently.) The suggestion is a one-time nudge at the start; don't repeat it
    later in the run.
+6. **Project type — and, for iOS, the toolchain and a simulator.** Every gate in
+   Steps 7–8 builds and tests the project, and an unattended run has nobody to open
+   Xcode, so decide now, once, which gates this run uses, and reuse that for the
+   whole run:
+   ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   GUARD="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/check-target-repo.ts"
+   bun "$GUARD" --repo-root "$PROJECT_DIR" --kind
+   # => "KIND: workspace App.xcworkspace" | "KIND: project App.xcodeproj"
+   #    | "KIND: package Package.swift"   | "KIND: none" (exit 1)
+   ```
+   - `KIND: none` — first check for an iOS project generator (`project.yml` →
+     `xcodegen generate`, `Project.swift` → `tuist generate`) and re-run `--kind`
+     after generating. If there is still no iOS target, this is a **web / Node /
+     Python** project: nothing more to resolve here — Steps 7–8 use its
+     typecheck/tests/lint gates, and none of the iOS-only rules below apply. (The
+     non-zero exit is just the "no iOS target" answer, not a failure.)
+   - Any other `KIND` is an **iOS/Swift** project. Resolve the Simulator destination:
+     ```bash
+     SIM="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/sim-destination.ts"
+     xcodebuild -version && DEST="$(bun "$SIM")" && echo "$DEST"
+     # => "platform=iOS Simulator,id=<udid>"   (device + runtime on stderr)
+     ```
+     - `workspace` / `project` → needs `xcodebuild` (full Xcode, not just the Command
+       Line Tools) **and** a destination. For the scheme, take the one the project
+       documents (constitution, `CLAUDE.md`, a `Makefile`/fastlane lane); otherwise
+       run `xcodebuild -list -json -workspace …` (or `-project …`) and pick the app
+       scheme named after the project, never a test-only or Pods scheme. Record the
+       scheme, `KIND` and destination in the Step 3 comment so every later gate is
+       reproducible.
+     - `package` (a pure Swift package) → `swift build` / `swift test` need no
+       simulator, unless the package only builds for iOS (`platforms: [.iOS…]` and
+       UIKit imports), in which case treat it like a project: `xcodebuild -scheme
+       <package> -destination "$DEST"` works on a package directory too.
+     - `sim-destination.ts` exits 1 when no iOS runtime is installed (or `simctl` is
+       missing because only the Command Line Tools are selected) — a **Missing
+       capability** stop: installing a runtime is interactive. Nothing is picked or
+       claimed yet, so there is nothing to park; stop and name what is missing. Set
+       `SPECKIT_AUTOPILOT_SIM_DESTINATION` (any `-destination` string) to pin a
+       device instead of the auto-pick (booted iPhone, else an iPhone on the newest
+       iOS runtime).
 
 ## Step 1 — Pick the highest-ranked eligible issue (or validate the given one)
 
@@ -275,7 +316,7 @@ guard in one call:
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
 GUARD="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/check-target-repo.ts"
 bun "$GUARD" path/to/one.py ~/some/other/file.ts
-# => "INSIDE: … → <repo>"   per target, then
+# => "INSIDE: … → <repo>"   per target, then (iOS repos only) "KIND: …", then
 #    "OK: 2 target(s) inside <repo>"          (exit 0 — proceed)
 #    "BLOCKED: 1 of 2 target(s) not in <repo>" (exit 1 — stop, see below)
 ```
@@ -464,7 +505,11 @@ this is a judgement about the change, not about the issue's word count:
 
 - one behaviour changes, in roughly **1–3 files** and on the order of **50 lines**
 - **nothing structural**: no new dependency, no schema/API/interface change, no
-  migration, no new user-facing surface, no rename with a blast radius
+  migration, no new user-facing surface, no rename with a blast radius. On an iOS
+  project that also means: no new SPM package or framework, no SwiftData/Core Data
+  model migration, no new entitlement, capability, `Info.plist` usage string or
+  privacy-manifest entry, no new screen, and no rename that moves files (a Swift
+  rename also touches the `.pbxproj`)
 - **no real ambiguity** — after reading the code you know exactly what to change;
   there is nothing a `/speckit-clarify` round would have asked
 - the issue is not labelled `epic`
@@ -562,8 +607,11 @@ them** — that's the whole point of autopilot — using, in order of preference
 1. **The issue + repo context** — the answer is often already implied by the issue,
    the existing code, the constitution, or prior decisions. Read before guessing.
 2. **Best-practice research** — for genuinely open questions (auth model, retry
-   semantics, rate limits, accessibility, legal like CAN-SPAM/GDPR), do a quick web
-   search and pick the well-supported default. Cite the basis briefly.
+   semantics, rate limits, accessibility, legal like CAN-SPAM/GDPR — and on an iOS
+   project the App Store Review Guidelines, App Tracking Transparency,
+   privacy-manifest requirements, the Human Interface Guidelines), do a quick web
+   search — for iOS, Apple's developer documentation first — and pick the
+   well-supported default. Cite the basis briefly.
 3. **The conservative, reversible default** — when still unsure, choose the option
    that's easiest to change later and hardest to get catastrophically wrong.
 
@@ -620,11 +668,40 @@ handling — just confirm it produced tasks covering the plan's MVP. Then run th
 
 Run `/speckit-implement`. Then, because you're unattended:
 
-- **Drive gates to green.** Typecheck, tests, lint, the constitution audit, and any
-  preset scanner must pass. When one fails, fix the code and re-run — that's expected
-  autopilot work, not a blocker. For a new sub-package, remember it needs its own
-  `vitest.config.ts` / `eslint.config.js` and a local `npm install` before its tools
-  resolve.
+- **Drive gates to green.** The gates depend on the project type Preflight step 6
+  resolved. When one fails, fix the code and re-run — that's expected autopilot work,
+  not a blocker.
+  - **Web / Node / Python (`KIND: none`).** Typecheck, tests, lint, the constitution
+    audit, and any preset scanner must pass. For a new sub-package, remember it needs
+    its own `vitest.config.ts` / `eslint.config.js` and a local `npm install` before
+    its tools resolve.
+  - **iOS / Swift (any other `KIND`).** Build, tests, lint, the constitution audit,
+    and any preset scanner must pass. Use the `KIND`, scheme and `$DEST` resolved in
+    Preflight step 6 (re-run `sim-destination.ts` in this shell; each bash call is
+    its own shell):
+    ```bash
+    # workspace (use -project App.xcodeproj for KIND: project)
+    xcodebuild build -workspace App.xcworkspace -scheme App -destination "$DEST" -quiet
+    xcodebuild test  -workspace App.xcworkspace -scheme App -destination "$DEST" -quiet
+    # package
+    swift build && swift test
+    ```
+    - A project command the repo documents (a `Makefile` target, a fastlane lane, a
+      test plan via `-testPlan`) beats the generic line above — use what a human would.
+    - Lint is whatever the repo configures: `swiftlint` when there is a
+      `.swiftlint.yml`, `swift format lint` / `swiftformat --lint` when those configs
+      exist. No config, no lint gate — don't invent one.
+    - Add `-skipPackagePluginValidation -skipMacroValidation` only if the build fails
+      asking you to trust a plugin/macro; never pass `-allowProvisioningUpdates` or
+      touch signing — Simulator builds don't need a team, and a signing error means
+      the scheme targets a device, not that you should add credentials.
+    - Simulator flakiness (`Unable to boot device`,
+      `FBSOpenApplicationServiceErrorDomain`, a test runner that hangs past launch) is
+      environmental: `xcrun simctl shutdown all`, re-run once. The second failure is
+      a gate failure like any other.
+    - For a new local Swift package or a new target, it must be added to the Xcode
+      project (or the workspace / parent `Package.swift`) before `xcodebuild` sees
+      it — a file that compiles in isolation but isn't in any target is not done.
 - **Post a progress comment** summarizing what shipped: files added/changed, test
   counts, and any task deliberately deferred (with why).
 - **Run the `after_implement` hooks** — the auto-commit (answer **yes**), plus any
@@ -677,7 +754,9 @@ Stop, leave the worktree intact, post what you found to the issue, and hand back
 the user only when continuing would be reckless or is impossible:
 
 - **Missing capability** — `gh` / `gcloud` / build creds absent or unauthenticated and
-  the step needs them (login is interactive; you can't do it). *Durable.*
+  the step needs them (login is interactive; you can't do it). On an iOS project,
+  also: full Xcode not selected (`xcode-select -p` points at the Command Line Tools),
+  no installed iOS Simulator runtime, or an Xcode license not yet accepted. *Durable.*
 - **Fix target outside any git repo** — the file the issue asks you to change
   resolves (often through a symlink) somewhere `git rev-parse` fails, so no PR
   against any repo could contain the fix. Resolve the real path with

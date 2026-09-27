@@ -1,0 +1,48 @@
+schema_version: "1.0"
+
+preset:
+  id: "parse-dont-validate-ios"
+  name: "Parse, Don't Validate (iOS)"
+  version: "2.0.0"
+  description: "Overrides /speckit-constitution, /speckit-plan, and /speckit-implement to enforce the 'parse, don't validate' discipline in Swift/iOS code — untrusted `Data` / `[String: Any]` stays at the boundary, parsers are throwing/failable `init`s or `Decodable` types that return domain types (newtypes such as `struct Email { let raw: String; init(parsing:) throws }`, `RawRepresentable`, tagged types), and a deterministic scanner gates completion by flagging `Any`/`AnyObject`, untyped deserialization, boolean validators, `as!` outside parser scopes, and `try!`."
+  author: "speckit-squads"
+  repository: "local"
+  license: "same-as-project"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "parse_dont_validate.ts"
+      file: "scripts/ts/parse_dont_validate.ts"
+      executable: true
+      description: "checklist + scan for parse-don't-validate anti-patterns in changed Swift (`Any`/`AnyObject`, `JSONSerialization`/`PropertyListSerialization`/`decode([String: …])` outside parser scopes, `func isValid…/validate… -> Bool`, `as!` outside parser scopes, `try!` anywhere), with `//` line-comment waivers. Run by bun, bun built-ins only. Parser scopes: parser-named files (*Parser*/*Decod*/*Codec*/*Schema*/*DTO*), bodies of *Parser*-named or Decodable/Codable-conforming types, and `init(from:)` / `init(parsing:)` / `func parse…`. Not an AST: an in-process lexer blanks comments and string literals (keeping `\\(...)` interpolations) and checks bracket balance; an unterminated string/comment or unbalanced brackets exit 3. `scan` anchors change-set detection at the git worktree root (never the cwd), skips `.specify/`, `Pods/`, `Carthage/`, `.build/`, `DerivedData/`, `SourcePackages/`, and `--new-only` subtracts findings that already reproduce on the base ref, matched by (file, rule, source text). A scan that examined zero files never exits zero: an unknown option exits 2, unresolvable paths or a non-repo cwd exit 3, and a change set with no Swift exits 4."
+
+  templates:
+    - type: "command"
+      name: "speckit.constitution"
+      strategy: "wrap"
+      file: "commands/speckit.constitution.md"
+      description: "Constitution command that always injects a canonical 'Parse, Don't Validate' governance section (Swift)"
+
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Plan command that requires a 'Parse Boundaries' design section (trust boundaries + Swift domain newtypes + throwing/failable/Decodable parsers). Chainable: exposes a {CORE_TEMPLATE} seam so other presets can wrap it."
+      strategy: "wrap"
+    - type: "command"
+      name: "speckit.implement"
+      strategy: "wrap"
+      file: "commands/speckit.implement.md"
+      description: "Implement command that applies the parse-don't-validate discipline while writing Swift and gates completion on a deterministic anti-pattern scan"
+
+tags:
+  - "implement"
+  - "swift"
+  - "ios"
+  - "type-safety"
+  - "parsing"
+  - "domain-modeling"
+  - "functional-programming"
+  - "governance"

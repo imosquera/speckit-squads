@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "test": "set -e; for f in test-*.ts $(find scripts extensions presets -name 'selftest-*.ts' | sort); do echo \"==> $f\"; bun \"$f\"; done; s=extensions/autopilot/scripts/ts/sim-destination.ts; if [ -f \"$s\" ]; then echo \"==> $s --selftest\"; bun \"$s\" --selftest; fi"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

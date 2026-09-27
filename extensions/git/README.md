@@ -23,6 +23,11 @@ This extension provides Git operations as an optional, self-contained module. It
   in the branch's history
 - **GitHub issue sync** — when a tracking issue is linked, its body is re-rendered from `spec.md` after every `/speckit-specify` (title untouched) and its `p0`..`p3` / `bug`|`feature` triage labels are kept current; skipped cleanly when there is no linked issue
 - **Auto-commit** after core commands (configurable per-command with custom messages)
+- **Worktree dependency bootstrap**: `install-deps.ts` runs after a worktree is created
+  (best effort, always exit 0, `SPECKIT_SKIP_INSTALL=1` skips it). A directory is
+  installed only where the base checkout already installed it: `node_modules/` gets the
+  lockfile's package manager (bun, pnpm, yarn, npm), `.venv/` gets `uv sync` or
+  `poetry install`. iOS dependencies are covered too, see [iOS projects](#ios-projects)
 
 ## Commands
 
@@ -79,6 +84,32 @@ The command **asks** the human for a priority when there is one in the loop, lea
 .specify/extensions/git/scripts/ts/label-issue.ts 42 --show
 .specify/extensions/git/scripts/ts/label-issue.ts 42 --priority p1 --kind bug
 ```
+
+## iOS projects
+
+The same extension serves web/Node/Python and iOS (Swift, Xcode) projects; nothing is
+configured per project kind. What it adds for iOS:
+
+- **Worktree dependencies.** `install-deps.ts` also runs `pod install` where the base
+  checkout has an uncommitted `Pods/` beside a tracked `Podfile.lock`,
+  `carthage bootstrap --use-xcframeworks` where it has an uncommitted `Carthage/Build/`
+  beside `Cartfile.resolved`, `swift package resolve` for a Swift package whose
+  `Package.resolved` is tracked (or whose base checkout has `.build/`), and
+  `xcodebuild -resolvePackageDependencies` for an app whose `.xcodeproj`/`.xcworkspace`
+  tracks a `Package.resolved` (with the workspace's shared scheme, if any). DerivedData is
+  keyed by the checkout path, so a new worktree otherwise starts with no resolved
+  packages. In one directory `pod install` runs before `xcodebuild`, and a failed step
+  stops that directory. A repo with both kinds (a React Native app) gets both: the
+  Node/Python installs run first everywhere, then the iOS steps, because a Podfile may
+  read `node_modules/`. A missing tool (`pod`, `carthage`, `swift`, `xcodebuild`) is
+  named and skipped. `Mintfile` and `Brewfile` are left alone.
+- **Build output is never committed.** Xcode build output and per-user state
+  (`DerivedData/`, `.build/`, `xcuserdata/`, `*.xcuserstate`, `*.xcresult`,
+  `Pods/`; the list is `XCODE_ARTIFACTS` in `git-common.ts`) is held out of every
+  auto-commit when untracked or newly staged, even if the project's `.gitignore` misses
+  it. Paths already committed at HEAD (a team that commits `Pods/`) are left alone.
+  `initialize-repo.ts` writes the same list into a new repo's `.gitignore`. Both apply to
+  every project and do nothing where no such paths exist.
 
 ## Configuration
 

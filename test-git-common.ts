@@ -123,6 +123,33 @@ try {
   );
   check("excludes", JSON.stringify(gc.commitExcludes(f)) === '["graphify-out/","dist/","a b"]');
 
+  // Xcode build output / per-user state
+  const root = gc.xcodeArtifactRoot;
+  check("artifact DerivedData", root("DerivedData/App/x.o") === "DerivedData");
+  check("artifact nested DerivedData", root("App/DerivedData/Release/App.app") === "App/DerivedData");
+  check("plain build/ is not an artifact", root("scripts/build/index.ts") === null);
+  check("artifact xcuserdata", root("App.xcodeproj/xcuserdata/me.xcuserdatad/x.plist") === "App.xcodeproj/xcuserdata");
+  check("artifact swiftpm xcuserdata", root(".swiftpm/xcode/xcuserdata/me.xcuserdatad/x.plist") === ".swiftpm/xcode/xcuserdata");
+  check("artifact xcresult", root("Results/Run 1.xcresult/Info.plist") === "Results/Run 1.xcresult");
+  check("artifact xcuserstate", root("UserInterfaceState.xcuserstate") === "UserInterfaceState.xcuserstate");
+  check("artifact Pods", root("Pods/Alamofire/Source/AF.swift") === "Pods");
+  check("not artifact source", root("Sources/App/BuildInfo.swift") === null);
+  check("not artifact project", root("App.xcodeproj/project.pbxproj") === null);
+  const x = repo();
+  writeFileSync(`${x}/.gitignore`, "*.log"); // no trailing newline
+  gc.ignoreXcodeArtifacts(x);
+  const xi = readFileSync(`${x}/.gitignore`, "utf8");
+  check("xcode gitignore", gc.XCODE_ARTIFACTS.every((pat) => xi.split("\n").includes(pat)) && xi.startsWith("*.log\n# Xcode"));
+  gc.ignoreXcodeArtifacts(x);
+  check("xcode gitignore idempotent", readFileSync(`${x}/.gitignore`, "utf8") === xi);
+  mkdirSync(`${x}/DerivedData/App`, { recursive: true });
+  writeFileSync(`${x}/DerivedData/App/x.o`, "o");
+  writeFileSync(`${x}/.gitignore`, ""); // pending detection must not lean on .gitignore
+  mkdirSync(`${x}/App.xcodeproj/xcuserdata`, { recursive: true });
+  writeFileSync(`${x}/App.xcodeproj/xcuserdata/a.plist`, "p");
+  writeFileSync(`${x}/App.xcodeproj/project.pbxproj`, "p");
+  check("pending artifacts", JSON.stringify(gc.pendingXcodeArtifacts(x)) === '["App.xcodeproj/xcuserdata","DerivedData"]');
+
   // initialize-repo.ts in a fresh project
   const p = mkdtempSync(join(tmpdir(), "git-common-init-"));
   tmps.push(p);
@@ -137,6 +164,7 @@ try {
   check("init stderr", r1.stderr.toString() === "✓ Git repository initialized\n" && r1.stdout.toString() === "");
   check("init commit msg", sh(p, "git", "log", "-1", "--format=%s") === "hello init");
   check("init gitignore", readFileSync(`${p}/.gitignore`, "utf8").includes(".specify/feature.json"));
+  check("init gitignore xcode", readFileSync(`${p}/.gitignore`, "utf8").split("\n").includes("DerivedData/"));
   const r2 = run();
   check("init rerun skips", r2.exitCode === 0 && r2.stderr.toString() === "[specify] Git repository already initialized; skipping\n");
 } finally {

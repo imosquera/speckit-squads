@@ -1,0 +1,45 @@
+schema_version: "1.0"
+
+preset:
+  id: "button-design-ios"
+  name: "Button Design (iOS)"
+  version: "1.1.0"
+  description: "Holds every UI-touching iOS feature to Apple HIG / SwiftUI button rules. The /speckit-specify layer requires an `## Actions & Buttons` table — Button vs NavigationLink/Link, one `.borderedProminent` per screen, toolbar placement, specific 1–3 word labels, `role: .destructive` plus a confirmationDialog/alert/undo safeguard on every destructive action; the /speckit-plan layer requires a `## Button System` section — ButtonStyle reuse, styles and semantic tint, pressed/disabled states and haptics, 44×44pt hit targets, Dynamic Type and accessibility labels, toolbar/bottom-bar placement. Both are checked deterministically. See presets/button-design-ios/README.md."
+  author: "imosquera"
+  repository: "https://github.com/imosquera/speckit-squads-ios"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.6.0"
+
+provides:
+  scripts:
+    - name: "check-buttons.ts"
+      file: "scripts/ts/check-buttons.ts"
+      executable: true
+    - name: "selftest-button-design.ts"
+      file: "scripts/ts/selftest-button-design.ts"
+      executable: true
+    - name: "jev.ts"
+      file: "scripts/ts/jev.ts"
+      executable: true
+
+  templates:
+    - type: "command"
+      name: "speckit.specify"
+      file: "commands/speckit.specify.md"
+      description: "Composable wrapper for /speckit-specify that requires a checked `## Actions & Buttons` table for UI-touching features."
+      strategy: "wrap"
+
+    - type: "command"
+      name: "speckit.plan"
+      file: "commands/speckit.plan.md"
+      description: "Composable wrapper for /speckit-plan that requires a checked `## Button System` section when the spec declares user-facing actions."
+      strategy: "wrap"
+
+tags:
+  - "ui"
+  - "buttons"
+  - "ux"
+  - "spec"
+  - "plan"

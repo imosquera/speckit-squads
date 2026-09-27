@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // Checks the git extension's one handler for `commit_exclude` churn
 // (scrub-commit-exclude.ts), its callers clean.ts and create-pr.ts, and auto-commit.ts,
-// which holds excluded paths out of its commit without scrubbing (issue #109). create-pr.ts runs against a local bare origin and a stubbed gh;
+// which holds excluded paths and untracked Xcode build/user state out of its commit
+// without scrubbing (issue #109). create-pr.ts runs against a local bare origin and a stubbed gh;
 // nothing leaves the machine.
 // Usage: bun test-commit-exclude.ts
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -213,6 +214,42 @@ if (k === "issue view") console.log("p1\\nautopilot:claimed\\nfeature");
   check("create-pr", "pushed to the bare origin as one squashed commit", "1", git(bare, "rev-list", "--count", "main..042-demo"));
   check("create-pr", "excluded path carries no branch change", "", git(bare, "diff", "--name-only", "main", "042-demo", "--", "graphify-out"));
   contains("create-pr squash", "Closes #7", git(bare, "log", "-1", "--pretty=%B", "042-demo"));
+
+  console.log("13. auto-commit never commits Xcode build output or per-user state, even with no .gitignore");
+  R = makeRepo(`${TMP}/r13`, "  []", "auto_commit:\n  default: true\n");
+  mkdirSync(`${R}/Pods`);
+  write(`${R}/Pods/Manifest.lock`, "committed by this team");
+  git(R, "add", "-A");
+  git(R, "commit", "-qm", "commit Pods/");
+  const junk = [
+    "DerivedData/App/Build/Intermediates.noindex/x.o",
+    "DerivedData/App/Build/Products/Release-iphoneos/App.app/Info.plist",
+    ".build/checkouts/Kit/Package.swift",
+    "App.xcodeproj/xcuserdata/me.xcuserdatad/xcschemes/xcschememanagement.plist",
+    "App.xcodeproj/project.xcworkspace/xcuserdata/me.xcuserdatad/UserInterfaceState.xcuserstate",
+    ".swiftpm/xcode/xcuserdata/me.xcuserdatad/xcschemes/xcschememanagement.plist",
+    "TestResults/Run 1.xcresult/Info.plist",
+    "Stray.xcuserstate",
+  ];
+  for (const f of junk) {
+    mkdirSync(join(R, f, ".."), { recursive: true });
+    write(join(R, f), "generated");
+  }
+  write(`${R}/Pods/Manifest.lock`, "bumped"); // tracked: the team's convention, still committed
+  write(`${R}/app.txt`, "edited");
+  git(R, "add", "--", "DerivedData"); // an agent already staged some of it
+  s = runIn(R, ["bun", `${R}/${EXT}/scripts/ts/auto-commit.ts`, "after_implement"]);
+  check("xcode", "exit code", 0, s.rc);
+  contains("xcode", "Held out Xcode build/user state", s.out);
+  const committed = git(R, "show", "--name-only", "--pretty=", "HEAD").split("\n").sort().join(",");
+  check("xcode", "commit carries only real work and tracked Pods/", "Pods/Manifest.lock,app.txt", committed);
+  check("xcode", "build output left on disk", "generated", read(`${R}/DerivedData/App/Build/Intermediates.noindex/x.o`));
+  check("xcode", "nothing staged afterwards", "", git(R, "diff", "--cached", "--name-only"));
+
+  console.log("14. only Xcode artifacts changed -> nothing to commit, exit 0");
+  s = runIn(R, ["bun", `${R}/${EXT}/scripts/ts/auto-commit.ts`, "after_implement"]);
+  check("xcode-only", "exit code", 0, s.rc);
+  contains("xcode-only", "Nothing to commit after after_implement", s.out);
 } finally {
   rmSync(TMP, { recursive: true, force: true });
 }

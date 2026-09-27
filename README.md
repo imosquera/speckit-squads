@@ -23,7 +23,10 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    the per-repo log stamps each line with the event's own timestamp and tags it with the
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding;
                    a small, unambiguous change skips spec/clarify/plan/tasks and goes straight to implementation
-                   (Step 2.5), keeping review + draft PR as the gates
+                   (Step 2.5), keeping review + draft PR as the gates;
+                   on iOS, preflight's `check-target-repo.ts --kind` picks the scheme and a Simulator destination
+                   (sim-destination.ts, override SPECKIT_AUTOPILOT_SIM_DESTINATION) and gates with xcodebuild/swift
+                   (needs full Xcode + a Simulator runtime); web gates are unchanged
   git/             Feature-branch + worktree (graph seeded at creation via seed-graph.ts, dependencies installed via install-deps.ts) + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
                    a PR is titled "#N: <spec H1>" and inherits the tracking issue's labels (pr_copy_labels) and carries an agent-session
                    footer with the `claude --resume` id, author and claude.ai link (pr_session_footer),
@@ -46,12 +49,16 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    /speckit-git-clean refuses every destructive step until verify-landed.ts proves the branch's work is
                    on the base — a squash merge leaves no ancestry, so the branch's own touched paths (from its commit
                    history, minus commit_exclude) are compared against the fetched origin/<base> instead of a hand-typed
-                   path list that differed every run (issue #49); UNKNOWN, or a check that cannot run at all, is a refusal
+                   path list that differed every run (issue #49); UNKNOWN, or a check that cannot run at all, is a refusal;
+                   install-deps.ts also runs CocoaPods, Carthage, `swift package resolve` and
+                   `xcodebuild -resolvePackageDependencies` (after Node/Python, so React Native works), and the
+                   XCODE_ARTIFACTS guard keeps untracked Xcode/SwiftPM artifacts out of auto-commits
   progress/        before_tasks/before_implement hooks for the progress-report preset (covers the two phases a replace-strategy preset clobbers)
   review/          Multi-agent code review, one engine for every scope: /speckit-review-run covers the feature branch, working
                    directory, or a GitHub PR (--pr N, optional --comment). Agents: code (incl. security & performance), arch,
                    comments, tests, errors, types, simplify (ponytail review + audit; cuts applied unless --no-fix).
-                   2.0.0 removes /speckit-review-pr — use /speckit-review-run --pr N
+                   2.0.0 removes /speckit-review-pr — use /speckit-review-run --pr N;
+                   2.2.0 adds Swift/iOS checklists, a `languages:` line, and `ignored_files` for Xcode churn
   stale-tasks-guard/  before_implement hook that halts /speckit-implement when spec.md is newer than tasks.md (--force bypasses)
 
 presets/      # Spec Kit presets (template + command overrides)
@@ -69,6 +76,11 @@ presets/      # Spec Kit presets (template + command overrides)
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes the ponytail:ponytail skill before /speckit-implement starts
   parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (oxc-parser; TypeScript only for now, Python behind `PDV_PYTHON=1`); the gate is one command, `scan --new-only`, and a scan that examined zero files exits 2/3/4 rather than looking clean
+  tdd-ios/                      tdd for Swift/ObjC/Metal: `swift test` or `xcodebuild test` on an iOS Simulator
+  button-design-ios/            button-design against SwiftUI + Apple HIG, with a SwiftUI Button System
+  parse-dont-validate-ios/      Swift-only lexer gate, rules PDV001–005 (Any/AnyObject, JSONSerialization etc.,
+                                Bool validators, as!, try!); needs only bun
+  library-research-ios/         library-research ordered Apple frameworks → apple/swift-* → Swift Package Index
   progress-report/           wraps the 5 cycle commands to keep a per-branch status card in ~/Code/agent-os current (pair with the progress extension for tasks/implement)
 ```
 
@@ -133,12 +145,23 @@ specify preset add --dev "$SQUADS/presets/parse-dont-validate"
 specify preset add --dev "$SQUADS/presets/progress-report"
 ```
 
+In an iOS project, install `tdd-ios`, `button-design-ios`, `parse-dont-validate-ios` and
+`library-research-ios` in place of their base presets, at the same `--priority`.
+
 Or use the bundled script from inside the checkout:
 
 ```bash
 ./install.ts /path/to/your/spec-kit-project
 ./install.ts --force /path/to/your/spec-kit-project   # reinstall everything
+./install.ts --ios /path/to/project                   # force iOS mode (--no-ios forces web)
 ```
+
+**iOS vs web.** `install.ts` auto-detects an iOS project from a `*.xcodeproj`, `*.xcworkspace` or
+`Package.swift` at the root or one level down (skipping `Pods`, `Carthage`, `DerivedData`,
+`node_modules` and dot-dirs) and prints the chosen mode and why. A project gets exactly one of each
+`X` / `X-ios` pair: iOS mode installs `X-ios` and skips `X`, web mode the reverse; an `-ios` preset
+with no base is iOS-only. `--force` removes the opposite twin, so it is how you switch modes. The
+extensions have one copy each that serves both kinds of project.
 
 `--dev` records this checkout as the install source, but it does **not** symlink: `specify` copies the
 directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are
@@ -149,6 +172,10 @@ TypeScript 7: run `bun install` once in the checkout, then `bun run typecheck`. 
 runs the typecheck when bun and `node_modules` are present. The `parse-dont-validate` TypeScript scan
 needs only `bun` on PATH: it parses with a pinned `oxc-parser` from `~/.cache/speckit-squads/pdv`, so
 the consumer needs no `typescript` install (TS 7, TS 5 or none).
+
+`bun run test` runs every test. CI (`.github/workflows/ci.yml`) has a `test` job and an `ios-smoke`
+job that runs `scripts/ci-ios-smoke.ts` on real Xcode (needs `xcodegen`); locally, run
+`bun scripts/ci-ios-smoke.ts` with Xcode installed.
 
 `install.ts` first runs `check-cli-usage.ts`, which aborts the install on two classes of
 invented path. It verifies every `specify <verb>` a command file tells an agent to execute
@@ -162,7 +189,7 @@ empty in an ordinary interactive session, so the path starts at `/` and the call
 because each bash call is its own shell.
 
 After installing, `install.ts` runs `scripts/gen-agent-index.ts`, which writes the command→script
-mapping into the consumer as `.specify/extensions/AGENTS.md` plus a breadcrumb at
+mapping for the items actually installed (so not the skipped twin) into the consumer as `.specify/extensions/AGENTS.md` plus a breadcrumb at
 `.specify/scripts/bash/README.md`. Extension scripts install to
 `.specify/extensions/<id>/scripts/…`, never into the flat core tree, and command names do
 not predict script names (`/speckit-git-feature` runs `create-new-feature.ts`) — so the
@@ -202,7 +229,7 @@ Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensio
 
 ### The `/speckit-implement` ordering contract
 
-Six presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.ts` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
+Six presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.ts` passes `--priority` for each; the map is `PRIORITY` there, read through `presetPriority()` (an `-ios` preset inherits its base's number) and must stay in sync with this table:
 
 | Priority | Preset | Strategy | Role |
 |---|---|---|---|

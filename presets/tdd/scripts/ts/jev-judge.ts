@@ -41,6 +41,7 @@ type Out = {
   source: "jev" | "fallback";
   decision: string | null;
   answer?: string | number;
+  raw?: string; // red-reason's unfolded option, e.g. missing_code
   confidence?: number;
   model?: string;
   reason?: string;
@@ -131,17 +132,29 @@ const pct = (x: number) => x.toFixed(2);
 const RED = {
   type: "choice" as const,
   instructions: "The new test in `test_source` was just run as part of the suite. Which option describes its result in `suite_output`?",
+  // A missing symbol under test is expected Red, but it also never reaches an
+  // assertion: one "behavior missing" option lost it to harness_error at 0.86.
+  // Separate options for each shape, folded back into expected_red below.
   criteria: {
-    expected_red: "The test fails because the behavior it checks does not exist yet.",
-    harness_error: "The test never reaches its assertions.",
+    expected_red: "An assertion in the test fails.",
+    missing_code: "The test cannot run because the function under test does not exist yet.",
+    missing_module: "The test cannot run because the file under test does not exist yet.",
+    harness_error: "A defect in the test file itself stops the test.",
     passes_immediately: "The test passes.",
     none_of_these: "No other option describes the result.",
   },
 };
+const FOLD: Record<string, string> = { missing_code: "expected_red", missing_module: "expected_red" };
+const VERDICTS = ["expected_red", "harness_error", "passes_immediately", "none_of_these"];
 
+// Gate on the verdict's summed probability, not the top raw option's.
 async function redReason(state: Record<string, string>) {
   const r = await ask("red_reason", c => c.systemOne({ state, questions: { red_reason: RED } }));
-  return { model: r.model, ...r.answers.red_reason };
+  const a = r.answers.red_reason;
+  const p: Record<string, number> = {};
+  for (const [k, v] of Object.entries(a.probabilities)) p[FOLD[k] ?? k] = (p[FOLD[k] ?? k] ?? 0) + v;
+  const choice = VERDICTS.reduce((best, k) => ((p[k] ?? 0) > (p[best] ?? 0) ? k : best));
+  return { model: r.model, raw: a.choice, choice, confidence: p[choice] ?? 0 };
 }
 
 function noul(instructions: string, yes: string, no: string) {
@@ -162,9 +175,9 @@ switch (cmd) {
     const automate = process.env.TDD_JEV_AUTOMATE_RED === "1";
     const mode = !confident ? "fallback: low confidence" : automate ? "automated" : "shadow";
     emit({
-      case: "red_reason", source: "jev", model: a.model, answer: a.choice, confidence: a.confidence,
+      case: "red_reason", source: "jev", model: a.model, answer: a.choice, raw: a.raw, confidence: a.confidence,
       decision: confident && automate ? a.choice : null,
-      record: `jev red_reason=${a.choice} conf=${pct(a.confidence)} (${mode})`,
+      record: `jev red_reason=${a.choice} (${a.raw}) p=${pct(a.confidence)} (${mode})`,
     }, confident && automate ? OK : FALLBACK);
   }
   case "baseline": {
@@ -208,7 +221,7 @@ switch (cmd) {
     // one of RED's options) to decide whether red-reason may automate.
     const lines = file("records").split("\n").filter(l => l.trim());
     if (!lines.length) usage("--records holds no records");
-    const labels = Object.keys(RED.criteria);
+    const labels = VERDICTS;
     let agree = 0, confident = 0, confidentAgree = 0;
     for (const [i, line] of lines.entries()) {
       let rec: { scenario?: unknown; test?: unknown; output?: unknown; label?: unknown };

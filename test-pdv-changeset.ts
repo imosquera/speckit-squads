@@ -38,11 +38,14 @@ function check(name: string, want: number, got: number, extra: string) {
 }
 
 /** Run a command; stdout and stderr together, as `2>&1` gave the bash test. */
-function run(cmd: string[], cwd = TMP, stdin?: string) {
-  const p = Bun.spawnSync(cmd, { cwd, stdin: stdin === undefined ? "ignore" : Buffer.from(stdin), stdout: "pipe", stderr: "pipe" });
+function run(cmd: string[], cwd = TMP, stdin?: string, env: Record<string, string> = {}) {
+  const p = Bun.spawnSync(cmd, { cwd, env: { ...process.env, ...env }, stdin: stdin === undefined ? "ignore" : Buffer.from(stdin), stdout: "pipe", stderr: "pipe" });
   return { out: p.stdout.toString() + p.stderr.toString(), st: p.exitCode ?? -1 };
 }
-const pdv = (args: string[], cwd = TMP) => run(["bun", SCRIPT, ...args], cwd);
+// Python is scanned only with PDV_PYTHON=1 (TypeScript only for now); these
+// fixtures mix both, so they opt in. The default is checked on its own below.
+const pdv = (args: string[], cwd = TMP) => run(["bun", SCRIPT, ...args], cwd, undefined, { PDV_PYTHON: "1" });
+const pdvDefault = (args: string[], cwd = TMP) => run(["bun", SCRIPT, ...args], cwd, undefined, { PDV_PYTHON: "" });
 const git = (...args: string[]) => {
   const r = run(["git", ...args]);
   if (r.st !== 0) throw new Error(`git ${args.join(" ")} failed:\n${r.out}`);
@@ -182,6 +185,15 @@ writeFileSync(join(PYF, "bad.py"), "def broken(:\n  x = (1, 2\n");
 ({ out, st } = pdv(["scan", "bad.py"], PYF));
 check("unparseable Python is a scan failure, not a clean file", 3, st, out);
 if (!out.includes("cannot parse Python source")) bad("parse failure not named");
+
+// By default (no PDV_PYTHON) Python is skipped, not scanned: a .py-only scan
+// examines nothing (exit 3 for given paths), and a mixed one sees only the .ts.
+({ out, st } = pdvDefault(["scan", "svc.py"], PYF));
+check("Python is skipped by default", 3, st, out);
+writeFileSync(join(PYF, "mixed.ts"), "export const a: any = 1;\n");
+({ out, st } = pdvDefault(["scan", "svc.py", "bad.py", "mixed.ts"], PYF));
+check("a mixed scan by default reports only the TypeScript", 1, st, out);
+if (!/mixed\.ts:1: PDV001/.test(out) || out.includes("svc.py")) bad("default scan did not skip Python", out);
 
 // --- the prompt's exit contract is internally consistent
 // Every place that states the exit contract must carry the verified exit-4

@@ -4,7 +4,7 @@
  *
  * Run by bun. TypeScript files are handed to `pdv_ts_scan.ts` (next to this
  * file), which walks a real AST parsed by a pinned `oxc-parser`; Python
- * files are scanned in-process by a Python tokenizer plus a statement-level
+ * files (only with PDV_PYTHON=1, for now) are scanned in-process by a Python tokenizer plus a statement-level
  * structural pass (see "Python" below). Only bun/node built-ins.
  */
 
@@ -30,7 +30,8 @@ Sources are analysed structurally, never by line regex:
     NO regex fallback: if the parser cannot be installed or loaded, or a source
     file cannot be parsed, the scan fails loudly (exit 3) rather than silently
     under-reporting.
-  * Python (\`.py/.pyi\`) by an in-process Python tokenizer (strings, f-string
+  * Python (\`.py/.pyi\`) — only with PDV_PYTHON=1 for now; otherwise .py files
+    are skipped, not scanned — by an in-process Python tokenizer (strings, f-string
     expressions, comments, brackets) and a statement-level pass that finds
     annotations, \`def\` headers and calls. Unbalanced brackets or unterminated
     strings fail the scan (exit 3).
@@ -43,7 +44,7 @@ Subcommands
       Print the discipline items an implementation audit must cover.
 
   scan [--base <ref>] [--new-only] [paths ...]
-      Scan TypeScript/Python sources for parse-don't-validate anti-patterns.
+      Scan TypeScript sources (and Python, with PDV_PYTHON=1) for parse-don't-validate anti-patterns.
       With explicit paths, scans exactly those. With no paths, scans the git
       change set: the working tree PLUS work already committed on the current
       branch (diffed against \`--base\`, or an auto-detected base ref —
@@ -64,7 +65,7 @@ Subcommands
       Exit codes: 0 clean, 1 findings, 2 bad invocation (unknown option, or
       \`--base\` with no ref), 3 the scan could not run (missing tool, given
       paths resolved to nothing, not a git worktree), 4 nothing was scanned
-      because the change set holds no TypeScript/Python. A scan that examined
+      because the change set holds no TypeScript (or Python, with PDV_PYTHON=1). A scan that examined
       zero files never exits 0 — an empty input is not a clean result.
 
 Waivers
@@ -114,7 +115,12 @@ const VALIDATOR_NAME_RE = /^(is_[A-Za-z][\p{L}\p{N}_]*|validate[\p{L}\p{N}_]*|ch
 
 const TS_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const PY_EXTENSIONS = new Set(['.py', '.pyi']);
-const EXTENSIONS = new Set([...TS_EXTENSIONS, ...PY_EXTENSIONS]);
+// TypeScript only for now: Python is scanned only when PDV_PYTHON=1. Off, a
+// .py file is not a target at all — skipped, never flagged — so a Python-only
+// change set is an empty input (exit 4). The scanner and its tests stay.
+const PYTHON = process.env.PDV_PYTHON === '1';
+const EXTENSIONS = new Set([...TS_EXTENSIONS, ...(PYTHON ? PY_EXTENSIONS : [])]);
+const LANGS = PYTHON ? 'TypeScript/Python' : 'TypeScript';
 
 const TS_HELPER = path.join(import.meta.dir, 'pdv_ts_scan.ts');
 
@@ -886,7 +892,7 @@ function cmdScan(argv: string[]): number {
     targets = uniqSorted(expand(paths));
     if (!targets.length) {
       console.error('parse-dont-validate: none of the given paths resolved to a ' +
-        `TypeScript/Python file: ${paths.join(', ')}\n` +
+        `${LANGS} file: ${paths.join(', ')}\n` +
         'Nothing was examined — this is NOT a clean scan.');
       return 3;
     }
@@ -899,9 +905,9 @@ function cmdScan(argv: string[]): number {
     targets = uniqSorted(changedFiles(base));
     if (!targets.length) {
       console.error('parse-dont-validate: nothing scanned — the change set holds ' +
-        'no TypeScript/Python files.\nThis is an empty input, not a ' +
+        `no ${LANGS} files.\nThis is an empty input, not a ` +
         'clean scan. It is the expected outcome only when this run ' +
-        'genuinely wrote no TypeScript or Python; otherwise the ' +
+        `genuinely wrote no ${LANGS}; otherwise the ` +
         'invocation is wrong.');
       return 4;
     }

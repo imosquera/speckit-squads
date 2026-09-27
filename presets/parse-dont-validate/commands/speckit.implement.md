@@ -65,7 +65,11 @@ Apply the discipline above to any TypeScript or Python written by the flow below
 ### Mandatory anti-pattern scan (runs AFTER all task execution)
 
 After the entire core flow above finishes, gate completion on a deterministic scan of the
-TypeScript/Python changed during this run:
+TypeScript changed during this run. **The gate is TypeScript-only for now:** Python
+files are skipped — neither scanned nor flagged — unless `PDV_PYTHON=1` is set, so
+the discipline above still applies to Python you write but nothing checks it.
+Wherever this section says "TypeScript", read "TypeScript or Python" under
+`PDV_PYTHON=1`.
 
 1. **Review the discipline items** the scan enforces:
 
@@ -101,7 +105,7 @@ TypeScript/Python changed during this run:
    could not run (`oxc-parser` could not be installed or loaded, a file failed
    to parse, paths that resolved to no file,
    a cwd outside any git worktree); exit `4` is an empty *input* — the change
-   set holds no TypeScript or Python. Read the message and fix the call. Never
+   set holds no TypeScript. Read the message and fix the call. Never
    invoke `scripts/ts/pdv_ts_scan.ts` yourself: it takes a JSON job on stdin
    and ignores file arguments, so a direct call with filenames used to print an
    empty findings list that read exactly like a pass.
@@ -109,7 +113,7 @@ TypeScript/Python changed during this run:
    The scanner runs under `bun`; if the shell reports `bun: command not found`
    (exit `127`) the gate never ran — install bun (https://bun.sh) and re-run,
    never report it as a pass. Neither language is matched by line regex:
-   Python is tokenized and parsed structurally in-process, and a Python file it
+   Python (under `PDV_PYTHON=1`) is tokenized and parsed structurally in-process, and a Python file it
    cannot tokenize (unbalanced brackets, an unterminated string) exits `3`.
    Scanning **TypeScript** needs no `typescript` install in the project (TS 7,
    TS 5 or none): the bun helper parses with a pinned `oxc-parser` from the
@@ -129,15 +133,15 @@ TypeScript/Python changed during this run:
      a waiver anywhere else is the bug this preset exists to catch.
 
    Re-run `scan --new-only` until it **exits zero, or exits `4` on a run you have
-   confirmed wrote no TypeScript or Python** (the "verified empty input" case
+   confirmed wrote no TypeScript** (the "verified empty input" case
    below). Those two are the only outcomes you may report completion on.
 
-**The verified empty-input case.** If the run produced no TypeScript or Python,
+**The verified empty-input case.** If the run produced no TypeScript,
 `scan` exits `4` saying nothing was scanned. That is the one non-zero exit you
 may proceed past, and only after checking the change set yourself and confirming
-it really holds no `.ts`/`.tsx`/`.js`/`.jsx`/`.py` file. Wherever the rest of
+it really holds no `.ts`/`.tsx`/`.mts`/`.cts` file (a Python-only run lands here too). Wherever the rest of
 this section says "exits zero", read it as "exits zero, or exits `4` verified
-this way". If the run *did* write TypeScript or Python, exit `4` means the
+this way". If the run *did* write TypeScript, exit `4` means the
 invocation is wrong, not that the gate passed — fix the call and re-run.
 
 ## Failure Policy
@@ -147,8 +151,8 @@ invocation is wrong, not that the gate passed — fix the call and re-run.
   `1` means findings: fix the flagged code or add a boundary waiver, then
   re-scan. Exits `2`/`3` mean the gate never ran — fix the invocation or the
   environment and run it; they are not a pass. Exit `4` means nothing was
-  scanned, which is a pass only for a run you have confirmed wrote no TypeScript
-  or Python; report it as such rather than reporting a zero exit.
+  scanned, which is a pass only for a run you have confirmed wrote no
+  TypeScript; report it as such rather than reporting a zero exit.
 - Do not silence a finding by deleting the offending line's functionality, by
   widening a type to escape the regex, or by waiving outside a parser module.
   The point is a real parser at the boundary, not a green scan.
@@ -160,7 +164,7 @@ invocation is wrong, not that the gate passed — fix the call and re-run.
 On success, include:
 - The normal `/speckit-implement` completion summary from the core flow.
 - Whether the parse-don't-validate scan ran and that it exited zero — or, for a
-  run with no TypeScript or Python, that it exited `4` and that you confirmed the
+  run with no TypeScript, that it exited `4` and that you confirmed the
   change set holds no such file. State which of the two it was; never claim a
   zero exit for the exit-`4` case.
 - Any findings that were fixed (what became a parser) and any that were waived

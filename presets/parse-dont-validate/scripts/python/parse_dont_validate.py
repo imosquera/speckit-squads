@@ -12,13 +12,13 @@ diff.
 
 Everything is analysed as a real AST — no regex heuristics:
   * Python (`.py/.pyi`) via the stdlib `ast` module.
-  * TypeScript (`.ts/.tsx/.mts/.cts`) by shelling out to Node and the project's
-    TypeScript Compiler API (`scripts/node/pdv_ts_scan.cjs`). This requires
-    `node` on PATH and `typescript` installed in the project. There is NO regex
+  * TypeScript (`.ts/.tsx/.mts/.cts`) by shelling out to bun and the project's
+    TypeScript Compiler API (`scripts/node/pdv_ts_scan.ts`). This requires
+    `bun` on PATH and a TS 5.x `typescript` installed in the project. There is NO regex
     fallback: if either is missing, or a source file cannot be parsed, the scan
     fails loudly rather than silently under-reporting.
 
-Stdlib-only Python 3.8+ (the Node helper carries the TypeScript dependency).
+Stdlib-only Python 3.8+ (the bun helper carries the TypeScript dependency).
 
 Subcommands
 -----------
@@ -116,7 +116,7 @@ TS_EXTENSIONS = {".ts", ".tsx", ".mts", ".cts"}
 PY_EXTENSIONS = {".py", ".pyi"}
 EXTENSIONS = TS_EXTENSIONS | PY_EXTENSIONS
 
-NODE_HELPER = Path(__file__).resolve().parent.parent / "node" / "pdv_ts_scan.cjs"
+TS_HELPER = Path(__file__).resolve().parent.parent / "node" / "pdv_ts_scan.ts"
 
 
 class ScanError(Exception):
@@ -232,16 +232,17 @@ def _scan_python(paths: List[Path]) -> List[Finding]:
     return findings
 
 
-# --- TypeScript: Node + TS Compiler API -------------------------------------
+# --- TypeScript: bun + TS Compiler API -------------------------------------
 
 def _scan_typescript(paths: List[Path]) -> List[Finding]:
-    node = shutil.which("node")
-    if node is None:
+    bun = shutil.which("bun")
+    if bun is None:
         raise ScanError(
-            "cannot scan TypeScript — `node` was not found on PATH. Install "
-            "Node.js (and `typescript` in the project) to parse TS files.")
-    if not NODE_HELPER.is_file():
-        raise ScanError(f"TypeScript scanner helper missing: {NODE_HELPER}")
+            "cannot scan TypeScript — `bun` was not found on PATH. Install "
+            "bun (https://bun.sh) (and `typescript` in the project) to parse "
+            "TS files.")
+    if not TS_HELPER.is_file():
+        raise ScanError(f"TypeScript scanner helper missing: {TS_HELPER}")
 
     job = {"files": [
         {"path": str(p), "isParser": bool(PARSER_FILE_RE.search(p.name))}
@@ -249,10 +250,10 @@ def _scan_typescript(paths: List[Path]) -> List[Finding]:
     ]}
     try:
         proc = subprocess.run(
-            [node, str(NODE_HELPER)],
+            [bun, str(TS_HELPER)],
             input=json.dumps(job), capture_output=True, text=True, check=False)
     except OSError as e:
-        raise ScanError(f"failed to launch Node scanner: {e}")
+        raise ScanError(f"failed to launch bun scanner: {e}")
     if proc.returncode != 0:
         raise ScanError(proc.stderr.strip() or "TypeScript scanner failed")
     try:

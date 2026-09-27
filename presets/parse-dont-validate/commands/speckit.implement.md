@@ -96,18 +96,20 @@ TypeScript/Python changed during this run:
 
    **A scan that examined nothing never exits zero.** Exit `2` is a bad
    invocation (an unknown option, `--base` with no ref); exit `3` is a scan that
-   could not run (missing `node`/`typescript`, paths that resolved to no file,
+   could not run (missing `bun`/`typescript`, paths that resolved to no file,
    a cwd outside any git worktree); exit `4` is an empty *input* — the change
    set holds no TypeScript or Python. Read the message and fix the call. Never
-   invoke `scripts/node/pdv_ts_scan.cjs` yourself: it takes a JSON job on stdin
+   invoke `scripts/node/pdv_ts_scan.ts` yourself: it takes a JSON job on stdin
    and ignores file arguments, so a direct call with filenames used to print an
    empty findings list that read exactly like a pass.
 
    Both languages are analysed as real ASTs. Scanning **TypeScript** requires
-   `node` on PATH and `typescript` installed in the project (the Node helper
-   uses the TypeScript Compiler API). If the scanner exits `3` with a message
-   that `typescript` is missing, install it (`npm i -D typescript`) and re-run —
-   do not treat a missing parser as a pass.
+   `bun` on PATH and a TS 5.x `typescript` installed in the project (the bun
+   helper uses the TypeScript Compiler API, which TypeScript 7 does not ship).
+   If the scanner exits `3` with a message that `typescript` is missing, install
+   a TS 5.x copy with the project's package manager (e.g.
+   `npm i -D typescript@5`) and re-run — do not treat a missing parser as a
+   pass.
 
 3. **Resolve every finding.** For each reported `PDVxxx`, either:
    - **Fix it** — replace the validator / `any` / `Any` / stray cast with a

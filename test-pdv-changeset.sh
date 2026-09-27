@@ -5,13 +5,13 @@
 #   2. --new-only subtracts findings that already reproduce on the base ref;
 #   3. a scan that examined ZERO files never exits like a clean pass — a typo'd
 #      flag, a path that resolves to nothing, a non-repo cwd and an empty change
-#      set each get their own non-zero exit (issue #50), and the Node helper
+#      set each get their own non-zero exit (issue #50), and the bun helper
 #      refuses a job it cannot use instead of printing an empty findings list.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$ROOT/presets/parse-dont-validate/scripts/python/parse_dont_validate.py"
-TS_HELPER="$ROOT/presets/parse-dont-validate/scripts/node/pdv_ts_scan.cjs"
+TS_HELPER="$ROOT/presets/parse-dont-validate/scripts/node/pdv_ts_scan.ts"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail=0
@@ -100,16 +100,16 @@ out="$(python3 "$SCRIPT" scan --base main 2>&1)"; st=$?
 check "an empty change set exits 4, not 0" 4 "$st" "$out"
 grep -q "not a clean scan" <<<"$out" || { echo "  FAIL empty change set not called out"; echo "$out" | sed 's/^/       /'; fail=1; }
 
-if command -v node >/dev/null 2>&1; then
-  out="$(node "$TS_HELPER" some/file.ts </dev/null 2>&1)"; st=$?
-  check "the Node helper refuses file arguments" 2 "$st" "$out"
+if command -v bun >/dev/null 2>&1; then
+  out="$(bun "$TS_HELPER" some/file.ts </dev/null 2>&1)"; st=$?
+  check "the bun helper refuses file arguments" 2 "$st" "$out"
   grep -q '\[\]' <<<"$out" && { echo "  FAIL helper printed an empty findings list"; fail=1; }
-  out="$(printf '' | node "$TS_HELPER" 2>&1)"; st=$?
-  check "the Node helper refuses an empty job" 2 "$st" "$out"
-  out="$(printf '{"files":[]}' | node "$TS_HELPER" 2>&1)"; st=$?
-  check "the Node helper refuses a zero-file job" 2 "$st" "$out"
+  out="$(printf '' | bun "$TS_HELPER" 2>&1)"; st=$?
+  check "the bun helper refuses an empty job" 2 "$st" "$out"
+  out="$(printf '{"files":[]}' | bun "$TS_HELPER" 2>&1)"; st=$?
+  check "the bun helper refuses a zero-file job" 2 "$st" "$out"
 else
-  echo "  skip node helper checks (node not on PATH)"
+  echo "  skip bun helper checks (bun not on PATH)"
 fi
 
 # --- the prompt's exit contract is internally consistent ---------------------
@@ -154,11 +154,11 @@ module.exports = {
 JS
 echo 'export const x = 1;' > "$TSR/pkg/a.ts"
 job='{"files":[{"path":"pkg/a.ts","parser":false}]}'
-out="$(cd "$TSR" && printf '%s' "$job" | node "$TS_HELPER" 2>&1)"
+out="$(cd "$TSR" && printf '%s' "$job" | bun "$TS_HELPER" 2>&1)"
 if grep -q resolved-ts5 <<<"$out"; then echo "  ok   TS 7 in the package falls through to TS 5 at the root"
 else echo "  FAIL TS 7 in the package did not fall through to TS 5"; echo "$out" | sed 's/^/       /'; fail=1; fi
 rm -rf "$TSR/node_modules"
-out="$(cd "$TSR" && printf '%s' "$job" | node "$TS_HELPER" 2>&1)"; st=$?
+out="$(cd "$TSR" && printf '%s' "$job" | bun "$TS_HELPER" 2>&1)"; st=$?
 check "TS 7 alone exits 3" 3 "$st" "$out"
 if grep -q 'TS 5.x' <<<"$out"; then echo "  ok   the exit-3 message names the TS 5.x requirement"
 else echo "  FAIL the exit-3 message does not name the TS 5.x requirement"; echo "$out" | sed 's/^/       /'; fail=1; fi

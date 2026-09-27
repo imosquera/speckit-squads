@@ -47,6 +47,20 @@ The three `ps:` lines still in `presets/*/commands/` point at **core Spec Kit's*
 inherited from upstream templates and are left alone; the rule is about scripts
 this repo owns.
 
+## Runtime: bun + TypeScript 7
+
+**Our own JavaScript tooling is TypeScript run by bun** — shebang
+`#!/usr/bin/env bun`, never `node`/`npm`/`npx` — and it is typechecked by
+TypeScript 7 (the native compiler) via `bun run typecheck` against the root
+`package.json`/`tsconfig.json`. Run `bun install` once per checkout;
+`check-cli-usage.sh` runs the typecheck as part of install pre-flight when bun
+and `node_modules` are present, and warns and skips otherwise. The one TS 5.x
+dependency is not ours: the `parse-dont-validate` scanner loads the
+**consumer's** `typescript` compiler API at runtime (TS 7 ships none, issue
+#113), so it types that module with a local interface and never imports
+`typescript` statically. Consumer-side package managers stay polyglot —
+`install-deps.sh` reads each consumer's lockfile and must keep doing so.
+
 ## Install / uninstall
 
 Both scripts auto-discover every directory under `extensions/` and `presets/` that contains a manifest — there is **no hardcoded list to maintain**.
@@ -601,7 +615,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes the `ponytail:ponytail` skill (when available) as a mandatory prelude before implementation begins. Implementation-discipline skills only: a prose-register skill compresses the very audit trail an unattended `/speckit-autopilot-run` depends on, so it does not belong in the prelude (issue #72)
-- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a Node helper on the TS Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules).
+- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a bun-run TS helper on the consumer's TS 5.x Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules).
   **The gate is one invocation: `parse_dont_validate.py scan --new-only`.** The two
   deterministic steps around it used to be driven by hand every run (issue #66) and
   both had exactly one right answer: change-set detection now anchors at the git
@@ -619,7 +633,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   one non-zero the implement gate may proceed past, and only for a run that truly
   wrote no TypeScript or Python. They all used to print
   `no TypeScript/Python files to scan` and exit `0`, so a typo in the flag was
-  indistinguishable from a passing gate. The Node helper is the same defect one
+  indistinguishable from a passing gate. The bun helper is the same defect one
   layer down: it reads a JSON job on **stdin** and ignores file arguments, and a
   direct call with filenames printed `{"findings":[]}` — it now refuses file
   arguments, empty/malformed stdin and a zero-file job, and an unreadable source

@@ -185,6 +185,20 @@ if [[ $syntax_bad -ne 0 ]]; then fail=1; else
   echo "bash syntax check: ok"
 fi
 
+# Our own JS tooling is TypeScript run by bun and typechecked by TS 7. Guarded:
+# install.sh runs this as pre-flight on machines that may have no bun, or may
+# never have run `bun install` in this checkout.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "warn: bun not on PATH — skipping TypeScript typecheck" >&2
+elif [[ ! -x node_modules/.bin/tsc ]]; then
+  echo "warn: node_modules missing — run \`bun install\` here; skipping TypeScript typecheck" >&2
+elif bun run --silent typecheck; then
+  echo "typecheck: ok"
+else
+  echo "error: \`bun run typecheck\` failed" >&2
+  fail=1
+fi
+
 if [[ $fail -ne 0 ]]; then
   echo "error: pre-flight checks failed" >&2
   exit 1

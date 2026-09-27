@@ -133,6 +133,11 @@ Or use the bundled script from inside the checkout:
 directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are
 therefore **not** picked up live — re-run `./install.sh --force <project>` to refresh a consumer.
 
+The repo's own JavaScript tooling is TypeScript run by [bun](https://bun.sh) and typechecked by
+TypeScript 7: run `bun install` once in the checkout, then `bun run typecheck`. The install pre-flight
+runs the typecheck when bun and `node_modules` are present. The `parse-dont-validate` TypeScript scan
+needs `bun` on PATH plus a TS 5.x `typescript` in the consumer project (TS 7 has no compiler API).
+
 `install.sh` first runs `check-cli-usage.sh`, which aborts the install on two classes of
 invented path. It verifies every `specify <verb>` a command file tells an agent to execute
 against the installed CLI's actual verbs, and it resolves every **script path** a command

@@ -43,6 +43,9 @@ PY
 cat >> pkg/old.py <<'PY'
 def later(z: Any) -> None: ...
 PY
+# Spec Kit's installed tooling is vendored, never the project's findings
+mkdir -p .specify/presets/x/scripts/ts
+printf 'export const v: any = 1;\n' > .specify/presets/x/scripts/ts/tool.ts
 git add -A && git commit -qm work
 
 echo "test-pdv-changeset"
@@ -52,6 +55,7 @@ check "scan from a subdirectory sees the whole change set" 1 "$st" "$out"
 for f in functions/src/new.py pkg/old.py; do
   grep -q "$f" <<<"$out" || { echo "  FAIL missing $f in scan output"; echo "$out" | sed 's/^/       /'; fail=1; }
 done
+grep -q "\.specify/" <<<"$out" && { echo "  FAIL scan reported vendored .specify/ tooling"; fail=1; }
 
 out="$(cd functions && bun "$SCRIPT" scan --base main --new-only 2>&1)"; st=$?
 check "--new-only still fails on findings this branch added" 1 "$st" "$out"

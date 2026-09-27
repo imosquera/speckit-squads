@@ -57,6 +57,10 @@ await gate("prod-and-dunder", 0, "lib/a.js", "lib/__tests__/a.js");
 await gate("tests-only", 0, "tests/test_new.py");
 await gate("docs-only", 0, "README.md", "docs/guide.md");
 await gate("config-only", 0, "package.json");
+// Spec Kit's installed tooling is vendored: a reinstall alone examines nothing,
+// and it never excuses the project's own untested code.
+await gate("vendored-only", 4, ".specify/presets/x/scripts/ts/tool.ts");
+await gate("vendored-plus-prod", 1, ".specify/presets/x/scripts/ts/tool.ts", "src/app.ts");
 {
   // A bad --base is a usage error, never a pass.
   const r = await run(["bun", CHECK, "--base", "no-such-ref"], { cwd: join(WORK, "prod-only") });

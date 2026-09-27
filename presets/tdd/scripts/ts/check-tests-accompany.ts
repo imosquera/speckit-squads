@@ -54,7 +54,9 @@ if (!mb) die(2, `no merge-base between ${base} and HEAD`);
 const changed = [...new Set([
   ...(git("diff", "--name-only", "--diff-filter=d", mb) ?? "").split("\n"),
   ...(git("ls-files", "--others", "--exclude-standard") ?? "").split("\n"),
-].filter(Boolean))].sort();
+// Spec Kit's installed tooling under .specify/ is vendored, not the project's
+// code: a reinstall must not demand tests.
+].filter(p => p && !p.startsWith(".specify/")))].sort();
 if (!changed.length) die(4, `tdd: empty change set against ${base} — nothing examined`);
 
 const TEST_DIR = /\/(tests?|__tests__|specs?|testing)\//;

@@ -3,7 +3,7 @@ schema_version: "1.0"
 preset:
   id: "tdd"
   name: "Test-Driven Development"
-  version: "1.1.0"
+  version: "1.1.1"
   description: "Wraps /speckit-implement in the Red-Green-Refactor cycle: list the scenarios, then for each one write a failing test, watch it fail for the expected reason, write the simplest code that passes, and refactor with the suite green. Gated at the end by a full test run and check-tests-accompany.ts, which fails when production code changed with no test change. Optional Jev assist (jev-judge.ts, @typesafe-ai/sdk) answers the per-cycle judgment calls when TYPESAFE_API_KEY is set. See presets/tdd/README.md."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"

@@ -759,6 +759,9 @@ function changedFiles(base: string | null): string[] {
   for (const n of names) {
     if (!n || seen.has(n)) continue;
     seen.add(n);
+    // Spec Kit's installed tooling (these very scripts among it) is vendored,
+    // not the project's code; a reinstall must not read as new findings.
+    if (n.startsWith('.specify/')) continue;
     const p = normPath(n);
     if (EXTENSIONS.has(suffixOf(p)) && isFile(p)) out.push(p);
   }

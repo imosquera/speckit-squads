@@ -3,7 +3,7 @@
  * Parse, Don't Validate — deterministic anti-pattern scanner (driver).
  *
  * Run by bun. TypeScript files are handed to `pdv_ts_scan.ts` (next to this
- * file), which walks a real AST with the project's TS 5.x Compiler API; Python
+ * file), which walks a real AST parsed by a pinned `oxc-parser`; Python
  * files are scanned in-process by a Python tokenizer plus a statement-level
  * structural pass (see "Python" below). Only bun/node built-ins.
  */
@@ -25,10 +25,11 @@ diff.
 
 Sources are analysed structurally, never by line regex:
   * TypeScript (\`.ts/.tsx/.mts/.cts\`) by the bun helper \`scripts/ts/pdv_ts_scan.ts\`
-    and the project's TypeScript Compiler API. This requires a TS 5.x
-    \`typescript\` installed in the project (TS 7 ships no compiler API). There is
-    NO regex fallback: if it is missing, or a source file cannot be parsed, the
-    scan fails loudly rather than silently under-reporting.
+    and a pinned \`oxc-parser\` from the machine cache (never the project's), so
+    no \`typescript\` install is needed — TS 7, TS 5 or none all work. There is
+    NO regex fallback: if the parser cannot be installed or loaded, or a source
+    file cannot be parsed, the scan fails loudly (exit 3) rather than silently
+    under-reporting.
   * Python (\`.py/.pyi\`) by an in-process Python tokenizer (strings, f-string
     expressions, comments, brackets) and a statement-level pass that finds
     annotations, \`def\` headers and calls. Unbalanced brackets or unterminated
@@ -661,7 +662,7 @@ function scanPython(paths: string[]): Finding[] {
   return findings;
 }
 
-// --- TypeScript: bun helper + TS Compiler API --------------------------------
+// --- TypeScript: bun helper + oxc-parser --------------------------------
 
 function scanTypescript(paths: string[]): Finding[] {
   if (!isFile(TS_HELPER)) throw new ScanError(`TypeScript scanner helper missing: ${TS_HELPER}`);

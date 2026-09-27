@@ -54,11 +54,12 @@ this repo owns.
 TypeScript 7 (the native compiler) via `bun run typecheck` against the root
 `package.json`/`tsconfig.json`. Run `bun install` once per checkout;
 `check-cli-usage.ts` runs the typecheck as part of install pre-flight when bun
-and `node_modules` are present, and warns and skips otherwise. The one TS 5.x
-dependency is not ours: the `parse-dont-validate` scanner loads the
-**consumer's** `typescript` compiler API at runtime (TS 7 ships none, issue
-#113), so it types that module with a local interface and never imports
-`typescript` statically. Consumer-side package managers stay polyglot —
+and `node_modules` are present, and warns and skips otherwise. The
+`parse-dont-validate` scanner needs no `typescript` at all: it parses with
+`oxc-parser` pinned at 0.151.0, taken from the machine cache
+`~/.cache/speckit-squads/pdv` (filled by `bun add` on first use, never
+`.specify/`) or this checkout's own copy — never from the consumer (issue #115,
+superseding #113's TS 5.x workaround). Consumer-side package managers stay polyglot —
 `install-deps.ts` reads each consumer's lockfile and must keep doing so.
 
 **There is no Python and no bash.** Every script this repo ships is TypeScript
@@ -636,7 +637,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes the `ponytail:ponytail` skill (when available) as a mandatory prelude before implementation begins. Implementation-discipline skills only: a prose-register skill compresses the very audit trail an unattended `/speckit-autopilot-run` depends on, so it does not belong in the prelude (issue #72)
-- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic scanner — Python via its own tokenizer (it no longer runs Python), TypeScript via a bun-run TS helper on the consumer's TS 5.x Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules).
+- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic scanner — Python via its own tokenizer (it no longer runs Python), TypeScript via a bun-run helper on a pinned `oxc-parser` from the machine cache, so no TS install is needed — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules).
   **The gate is one invocation: `parse_dont_validate.ts scan --new-only`.** The two
   deterministic steps around it used to be driven by hand every run (issue #66) and
   both had exactly one right answer: change-set detection now anchors at the git
@@ -658,10 +659,9 @@ on first run in a project that still tracks it, so the migration is automatic.
   layer down: it reads a JSON job on **stdin** and ignores file arguments, and a
   direct call with filenames printed `{"findings":[]}` — it now refuses file
   arguments, empty/malformed stdin and a zero-file job, and an unreadable source
-  is an error rather than a silent skip. It also resolves `typescript` from each
-  scanned file's own directory before the cwd, so a monorepo package with its own
-  `node_modules` scans while the driver stays anchored at the repo root for git
-  paths — no `NODE_PATH` bridging. `./test-pdv-changeset.ts`
+  is an error rather than a silent skip. It never resolves anything from the
+  project, so a monorepo package scans the same as the root while the driver
+  stays anchored at the repo root for git paths. `./test-pdv-changeset.ts`
   is the check
 - `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
 

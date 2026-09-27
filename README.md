@@ -68,7 +68,7 @@ presets/      # Spec Kit presets (template + command overrides)
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
   implement-prelude-skills/     Invokes the ponytail:ponytail skill before /speckit-implement starts
-  parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python ast + TS Compiler API); the gate is one command, `scan --new-only`, and a scan that examined zero files exits 2/3/4 rather than looking clean
+  parse-dont-validate/          constitution + plan + implement overrides enforcing "parse, don't validate" across TypeScript + Python, with a deterministic AST scan gate (Python tokenizer + oxc-parser); the gate is one command, `scan --new-only`, and a scan that examined zero files exits 2/3/4 rather than looking clean
   progress-report/           wraps the 5 cycle commands to keep a per-branch status card in ~/Code/agent-os current (pair with the progress extension for tasks/implement)
 ```
 
@@ -147,7 +147,8 @@ therefore **not** picked up live — re-run `./install.ts --force <project>` to 
 The repo's own JavaScript tooling is TypeScript run by [bun](https://bun.sh) and typechecked by
 TypeScript 7: run `bun install` once in the checkout, then `bun run typecheck`. The install pre-flight
 runs the typecheck when bun and `node_modules` are present. The `parse-dont-validate` TypeScript scan
-needs `bun` on PATH plus a TS 5.x `typescript` in the consumer project (TS 7 has no compiler API).
+needs only `bun` on PATH: it parses with a pinned `oxc-parser` from `~/.cache/speckit-squads/pdv`, so
+the consumer needs no `typescript` install (TS 7, TS 5 or none).
 
 `install.ts` first runs `check-cli-usage.ts`, which aborts the install on two classes of
 invented path. It verifies every `specify <verb>` a command file tells an agent to execute

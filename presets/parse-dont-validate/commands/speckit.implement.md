@@ -98,7 +98,8 @@ TypeScript/Python changed during this run:
 
    **A scan that examined nothing never exits zero.** Exit `2` is a bad
    invocation (an unknown option, `--base` with no ref); exit `3` is a scan that
-   could not run (missing `typescript`, paths that resolved to no file,
+   could not run (`oxc-parser` could not be installed or loaded, a file failed
+   to parse, paths that resolved to no file,
    a cwd outside any git worktree); exit `4` is an empty *input* — the change
    set holds no TypeScript or Python. Read the message and fix the call. Never
    invoke `scripts/ts/pdv_ts_scan.ts` yourself: it takes a JSON job on stdin
@@ -110,13 +111,12 @@ TypeScript/Python changed during this run:
    never report it as a pass. Neither language is matched by line regex:
    Python is tokenized and parsed structurally in-process, and a Python file it
    cannot tokenize (unbalanced brackets, an unterminated string) exits `3`.
-   Scanning **TypeScript** additionally requires a TS 5.x `typescript` installed
-   in the project (the bun
-   helper uses the TypeScript Compiler API, which TypeScript 7 does not ship).
-   If the scanner exits `3` with a message that `typescript` is missing, install
-   a TS 5.x copy with the project's package manager (e.g.
-   `npm i -D typescript@5`) and re-run — do not treat a missing parser as a
-   pass.
+   Scanning **TypeScript** needs no `typescript` install in the project (TS 7,
+   TS 5 or none): the bun helper parses with a pinned `oxc-parser` from the
+   machine cache `~/.cache/speckit-squads/pdv`, installed with `bun add` on first
+   use. If the scanner exits `3` because `oxc-parser` could not be installed or
+   loaded (e.g. offline on first use), fix that and re-run — do not treat a
+   missing parser as a pass.
 
 3. **Resolve every finding.** For each reported `PDVxxx`, either:
    - **Fix it** — replace the validator / `any` / `Any` / stray cast with a

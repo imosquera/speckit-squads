@@ -5,7 +5,10 @@
 //   3. a scan that examined ZERO files never exits like a clean pass (issue #50):
 //      bad flag, empty path, non-repo cwd and empty change set each exit non-zero,
 //      and the bun helper refuses a job it cannot use;
-//   4. vendored `.specify/` tooling is never reported as the project's findings.
+//   4. vendored `.specify/` tooling is never reported as the project's findings;
+//   5. the oxc-based TypeScript scanner reports exact rule/line findings, needs no
+//      `typescript` in the project, rejects syntax errors, and a worker-split
+//      job matches a serial scan (issue #115).
 // Usage: bun test-pdv-changeset.ts   (exit 0 pass, 1 fail)
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, copyFileSync, appendFileSync } from "node:fs";
@@ -197,29 +200,116 @@ if (has(/^- Whether the parse-don.t-validate scan ran and that it exited zero\.$
   bad("the completion report still requires reporting a zero exit only");
 else console.log("  ok   the completion report admits the verified exit-4 case");
 
-// TypeScript 7 ships no JS compiler API (issue #113). A package on TS 7 must
-// fall through to a TS 5 install further out; TS 7 alone must exit 3 with the
-// install hint instead of crashing on a missing createSourceFile.
-console.log("TypeScript 7 resolution");
-mkdirSync(join(TSR, "node_modules/typescript"), { recursive: true });
-mkdirSync(join(TSR, "pkg/node_modules/typescript"), { recursive: true });
-writeFileSync(join(TSR, "pkg/node_modules/typescript/index.js"), 'module.exports = { version: "7.0.2" };\n');
-writeFileSync(join(TSR, "node_modules/typescript/index.js"), `module.exports = {
-  version: "5.9.3", ScriptTarget: { Latest: 99 }, SyntaxKind: {},
-  // Proves this copy was picked; a real AST walk needs the real compiler.
-  createSourceFile: () => { throw new Error("resolved-ts5"); },
-};
+// The TypeScript scanner parses with a pinned oxc-parser (issue #115): it never
+// resolves `typescript` from the scanned project, so TS 7, TS 5 or none all scan
+// alike. The dev checkout's node_modules/oxc-parser resolves via the script dir,
+// so none of this touches the network.
+console.log("TypeScript scanner");
+type TsFinding = { rule: string; path: string; line: number };
+const tsJob = (files: [string, boolean][]) =>
+  JSON.stringify({ files: files.map(([path, isParser]) => ({ path, isParser })) });
+/** Run the helper on a job; the parsed findings, or null with the raw output. */
+function tsScan(files: [string, boolean][], cwd = TSR) {
+  const p = Bun.spawnSync(["bun", TS_HELPER], { cwd, stdin: Buffer.from(tsJob(files)), stdout: "pipe", stderr: "pipe" });
+  const out = p.stdout.toString(), err = p.stderr.toString(), st = p.exitCode ?? -1;
+  let findings: TsFinding[] | null = null;
+  if (st === 0) {
+    try { findings = (JSON.parse(out) as { findings: TsFinding[] }).findings; } catch { /* reported by caller */ }
+  }
+  return { findings, st, out: out + err, err };
+}
+const lineRules = (fs: TsFinding[], path: string) =>
+  fs.filter((f) => f.path === path).map((f) => `${f.line}:${f.rule}`).join(" ");
+
+const TS_FIXTURE = `export const a: any = 1;
+const b = foo as any;
+const c: Array<any> = [];
+const d = JSON.parse(raw);
+const e = JSON.parse(raw) as unknown;
+const f: unknown = JSON.parse(raw);
+function isEmail(v: string): boolean { return v.includes("@"); }
+class K {
+  isOk(): boolean { return true; }
+  #isHidden(): boolean { return true; }
+  'isQuoted'(): boolean { return true; }
+  get isReady(): boolean { return true; }
+  isCount(): number { return 1; }
+  check(): boolean { return true; }
+}
+const o = { isThing(): boolean { return true; }, get isGot(): boolean { return true; } };
+const isArrow = (v: unknown): boolean => v !== null;
+function isOver(a: string): boolean;
+function isOver(a: unknown): boolean { return true; }
+const em = raw as Email;
+const em2 = <Email>raw;
+const el = node as HTMLElement;
+const rec = raw as Record<string, unknown>;
+const z = 1;\r\nconst y: any = 2; const w: any = 3;
+`;
+const TS_WANT_COMMON = "1:PDV001 2:PDV001 3:PDV001 4:PDV002 7:PDV003 9:PDV003 16:PDV003 17:PDV003 18:PDV003 19:PDV003";
+const TS_TAIL = "25:PDV001 26:PDV001";
+writeFileSync(join(TSR, "a.ts"), TS_FIXTURE);
+writeFileSync(join(TSR, "schema.ts"), TS_FIXTURE);
+writeFileSync(join(TSR, "view.tsx"), `export const C = (p: any) => <div>{p.x}</div>;
+const v = p as Email;
+const isOn = (x: number): boolean => x > 0;
+const el = <span title="as Email">{(p as HTMLElement).id}</span>;
 `);
-writeFileSync(join(TSR, "pkg/a.ts"), "export const x = 1;\n");
-const job = '{"files":[{"path":"pkg/a.ts","parser":false}]}';
-({ out } = run(["bun", TS_HELPER], TSR, job));
-if (out.includes("resolved-ts5")) console.log("  ok   TS 7 in the package falls through to TS 5 at the root");
-else bad("TS 7 in the package did not fall through to TS 5", out);
-rmSync(join(TSR, "node_modules"), { recursive: true, force: true });
-({ out, st } = run(["bun", TS_HELPER], TSR, job));
-check("TS 7 alone exits 3", 3, st, out);
-if (out.includes("TS 5.x")) console.log("  ok   the exit-3 message names the TS 5.x requirement");
-else bad("the exit-3 message does not name the TS 5.x requirement", out);
+const TS_FILES: [string, boolean][] = [["a.ts", false], ["schema.ts", true], ["view.tsx", false]];
+const TS_WANTS: [string, string][] = [
+  ["a.ts", `${TS_WANT_COMMON} 20:PDV004 21:PDV004 ${TS_TAIL}`],
+  ["schema.ts", `${TS_WANT_COMMON} ${TS_TAIL}`],
+  ["view.tsx", "1:PDV001 2:PDV004 3:PDV003"],
+];
+const expectFixture = (label: string, cwd: string) => {
+  const r = tsScan(TS_FILES, cwd);
+  if (r.findings === null) return bad(`${label}: scan did not succeed (exit ${r.st})`, r.out);
+  for (const [f, want] of TS_WANTS) {
+    const got = lineRules(r.findings, f);
+    if (got === want) console.log(`  ok   ${label}: ${f} findings match`);
+    else bad(`${label}: ${f} findings`, `want: ${want}\ngot:  ${got}`);
+  }
+};
+// No `typescript` anywhere in the scanned project.
+expectFixture("no typescript installed", TSR);
+// A TS 7 install ships no JS compiler API; the scanner must not care.
+mkdirSync(join(TSR, "node_modules/typescript"), { recursive: true });
+writeFileSync(join(TSR, "node_modules/typescript/package.json"), '{"name":"typescript","version":"7.0.2","main":"index.js"}\n');
+writeFileSync(join(TSR, "node_modules/typescript/index.js"), 'module.exports = { version: "7.0.2" };\n');
+expectFixture("fake TS 7 installed", TSR);
+
+writeFileSync(join(TSR, "broken.ts"), "export const = ;\nfunction (\n");
+({ out, st } = run(["bun", TS_HELPER], TSR, tsJob([["a.ts", false], ["broken.ts", false]])));
+check("a TypeScript syntax error is a scan failure, not a clean file", 3, st, out);
+if (!/cannot parse/.test(out)) bad("the syntax error is not reported as 'cannot parse'", out);
+if (out.includes('"findings"')) bad("a job with an unparseable file still printed findings", out);
+
+// ≥100 files are split across worker threads (CHUNK_MIN=50 per worker); the
+// merged result must equal a serial scan, file by file, in job order.
+const BIG = 150;
+mkdirSync(join(TSR, "big"), { recursive: true });
+const bigFiles: [string, boolean][] = [];
+for (let i = 0; i < BIG; i++) {
+  const rel = `big/f${String(i).padStart(3, "0")}.${i % 3 === 2 ? "tsx" : "ts"}`;
+  writeFileSync(join(TSR, rel), i % 3 === 2 ? readFileSync(join(TSR, "view.tsx")) : TS_FIXTURE);
+  bigFiles.push([rel, i % 5 === 0]);
+}
+const whole = tsScan(bigFiles);
+if (whole.findings === null) bad(`${BIG}-file job did not succeed (exit ${whole.st})`, whole.out);
+else {
+  const serial: TsFinding[] = [];
+  let serialOk = true;
+  for (const f of bigFiles) {
+    const r = tsScan([f]);
+    if (r.findings === null) { bad(`single-file scan of ${f[0]} did not succeed`, r.out); serialOk = false; break; }
+    serial.push(...r.findings);
+  }
+  if (serialOk) {
+    const a = JSON.stringify(whole.findings), b = JSON.stringify(serial);
+    if (a === b && serial.length > 0) console.log(`  ok   a ${BIG}-file job matches ${BIG} single-file jobs (${serial.length} findings, same order)`);
+    else bad(`${BIG}-file job differs from single-file jobs`, `whole:  ${whole.findings.length} findings\nserial: ${serial.length} findings`);
+  }
+}
 
 console.log(fail === 0 ? "test-pdv-changeset: PASS" : "test-pdv-changeset: FAIL");
 process.exit(fail);

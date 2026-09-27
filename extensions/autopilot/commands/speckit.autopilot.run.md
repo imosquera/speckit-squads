@@ -502,9 +502,10 @@ lifecycle-hook policy, not just the non-optional ones:
   linked GitHub issue.
 - **`speckit.git.commit`** (optional, prompts) — answer **yes**; the spec belongs on
   the branch before clarify starts editing it.
-- **Knowledge-graph refresh** — if this project keeps a graph (a `graphify-out/`
-  directory, or `graphify` is on `PATH`), refresh it with the Claude `/graphify`
-  skill. It is not a `specify` subcommand.
+- **Knowledge-graph refresh** — only if this project keeps a graph (a
+  `graphify-out/` directory in the worktree), refresh it with the Claude
+  `/graphify` skill. `graphify` on `PATH` alone is not a reason. It is not a
+  `specify` subcommand.
 - **Agent-context refresh** (optional) — the core `agent-context` extension's
   `speckit.agent-context.update`, invoked as the slash command
   **`/speckit-agent-context-update`**, so Steps 5–8 plan against the new spec instead

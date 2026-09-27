@@ -51,8 +51,14 @@ plant_old_install() { # what an earlier run left behind in a tracked repo
     | xargs -0 git -C "$1" update-index --skip-worktree --
 }
 
+echo "no graph anywhere -> skipped, nothing written"
+R="$TMP/nograph"; mkrepo "$R"; T="$(target "$R")"
+out="$(run "$T")"
+expect "says it keeps no graph" 'grep -qF "keeps no graph" <<<"$out"'
+expect "no exclude stanza" '[[ "$(stanza_count "$T")" == 0 ]]'
+
 echo "untracked graph -> excluded, idempotently"
-R="$TMP/untracked"; mkrepo "$R"; T="$(target "$R")"
+R="$TMP/untracked"; mkrepo "$R"; mkdir "$R/graphify-out"; T="$(target "$R")"
 run "$T" >/dev/null; run "$T" >/dev/null
 expect "exclude stanza written once" '[[ "$(stanza_count "$T")" == 1 ]]'
 

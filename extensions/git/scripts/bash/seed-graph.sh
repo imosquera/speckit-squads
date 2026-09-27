@@ -22,6 +22,7 @@
 #
 # Usage: seed-graph.sh <worktree-path>
 # Env:   SPECKIT_SKIP_GRAPH=1  skip entirely
+# Skips on its own when the project keeps no graph (none tracked, none in the main checkout).
 set -uo pipefail
 
 WORKTREE_PATH="${1:-}"
@@ -37,6 +38,15 @@ fi
 
 if ! command -v graphify >/dev/null 2>&1; then
     echo "[specify] seed-graph: graphify not on PATH; skipping graph build" >&2
+    exit 0
+fi
+
+# Only seed where the project keeps a graph: tracked at HEAD, or present in the
+# main checkout. A project that removed graphify gets none.
+MAIN_CHECKOUT="$(git -C "$WORKTREE_PATH" worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')"
+if [[ -z "$(git -C "$WORKTREE_PATH" ls-files -- graphify-out 2>/dev/null)" \
+    && ! -d "$MAIN_CHECKOUT/graphify-out" ]]; then
+    echo "[specify] seed-graph: project keeps no graph; skipping graph build" >&2
     exit 0
 fi
 

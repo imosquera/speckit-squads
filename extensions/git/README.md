@@ -11,14 +11,14 @@ This extension provides Git operations as an optional, self-contained module. It
 - **PR creation** for completed feature branches (`--draft` for a human-review handoff:
   opens the PR as a draft and leaves the tracking issue open)
 - **`commit_exclude`** — repo-tracked generated artifacts that CI rebuilds on the
-  default branch. One handler, `scrub-commit-exclude.sh`, restores those paths to
+  default branch. One handler, `scrub-commit-exclude.ts`, restores those paths to
   HEAD — unstaging, discarding tracked edits, dropping untracked output — and is
-  called by `create-pr.sh` and `clean.sh`, so the exclusion holds even where
+  called by `create-pr.ts` and `clean.ts`, so the exclusion holds even where
   `auto_commit.default` is `false` (issue #62) and no step improvises its own
-  recovery from a background rebuild's churn (issue #55). `auto-commit.sh` does
+  recovery from a background rebuild's churn (issue #55). `auto-commit.ts` does
   not scrub, so a graph rebuild survives across phases; it only holds the paths
   out of its own commit (issue #109). A rebuild in flight is
-  waited for rather than raced. `create-pr.sh` additionally resets the paths to
+  waited for rather than raced. `create-pr.ts` additionally resets the paths to
   the base branch, since the working tree says nothing about what already landed
   in the branch's history
 - **GitHub issue sync** — when a tracking issue is linked, its body is re-rendered from `spec.md` after every `/speckit-specify` (title untouched) and its `p0`..`p3` / `bug`|`feature` triage labels are kept current; skipped cleanly when there is no linked issue
@@ -69,15 +69,15 @@ Creating an issue is the job of `speckit.git.feature`, which owns the numbering 
 
 ### Triage labels: priority and kind
 
-On both paths, `/speckit-git-issue` also keeps two triage labels current on the tracking issue: a priority (`p0`, `p1`, `p2`, `p3`) and a kind (`bug` or `feature`). They are applied by `scripts/bash/label-issue.sh`, which creates any label the repo is missing and keeps each axis exclusive (setting `p1` removes `p0`/`p2`/`p3`).
+On both paths, `/speckit-git-issue` also keeps two triage labels current on the tracking issue: a priority (`p0`, `p1`, `p2`, `p3`) and a kind (`bug` or `feature`). They are applied by `scripts/ts/label-issue.ts`, which creates any label the repo is missing and keeps each axis exclusive (setting `p1` removes `p0`/`p2`/`p3`).
 
 This is the input side of autopilot's picker: `/speckit-autopilot-run` orders its eligible backlog by priority, then bugs before features, then age. Without labels every backlog drains oldest-first, which is why a P0 filed today can otherwise sit behind a year-old chore.
 
 The command **asks** the human for a priority when there is one in the loop, leading with the value it would have inferred so accepting takes one keystroke; when nobody is there — the `after_specify` hook during an unattended autopilot run — it infers and says so instead of blocking. An existing priority set by a human is never overwritten or re-asked. Label failures are warnings, never errors: an unlabelled issue is still a working issue.
 
 ```bash
-.specify/extensions/git/scripts/bash/label-issue.sh 42 --show
-.specify/extensions/git/scripts/bash/label-issue.sh 42 --priority p1 --kind bug
+.specify/extensions/git/scripts/ts/label-issue.ts 42 --show
+.specify/extensions/git/scripts/ts/label-issue.ts 42 --priority p1 --kind bug
 ```
 
 ## Configuration
@@ -125,5 +125,5 @@ When Git is not installed or the directory is not a Git repository:
 
 The extension bundles cross-platform scripts:
 
-- `scripts/bash/create-new-feature.sh` — Bash implementation
-- `scripts/bash/git-common.sh` — Shared Git utilities (Bash)
+- `scripts/ts/create-new-feature.ts` — implementation
+- `scripts/ts/git-common.ts` — Shared Git utilities (Bash)

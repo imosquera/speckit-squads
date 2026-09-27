@@ -2,9 +2,9 @@
 // Git extension: render-spec.ts
 //
 // Render a feature's spec.md into the region of its tracking issue body that
-// sync-issue-body.sh owns: a `Spec path:` line, the spec with its H1 and any
+// sync-issue-body.ts owns: a `Spec path:` line, the spec with its H1 and any
 // omitted `## <heading>` sections dropped, and a trailing `## Notes` footer.
-// sync-issue-body.sh is the only caller; the preservation surgery stays there.
+// sync-issue-body.ts is the only caller; the preservation surgery stays there.
 //
 // Usage: render-spec.ts <spec-path> [<omit-heading>]...
 // Exit codes: 0 rendered to stdout, 1 spec unreadable or not valid UTF-8.

@@ -117,8 +117,8 @@ already answers half of them.
 
    ```bash
    PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-   DUPES="$PROJECT_DIR/.specify/extensions/git/scripts/bash/find-duplicate-issues.sh"
-   bash "$DUPES" --title "<the title this issue would get>" \
+   DUPES="$PROJECT_DIR/.specify/extensions/git/scripts/ts/find-duplicate-issues.ts"
+   bun "$DUPES" --title "<the title this issue would get>" \
      [--keyword <distinctive term from the spec>]... [--exclude <issue to ignore>]
    ```
 
@@ -182,7 +182,7 @@ decision recorded in the thread into `## Clarifications` as a
 `gh issue comment N` saying the issue is now tracked by this feature and naming
 the spec path, so the reporter can see what happened to their report.
 
-`sync-issue-body.sh` keeps the reporter's own words on the issue regardless — the
+`sync-issue-body.ts` keeps the reporter's own words on the issue regardless — the
 first sync files them verbatim below the `<!-- speckit:original-report -->`
 sentinel — but that is a safety net, not a substitute: the spec is what the next
 run renders from, so anything left only in the preserved region is out of the
@@ -285,8 +285,8 @@ This section covers the **hook** path and **manual, inside a feature** path. On
 
    ```bash
    PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-   SYNC="$PROJECT_DIR/.specify/extensions/git/scripts/bash/sync-issue-body.sh"
-   bash "$SYNC" <source_issue> <feature directory>/spec.md
+   SYNC="$PROJECT_DIR/.specify/extensions/git/scripts/ts/sync-issue-body.ts"
+   bun "$SYNC" <source_issue> <feature directory>/spec.md
    ```
 
    Never hand-write the render or the `gh issue edit`. This command used to
@@ -309,7 +309,7 @@ This section covers the **hook** path and **manual, inside a feature** path. On
      the body with the same script and handing the file to `gh`:
 
      ```bash
-     bash "$SYNC" --render-only <feature directory>/spec.md > /tmp/issue-body.md
+     bun "$SYNC" --render-only <feature directory>/spec.md > /tmp/issue-body.md
      gh issue create --title "<title>" --body-file /tmp/issue-body.md
      ```
 
@@ -325,10 +325,10 @@ Apply them with the shared script — never with a hand-rolled `gh issue edit --
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-LABEL_SCRIPT="$PROJECT_DIR/.specify/extensions/git/scripts/bash/label-issue.sh"
-bash "$LABEL_SCRIPT" <issue-number> --show                          # read current triage labels
-bash "$LABEL_SCRIPT" <issue-number> --priority p1 --kind bug        # set them (each is exclusive)
-bash "$LABEL_SCRIPT" <issue-number> --layer frontend --mock-first   # layer axis + markers
+LABEL_SCRIPT="$PROJECT_DIR/.specify/extensions/git/scripts/ts/label-issue.ts"
+bun "$LABEL_SCRIPT" <issue-number> --show                          # read current triage labels
+bun "$LABEL_SCRIPT" <issue-number> --priority p1 --kind bug        # set them (each is exclusive)
+bun "$LABEL_SCRIPT" <issue-number> --layer frontend --mock-first   # layer axis + markers
 ```
 
 The same script owns the **layer** axis (`frontend`/`backend`/`integration`, also
@@ -396,9 +396,9 @@ titles, the parent's work-breakdown block, the `Blocked by:` line, and the label
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-SPLIT="$PROJECT_DIR/.specify/extensions/git/scripts/bash/split-issue.sh"
-bash "$SPLIT" <parent-issue> --show                 # already split? prints "<layer> <number>"
-bash "$SPLIT" <parent-issue> \
+SPLIT="$PROJECT_DIR/.specify/extensions/git/scripts/ts/split-issue.ts"
+bun "$SPLIT" <parent-issue> --show                 # already split? prints "<layer> <number>"
+bun "$SPLIT" <parent-issue> \
   --title "<feature title, no layer prefix>" \
   --frontend-body /tmp/fe.md --backend-body /tmp/be.md \
   [--integration-body /tmp/int.md] \
@@ -424,7 +424,7 @@ What the script does, so you do not duplicate any of it:
   every re-spec.
 
 Because the parent body rewrite appends the breakdown block, **run the split after
-the body sync**, never before. `sync-issue-body.sh` carries an existing block
+the body sync**, never before. `sync-issue-body.ts` carries an existing block
 through and re-emits it last, so the ordering is now belt-and-braces rather than the
 only thing standing between a re-spec and three duplicate children — but a
 hand-rolled `gh issue edit --body` still erases it, which is one more reason not to
@@ -454,11 +454,11 @@ functional requirements:
 A child issue already carries a layer label and a `Parent: #N` line in its body.
 When this command runs during work on a child (autopilot picks #43, `/speckit-specify`
 fires the `after_specify` hook), sync its body and **stop** — never split a child.
-Check with `bash "$SPLIT" <issue> --show` or simply look for the layer label.
+Check with `bun "$SPLIT" <issue> --show` or simply look for the layer label.
 
 ## Issue Body
 
-`sync-issue-body.sh` renders this; the shape is documented here so you can read
+`sync-issue-body.ts` renders this; the shape is documented here so you can read
 what it produced, not so you can reproduce it by hand. It derives the body from
 **whatever sections `spec.md` actually contains** — it does not assume a fixed set. Presets may add or remove sections, so read the file and render only the headings that are present. If a section is absent, skip its heading entirely rather than emitting an empty one.
 
@@ -511,20 +511,20 @@ preservation surgery while letting you own the prose.
 | No `source_issue`, manual path | Create the issue; `gh` missing/unauthenticated/failing → hard error. |
 | `source_issue` present, `gh` missing or unauthenticated | **Hard error** with an install / `gh auth login` hint. |
 | `source_issue` present, `gh issue edit` non-zero exit | **Hard error**, surfacing `gh`'s own message. |
-| `sync-issue-body.sh` exits 2 | **Hard error, nothing written.** The composed body would have dropped the preserved report or the work-breakdown block; the issue on GitHub is untouched. Never "fix" it with a hand-rolled `gh issue edit`. |
+| `sync-issue-body.ts` exits 2 | **Hard error, nothing written.** The composed body would have dropped the preserved report or the work-breakdown block; the issue on GitHub is untouched. Never "fix" it with a hand-rolled `gh issue edit`. |
 | No feature directory or no `spec.md`, hook path | **Hard error** — the hook only fires right after `/speckit-specify` wrote one, so its absence means something is genuinely broken. |
 | No feature directory or no `spec.md`, manual path | **Not an error.** Falls into **Standalone Mode**: file from the given/asked-for title and description, no spec, no clarify. |
 | Standalone mode, user gave no title/description and didn't answer when asked | **Create nothing.** Say the issue was not filed for lack of content. |
-| `find-duplicate-issues.sh` fails, or `gh`/`jq` is missing | **Warn and continue.** The scan is a safety net, not the sync — say in the output that the create was unscanned so a human knows to check. |
+| `find-duplicate-issues.ts` fails, or `gh`/`jq` is missing | **Warn and continue.** The scan is a safety net, not the sync — say in the output that the create was unscanned so a human knows to check. |
 | Duplicate scan finds candidates, no human in the loop | **Create nothing**, exit 0, print the candidates. The feature stays unlinked. |
 | User picks **Merge into #N** | Write `source_issue: N`, fold #N's report into `spec.md`, then take the normal update path. Never `gh issue create`. |
 | `--no-dupe-check` passed | Skip the scan silently; everything downstream is unchanged. |
 | `/speckit-clarify` missing or failing on the create path | **Warn and continue.** Ask the issue-shaped questions inline instead and write the answers into `spec.md` yourself. A missing clarify command is not a reason to file nothing. |
 | Create path, no human in the loop | **Ask nothing.** Render from the spec as-is and say in the output that the issue was filed unclarified. |
 | `--no-clarify` passed | Skip the pass silently; everything downstream is unchanged. |
-| `label-issue.sh` fails or is missing | **Warn and continue.** Labels improve autopilot's ordering; they are not the sync. |
+| `label-issue.ts` fails or is missing | **Warn and continue.** Labels improve autopilot's ordering; they are not the sync. |
 | Spec is single-layer, or neither layer | **No split.** Label the layer if one applies and stop. |
 | Issue already carries a layer label / `Parent: #N` | **No split** — it is already a child. |
-| `split-issue.sh` fails after creating some children | **Hard error.** A half-written breakdown is a broken state; the script's own message names which children exist, and a re-run adopts them rather than duplicating. |
+| `split-issue.ts` fails after creating some children | **Hard error.** A half-written breakdown is a broken state; the script's own message names which children exist, and a re-run adopts them rather than duplicating. |
 
 The rule: once an issue *is* linked, a failed sync is a real broken state worth stopping for. An absent link is not a failure — it is a supported configuration.

@@ -97,7 +97,7 @@ After the entire core flow above has completed and `spec.md` has been written,
 and before reporting success, verify the two sections:
 
 ```bash
-.specify/presets/diff-minimal/scripts/bash/check-scope-sections.sh "$SPECIFY_FEATURE_DIRECTORY/spec.md"
+bun .specify/presets/diff-minimal/scripts/ts/check-scope-sections.ts "$SPECIFY_FEATURE_DIRECTORY/spec.md"
 ```
 
 This MUST run **before any post-execution hook renders `spec.md` into a GitHub

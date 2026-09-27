@@ -29,8 +29,8 @@ provides:
       required: false
 
   scripts:
-    - name: "detect-changed-files.sh"
-      file: "scripts/bash/detect-changed-files.sh"
+    - name: "detect-changed-files.ts"
+      file: "scripts/ts/detect-changed-files.ts"
       executable: true
 
   commands:

@@ -81,7 +81,7 @@ and before reporting success:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-"$PROJECT_DIR/.specify/presets/button-design/scripts/bash/check-buttons.sh" spec "$SPECIFY_FEATURE_DIRECTORY/spec.md"
+bun "$PROJECT_DIR/.specify/presets/button-design/scripts/ts/check-buttons.ts" spec "$SPECIFY_FEATURE_DIRECTORY/spec.md"
 ```
 
 This MUST run **before any post-execution hook renders `spec.md` into a GitHub

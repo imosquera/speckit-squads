@@ -23,7 +23,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - an explicit `--issue` number or `#<issue>` positional value
    - the current worktree (`git rev-parse --show-toplevel`)
 3. Derive `feature_directory` and the feature branch from git in the target worktree, and read `source_issue` from its `.specify/feature.json` when present. The worktree path is never read from a file — doing so is how this command used to be pointed at the *previous* feature's worktree (issue #33).
-4. Before **any** destructive step, run `verify-landed.sh <branch>` and refuse on a non-zero exit unless `--force` was passed. Never re-derive this check by hand: this repo squash-merges, and a squash breaks ancestry, so `git branch -d`, `git branch --merged` and `git merge-base --is-ancestor` all report "not merged" for work that is safely on the base. The script answers the question once, tree-wide, against the exclusions `commit_exclude` already declares — a hand-typed path list differs every run and a run that omits a path deletes a branch holding work in it (issue #49). `UNKNOWN` is a refusal, not a pass.
+4. Before **any** destructive step, run `verify-landed.ts <branch>` and refuse on a non-zero exit unless `--force` was passed. Never re-derive this check by hand: this repo squash-merges, and a squash breaks ancestry, so `git branch -d`, `git branch --merged` and `git merge-base --is-ancestor` all report "not merged" for work that is safely on the base. The script answers the question once, tree-wide, against the exclusions `commit_exclude` already declares — a hand-typed path list differs every run and a run that omits a path deletes a branch holding work in it (issue #49). `UNKNOWN` is a refusal, not a pass.
 5. If the target worktree has uncommitted changes:
    - abort with a file list unless `--force` was passed
    - when `--force` is passed, discard tracked and untracked changes before removal
@@ -34,8 +34,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution
 
-- **Bash**: `.specify/extensions/git/scripts/bash/clean.sh [--force|-f] [--base <ref>] [--worktree <path>] [--spec <path>] [--issue <number>] [target]`
-- **Bash** (the landed check on its own, e.g. before deleting a branch by hand): `.specify/extensions/git/scripts/bash/verify-landed.sh <branch> [--base <ref>] [--repo <dir>] [--exclude <path>]... [--json]` — exit 0 `LANDED`, 1 `NOT-LANDED`, 2 `UNKNOWN`
+- **Bash**: `bun .specify/extensions/git/scripts/ts/clean.ts [--force|-f] [--base <ref>] [--worktree <path>] [--spec <path>] [--issue <number>] [target]`
+- **Bash** (the landed check on its own, e.g. before deleting a branch by hand): `bun .specify/extensions/git/scripts/ts/verify-landed.ts <branch> [--base <ref>] [--repo <dir>] [--exclude <path>]... [--json]` — exit 0 `LANDED`, 1 `NOT-LANDED`, 2 `UNKNOWN`
 
 ## Graceful Degradation
 

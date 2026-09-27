@@ -22,7 +22,7 @@ by hand:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-BIN="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
+BIN="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/autopilot-schedule.ts"
 ```
 
 Every block below re-derives `PROJECT_DIR` itself: each bash call is its own shell,
@@ -40,18 +40,18 @@ bare yields a path starting at `/` and an `exit 127` (issue #59).
 
    ```bash
    PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-   BIN="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
+   BIN="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/autopilot-schedule.ts"
 
    # schedule every 2h (default)
-   "$BIN" install --project "$PROJECT_DIR"
+   bun "$BIN" install --project "$PROJECT_DIR"
 
    # schedule every N hours
-   "$BIN" install --interval-hours N --project "$PROJECT_DIR"
+   bun "$BIN" install --interval-hours N --project "$PROJECT_DIR"
 
    # check / stop / run once
-   "$BIN" status    --project "$PROJECT_DIR"
-   "$BIN" uninstall --project "$PROJECT_DIR"
-   "$BIN" run-now   --project "$PROJECT_DIR"
+   bun "$BIN" status    --project "$PROJECT_DIR"
+   bun "$BIN" uninstall --project "$PROJECT_DIR"
+   bun "$BIN" run-now   --project "$PROJECT_DIR"
    ```
 
 3. **Report back** what the script printed — the label, cadence, plist path, and log
@@ -63,7 +63,7 @@ bare yields a path starting at `/` and an `exit 127` (issue #59).
 ## How it runs (so you can explain it)
 
 - A per-repo launchd agent (`~/Library/LaunchAgents/com.speckit.autopilot.<repo>.plist`)
-  fires every `StartInterval` seconds and runs `autopilot-run.sh <repo>`, which
+  fires every `StartInterval` seconds and runs `bun autopilot-run.ts <repo>`, which
   invokes `claude -p "/speckit-autopilot-run" --dangerously-skip-permissions` inside
   the repo. The permission bypass is what makes an *unattended* pass possible — the
   session can use git/gh/file tools without a human clicking approve. Flag that to the

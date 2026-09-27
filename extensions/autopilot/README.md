@@ -36,7 +36,7 @@ last: ranking it last would let an explicitly deprioritized `p3` chore outrank e
 untriaged bug in the backlog, inverting the point of the label.
 
 The vocabulary lives in `preflight-issues.ts` (`PRIORITY_RE`, `PRIORITY_WORDS`,
-`BUG_LABELS`) and is written by the git extension's `label-issue.sh`, which
+`BUG_LABELS`) and is written by the git extension's `label-issue.ts`, which
 `/speckit-git-issue` calls after every spec sync — that command is what asks the
 human for a priority, or infers one when nobody is there to ask. An explicit
 `/speckit-autopilot-run <N>` skips ranking entirely: a typed issue number is
@@ -49,7 +49,7 @@ things and are cleaned up by different actors.
 
 | Label | Lifetime | Written by | Cleared by |
 |---|---|---|---|
-| `autopilot:claimed` | **transient** — one run | the skill body, once, at Step 1 | the skill on every exit path; `autopilot-run.sh`'s `EXIT` trap as a safety net if the session dies ungracefully |
+| `autopilot:claimed` | **transient** — one run | the skill body, once, at Step 1 | the skill on every exit path; `autopilot-run.ts`'s exit handler as a safety net if the session dies ungracefully |
 | `autopilot:blocked` | **durable** — until the blocker is fixed | the skill body, on a hard non-recoverable stop | **a human**, deliberately |
 
 Both are in `preflight-issues.ts`'s `BLOCK` set, so a labelled issue is skipped by
@@ -76,18 +76,18 @@ the blocker is actually resolved.
 
 An autopilot run is bound to exactly one repo and one checkout, in both directions:
 
-- **Input** — `fetch-open-issues.sh` runs `gh issue list` with no `--repo`, so the
+- **Input** — `fetch-open-issues.ts` runs `gh issue list` with no `--repo`, so the
   backlog comes from the checkout's own remote. Autopilot has never sourced work
   from another repository.
-- **Schedule** — `autopilot-schedule.sh` resolves the repo root via
+- **Schedule** — `autopilot-schedule.ts` resolves the repo root via
   `git rev-parse --show-toplevel`, labels the launchd job
   `com.speckit.autopilot.<repo-slug>`, and bakes that root into the plist as the
   runner's argument. One plist per checkout; `--project DIR` lets several repos
   each hold their own timer without colliding.
-- **Output** — enforced by `check-target-repo.sh` (below). This is the half that
+- **Output** — enforced by `check-target-repo.ts` (below). This is the half that
   used to be missing.
 
-### The output guard (`check-target-repo.sh`)
+### The output guard (`check-target-repo.ts`)
 
 Nothing checked where the *fix* had to land. lead-drop#182 asked for a change to a
 file that resolved into a different repository; autopilot did the work and opened
@@ -112,7 +112,7 @@ single-flight lock still serializes this machine's ticks and Step 2.0's liveness
 re-check still closes the residual window.
 
 ```
-$ check-target-repo.sh hindsight.py README.md
+$ bun check-target-repo.ts hindsight.py README.md
 FOREIGN: hindsight.py → /Users/iam/Code/dotskills
 INSIDE: README.md → /Users/iam/Code/lead-drop
 BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/lead-drop
@@ -128,7 +128,7 @@ BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/lead-drop
 - `OUTSIDE` (no git repo at all) stays distinguishable from `FOREIGN` (a different
   repo), because they are different stop conditions with different advice.
 
-A non-zero exit is a *Durable* stop: park with `park-issue.sh`, naming the repo the
+A non-zero exit is a *Durable* stop: park with `park-issue.ts`, naming the repo the
 fix belongs in. There is no claim to release — that is the point of running it here.
 A human moves the issue; autopilot does not guess.
 
@@ -174,7 +174,7 @@ evidence, which is how a worktree *with* an open PR could be offered for deletio
 STALE changes the verdict on exactly one path — an **attended** explicit-issue run,
 where the operator typed the number and gets `RESUME:` and `CLEAN:` lines to choose
 between instead of a refusal. Auto-pick keeps the hard SKIP, and so does the
-explicit path under `SPECKIT_AUTOPILOT_UNATTENDED=1`, which `autopilot-run.sh`
+explicit path under `SPECKIT_AUTOPILOT_UNATTENDED=1`, which `autopilot-run.ts`
 exports before launching the session: both arrive as the same
 `preflight-issues.ts <file> <N>` call, so the environment is the only seam between a
 human and a scheduled tick. Autopilot still never resumes or deletes anything by
@@ -215,24 +215,24 @@ SKIP: #182 delivered — https://github.com/imosquera/dotskills/pull/3 (merged)
 It is opt-in for cost — one `gh issue view` plus one `gh pr view` per linked PR —
 and on the auto-pick path it runs only against the issue about to be picked, the
 one position where the answer changes the outcome. Both callers (the skill's Step 1
-and `autopilot-run.sh`'s launch preflight) pass it.
+and `autopilot-run.ts`'s launch preflight) pass it.
 
 The script itself never writes; it emits the finding as a machine-readable
 `DELIVERED: <n> <url> (<state>)` line after the verdict, and the caller parks the
-issue through the shared `park-issue.sh`. Parking is what makes the finding
+issue through the shared `park-issue.ts`. Parking is what makes the finding
 durable — the label is in preflight's `BLOCK` set, so the next tick skips the issue
 outright instead of re-running the same GitHub lookups forever.
 
 **Both** callers park, and neither can delegate to the other:
 
-- `autopilot-run.sh` exits on a `SKIP:` verdict *before* launching the skill, so a
+- `autopilot-run.ts` exits on a `SKIP:` verdict *before* launching the skill, so a
   delivered issue that leaves nothing else eligible would otherwise be rediscovered
   on every scheduled tick, with no durable state ever written.
 - A delivered issue does not stop preflight's scan, so a run can report `PICK:` for
   a later issue while still having found a delivered earlier one — which needs
   parking on the success path too.
 
-`park-issue.sh` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
+`park-issue.ts` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
 sentinel (the hard-blocker stop path uses it as well), so the strings preflight
 greps for cannot drift between two hand-rolled copies. It no-ops on an issue that
 is already parked, so a re-park adds no duplicate comment.
@@ -247,7 +247,7 @@ Autopilot creates its worktree with `GIT_BRANCH_NAME` set, which makes
 linkage, and the fresh worktree may still carry an *inherited* `.specify/feature.json`
 from the base branch. Passing `--source-issue N` alongside `GIT_BRANCH_NAME` closes
 that gap in one call: the git extension writes the linkage itself, no second step
-(issue #44). `scripts/bash/bind-feature-issue.sh <issue> [worktree]` remains the
+(issue #44). `scripts/ts/bind-feature-issue.ts <issue> [worktree]` remains the
 explicit fallback — for a worktree made some other way, or an installed `git`
 extension too old to know `--source-issue`. It performs the same binding through the
 git extension's shared writer,
@@ -273,7 +273,8 @@ on hard blockers), and `commands/speckit.autopilot.schedule.md` for the schedule
 
 Each repo gets its own launchd agent
 (`~/Library/LaunchAgents/com.speckit.autopilot.<repo>.plist`) that runs
-`scripts/bash/autopilot-run.sh <repo>` on the interval, which invokes
+`bun scripts/ts/autopilot-run.ts <repo>` on the interval (bun pinned by absolute
+path, since launchd starts with a minimal `PATH`), which invokes
 `claude -p "/speckit-autopilot-run" --dangerously-skip-permissions` inside the repo.
 The permission bypass is what makes an *unattended* pass possible; runs are
 single-flight (a long pass won't stack a second one), and output lands in
@@ -284,12 +285,12 @@ you run `install` — it's strictly opt-in.
 
 ```bash
 specify extension add --dev /path/to/speckit-squads/extensions/autopilot
-# or, for the whole repo:  /path/to/speckit-squads/install.sh <project>
+# or, for the whole repo:  /path/to/speckit-squads/install.ts <project>
 ```
 
 ## Optional: name each session after its issue (SessionStart hook)
 
-`hooks/session-title.sh` titles a Claude Code session after the speckit feature /
+`hooks/session-title.ts` titles a Claude Code session after the speckit feature /
 GitHub issue it belongs to, so parallel backlog runs are easy to tell apart. It's
 a **Claude Code** hook (settings.json), not a speckit pipeline hook, so `specify`
 does not wire it up — add it to the consumer project's `.claude/settings.json`
@@ -303,7 +304,7 @@ yourself:
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/hooks/session-title.sh"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/.specify/extensions/autopilot/hooks/session-title.ts\""
           }
         ]
       }
@@ -314,7 +315,7 @@ yourself:
 
 (Adjust the path if your install location differs; with `--dev` installs the
 extension resolves back to this repo's source tree, so you can also point at
-`/path/to/speckit-squads/extensions/autopilot/hooks/session-title.sh` directly.)
+`/path/to/speckit-squads/extensions/autopilot/hooks/session-title.ts` directly.)
 
 ### What it does
 

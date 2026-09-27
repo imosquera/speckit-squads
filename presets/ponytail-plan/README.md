@@ -22,11 +22,11 @@ dependency (rung 7) needs a `**Dependency justification:**` line.
 Never cut: validation at trust boundaries, data-loss error handling, security,
 accessibility, or anything `spec.md` explicitly requires.
 
-`check-ladder.sh <plan.md>` is the gate. It checks only what is mechanical —
+`check-ladder.ts <plan.md>` is the gate. It checks only what is mechanical —
 section present, rows or the `None` line, Kind in the vocabulary, Rung an integer
 1–7, justification present for a new dependency — and prints `file:line` on
 failure (exit 1; 2 on usage). Whether a rung was honestly climbed is the
-prompt's job. `selftest-ponytail-plan.sh` is the check.
+prompt's job. `selftest-ponytail-plan.ts` is the check.
 
 ## Why the plan phase
 
@@ -41,7 +41,7 @@ those additions against rungs 2–6, and it has to run after them.
 
 ## Composition
 
-Install at **priority 8** (`install.sh` does this):
+Install at **priority 8** (`install.ts` does this):
 
 ```bash
 specify preset add --dev presets/ponytail-plan --priority 8

@@ -64,7 +64,7 @@ After the entire core flow above has completed, and before reporting success:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-"$PROJECT_DIR/.specify/presets/button-design/scripts/bash/check-buttons.sh" plan "$SPECIFY_FEATURE_DIRECTORY"
+bun "$PROJECT_DIR/.specify/presets/button-design/scripts/ts/check-buttons.ts" plan "$SPECIFY_FEATURE_DIRECTORY"
 ```
 
 The check is read-only. Handle the exit code:

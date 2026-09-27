@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Script-path check, run by check-cli-usage.sh from the repo root (paths are
- * cwd-relative). See the numbered rules in check-cli-usage.sh. `.ts` scripts under
- * `scripts/ts/` are checked exactly like `.sh` ones: declared in provides.scripts,
- * resolving on disk.
+ * Script-path check, run by check-cli-usage.ts from the repo root (paths are
+ * cwd-relative). See the numbered rules in check-cli-usage.ts. Every script this
+ * repo ships is `scripts/ts/*.ts`; any reference to a `scripts/bash/*.sh` of ours
+ * fails. Core Spec Kit's own flat `scripts/bash/` (CORE_BASH) is upstream and allowed.
  */
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -11,6 +11,11 @@ import { KINDS, cmp, commandFiles, manifests, scriptsBlock } from "./manifest.ts
 
 const problems: string[] = [];
 const declared = new Map<string, Set<string>>();
+
+// Core Spec Kit's scripts (`.specify/scripts/bash/`, or bare `scripts/bash/` in a
+// preset's frontmatter). Not ours, so not ported.
+const CORE_BASH = new Set(["check-prerequisites.sh", "common.sh", "create-new-feature.ts", "setup-plan.sh", "setup-tasks.sh"]);
+const BASH_RETIRED = "bash is retired here; use scripts/ts/<name>.ts run with bun";
 
 function isFile(p: string): boolean {
   try {
@@ -34,7 +39,8 @@ for (const [kind, manifest] of KINDS) {
     for (const m of block.matchAll(/^\s*file:\s*["']?([^"'\s]+)/gm)) if (m[1]) files.add(m[1]);
     declared.set(`${kind}/${id}`, files);
     for (const f of [...files].sort(cmp)) {
-      if (!isFile(join(kind, id, f))) problems.push(`${path}: declared script does not exist: ${f}`);
+      if (f.endsWith(".sh")) problems.push(`${path}: declares a bash script: ${f} — ${BASH_RETIRED}`);
+      else if (!isFile(join(kind, id, f))) problems.push(`${path}: declared script does not exist: ${f}`);
     }
   }
 }
@@ -48,6 +54,7 @@ for (const cf of cmdFiles) {
     const lineno = i + 1;
     for (const m of line.matchAll(REF)) {
       const [whole, kind, oid, rel, tree, tail] = m;
+      if (rel?.endsWith(".sh")) continue; // the bash rule below reports it
       if (kind && oid && rel) {
         const decl = declared.get(`${kind}/${oid}`);
         if (!isFile(join(kind, oid, rel))) {
@@ -74,7 +81,32 @@ for (const cf of cmdFiles) {
   });
 }
 
-const BARE_CPD = /\$(?:CLAUDE_PROJECT_DIR\b|\{CLAUDE_PROJECT_DIR\})/;
+// Any scripts/bash/*.sh reference is ours (and retired) unless it names a core
+// script, either in the flat core tree or bare (a frontmatter `sh:` line).
+const BASH_REF = /scripts\/bash\/([A-Za-z0-9_./-]*\.sh)\b/g;
+// Frontmatter `sh:`/`ps:` value, optionally run via bun; relative to the item root.
+const FM_SCRIPT = /^\s*(?:sh|ps):\s*(?:bun\s+)?(scripts\/[A-Za-z0-9_./-]+)/;
+for (const cf of cmdFiles) {
+  const [kind, id] = cf.split("/") as [string, string];
+  const all = lines(cf);
+  const fmEnd = all[0]?.trim() === "---" ? all.findIndex((l, i) => i > 0 && l.trim() === "---") : -1;
+  all.forEach((line, i) => {
+    for (const m of line.matchAll(BASH_REF)) {
+      const name = m[1] ?? "";
+      const before = line.slice(0, m.index);
+      const core = CORE_BASH.has(name) && (before.endsWith(".specify/") || !/[A-Za-z0-9_./$}-]$/.test(before));
+      if (!core) problems.push(`${cf}:${i + 1}: references bash script ${m[0]} — ${BASH_RETIRED}`);
+    }
+    const fm = i < fmEnd ? FM_SCRIPT.exec(line) : null;
+    const rel = fm?.[1];
+    if (!rel || rel.endsWith(".sh") || rel.endsWith(".ps1")) return; // bash covered above; ps1 is core
+    if (!isFile(join(kind, id, rel))) problems.push(`${cf}:${i + 1}: frontmatter script does not exist: ${kind}/${id}/${rel}`);
+    else if (!declared.get(`${kind}/${id}`)?.has(rel))
+      problems.push(`${cf}:${i + 1}: ${rel} is not declared in ${kind}/${id}/${kind === "extensions" ? "extension.yml" : "preset.yml"} (add it under provides.scripts)`);
+  });
+}
+
+const BARE_CPD =/\$(?:CLAUDE_PROJECT_DIR\b|\{CLAUDE_PROJECT_DIR\})/;
 for (const cf of cmdFiles) {
   let inBash = false;
   lines(cf).forEach((line, i) => {

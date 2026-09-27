@@ -143,7 +143,7 @@ export type LogicalLine = [lineno: number, text: string];
  * alone. Letting any non-blank line absorb its successor merged two sentences
  * of one paragraph into a single logical line, and a negation in the first
  * sentence then exempted a forbidden path named in the second — a real
- * violation silently passing `check-plan-scope.sh`, which is worse than the
+ * violation silently passing `check-plan-scope.ts`, which is worse than the
  * truncation issue #68 fixed. Both of #68's defects were wrapped BULLETS
  * (a truncated `MUST NOT touch:` list, a restatement bullet losing its
  * negation); prose never needed folding.

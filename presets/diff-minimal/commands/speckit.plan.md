@@ -45,7 +45,7 @@ this layer never invents a scope contract the spec did not sign.
 After the entire core flow above has completed, and before reporting success:
 
 ```bash
-.specify/presets/diff-minimal/scripts/bash/check-plan-scope.sh "$SPECIFY_FEATURE_DIRECTORY"
+bun .specify/presets/diff-minimal/scripts/ts/check-plan-scope.ts "$SPECIFY_FEATURE_DIRECTORY"
 ```
 
 The check is read-only. It parses the spec's `MUST NOT touch:` list and scans

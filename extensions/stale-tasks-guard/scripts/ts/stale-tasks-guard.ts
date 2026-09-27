@@ -58,7 +58,7 @@ function effectiveMtime(path: string): number {
 }
 
 // The branch is the authoritative source, matching spec_kit_resolve_feature in
-// the git extension's git-common.sh; `.specify/feature.json` is deliberately
+// the git extension's git-common.ts; `.specify/feature.json` is deliberately
 // NOT consulted (issue #33).
 function resolveFeatureDir(): string | null {
   const envDir = process.env.SPECIFY_FEATURE_DIRECTORY;

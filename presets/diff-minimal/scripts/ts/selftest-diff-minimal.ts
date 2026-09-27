@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 // diff-minimal preset: selftest-diff-minimal.ts
-// Self-contained test for check-scope-sections.sh and check-plan-scope.sh
-// (and, through them, check-scope-sections.ts / check-plan-scope.ts /
-// scope-common.ts). No test framework required.
+// Self-contained test for check-scope-sections.ts and check-plan-scope.ts
+// (and, through them, scope-common.ts). No test framework required.
 //
 // Both scripts are read-only, so every case asserts the exit code AND that the
 // inputs were left byte-identical — "it exited 1" is not evidence that it kept
@@ -14,9 +13,8 @@ import { accessSync, constants, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const BASH = join(import.meta.dir, "..", "bash");
-const SECTIONS = join(BASH, "check-scope-sections.sh");
-const PLAN = join(BASH, "check-plan-scope.sh");
+const SECTIONS = join(import.meta.dir, "check-scope-sections.ts");
+const PLAN = join(import.meta.dir, "check-plan-scope.ts");
 
 for (const s of [SECTIONS, PLAN]) {
   try {
@@ -34,7 +32,7 @@ let failures = 0;
 type Result = { rc: number; out: string; err: string };
 
 function run(...cmd: string[]): Result {
-  const p = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
+  const p = Bun.spawnSync(["bun", ...cmd], { stdout: "pipe", stderr: "pipe" });
   return { rc: p.exitCode ?? -1, out: p.stdout.toString(), err: p.stderr.toString() };
 }
 

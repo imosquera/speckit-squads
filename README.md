@@ -24,7 +24,7 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    subagent that produced it, and the raw stream-json is tee'd to <slug>.raw.jsonl for re-decoding;
                    a small, unambiguous change skips spec/clarify/plan/tasks and goes straight to implementation
                    (Step 2.5), keeping review + draft PR as the gates
-  git/             Feature-branch + worktree (graph seeded at creation via seed-graph.sh, dependencies installed via install-deps.sh) + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
+  git/             Feature-branch + worktree (graph seeded at creation via seed-graph.ts, dependencies installed via install-deps.ts) + linked GitHub issue (incl. issue sync and p0..p3 / bug|feature triage labels), clean, PR (+ --draft), auto-commit hooks;
                    a PR is titled "#N: <spec H1>" and inherits the tracking issue's labels (pr_copy_labels) and carries an agent-session
                    footer with the `claude --resume` id, author and claude.ai link (pr_session_footer),
                    both read by the script from gh/git/env, never supplied by the agent;
@@ -34,16 +34,16 @@ extensions/   # Spec Kit extensions (commands + hooks)
                    then runs /speckit-clarify and asks the
                    issue-shaped gaps (done-condition, repro, out-of-scope, layer) before creating — answers land
                    in spec.md, since the body is re-rendered from it on every sync (--no-clarify skips);
-                   the spec->body render is sync-issue-body.sh, not model-authored string surgery: it keeps the
+                   the spec->body render is sync-issue-body.ts, not model-authored string surgery: it keeps the
                    human's original report verbatim below a <!-- speckit:original-report --> sentinel, carries the
                    work-breakdown block through, and refuses to write a body that would lose either;
                    a full-stack tracking issue is split into frontend(mock) / backend / wire-up children — the frontend one
                    is always mock-first (static fixtures, no network) and outranks its backend sibling in autopilot's picker,
                    while the wire-up child carries Blocked by: #fe, #be and the parent is labelled epic;
                    commit_exclude keeps CI-rebuilt artifacts (graphify-out/) off feature branches — one handler,
-                   scrub-commit-exclude.sh, called by create-pr/clean; auto-commit only holds them out of its commit (#109);
+                   scrub-commit-exclude.ts, called by create-pr/clean; auto-commit only holds them out of its commit (#109);
                    --source-issue N binds a worktree to an existing issue in one call (no post-patching feature.json);
-                   /speckit-git-clean refuses every destructive step until verify-landed.sh proves the branch's work is
+                   /speckit-git-clean refuses every destructive step until verify-landed.ts proves the branch's work is
                    on the base — a squash merge leaves no ancestry, so the branch's own touched paths (from its commit
                    history, minus commit_exclude) are compared against the fetched origin/<base> instead of a hand-typed
                    path list that differed every run (issue #49); UNKNOWN, or a check that cannot run at all, is a refusal
@@ -125,20 +125,20 @@ specify preset add --dev "$SQUADS/presets/progress-report"
 Or use the bundled script from inside the checkout:
 
 ```bash
-./install.sh /path/to/your/spec-kit-project
-./install.sh --force /path/to/your/spec-kit-project   # reinstall everything
+./install.ts /path/to/your/spec-kit-project
+./install.ts --force /path/to/your/spec-kit-project   # reinstall everything
 ```
 
 `--dev` records this checkout as the install source, but it does **not** symlink: `specify` copies the
 directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are
-therefore **not** picked up live — re-run `./install.sh --force <project>` to refresh a consumer.
+therefore **not** picked up live — re-run `./install.ts --force <project>` to refresh a consumer.
 
 The repo's own JavaScript tooling is TypeScript run by [bun](https://bun.sh) and typechecked by
 TypeScript 7: run `bun install` once in the checkout, then `bun run typecheck`. The install pre-flight
 runs the typecheck when bun and `node_modules` are present. The `parse-dont-validate` TypeScript scan
 needs `bun` on PATH plus a TS 5.x `typescript` in the consumer project (TS 7 has no compiler API).
 
-`install.sh` first runs `check-cli-usage.sh`, which aborts the install on two classes of
+`install.ts` first runs `check-cli-usage.ts`, which aborts the install on two classes of
 invented path. It verifies every `specify <verb>` a command file tells an agent to execute
 against the installed CLI's actual verbs, and it resolves every **script path** a command
 file names: each must exist on disk, be declared under its manifest's `provides.scripts:`,
@@ -149,15 +149,15 @@ empty in an ordinary interactive session, so the path starts at `/` and the call
 `PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"` — per block,
 because each bash call is its own shell.
 
-After installing, `install.sh` runs `scripts/gen-agent-index.ts`, which writes the command→script
+After installing, `install.ts` runs `scripts/gen-agent-index.ts`, which writes the command→script
 mapping into the consumer as `.specify/extensions/AGENTS.md` plus a breadcrumb at
 `.specify/scripts/bash/README.md`. Extension scripts install to
 `.specify/extensions/<id>/scripts/…`, never into the flat core tree, and command names do
-not predict script names (`/speckit-git-feature` runs `create-new-feature.sh`) — so the
+not predict script names (`/speckit-git-feature` runs `create-new-feature.ts`) — so the
 mapping has to travel with the install rather than live only in this repo's docs.
-`uninstall.sh` removes both generated files.
+`uninstall.ts` removes both generated files.
 
-`install.sh` and `uninstall.sh` auto-discover every `extensions/*/extension.yml`, so new commands are included automatically once their manifest exists.
+`install.ts` and `uninstall.ts` auto-discover every `extensions/*/extension.yml`, so new commands are included automatically once their manifest exists.
 
 **Migrating from `spec-minimal` 1.x:** 2.0.0 is breaking — `spec-minimal` now only strips spec sections and holds the plan tree. The UI preview moved to the separate `spec-ui-preview` preset, and issue sync moved into the `git` extension. Install both to keep the 1.x behavior.
 
@@ -171,7 +171,7 @@ trip every single time.
 
 ## Authoring
 
-Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. Because installs are copies rather than symlinks, re-run `./install.sh --force <project>` (or the matching `specify ... add --dev`) in any consuming project after *any* change — command text and scripts included, not just manifests.
+Edit the manifest (`extension.yml` / `preset.yml`) and the files under `commands/`, `templates/`, or `scripts/` in place. Because installs are copies rather than symlinks, re-run `./install.ts --force <project>` (or the matching `specify ... add --dev`) in any consuming project after *any* change — command text and scripts included, not just manifests.
 
 ### Preset composition: `wrap` vs `replace`
 
@@ -190,7 +190,7 @@ Presets also can't declare lifecycle hooks (`before_*`/`after_*`); only extensio
 
 ### The `/speckit-implement` ordering contract
 
-Six presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.sh` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
+Six presets target `speckit.implement`, so their install priorities are **load-bearing**. `install.ts` passes `--priority` for each; the map lives in `preset_priority()` there and must stay in sync with this table:
 
 | Priority | Preset | Strategy | Role |
 |---|---|---|---|
@@ -205,7 +205,7 @@ Resulting execution order: worktree `cd` → progress card → prelude skills �
 
 `explicit-task-dependencies` stays `replace` because it genuinely substitutes wave-DAG subagent fan-out for the stock serial loop — wrapping it would execute every task twice. It sorts last so it becomes the base rather than swallowing the wrappers.
 
-If you install presets by hand rather than via `install.sh`, pass the same `--priority` values or the composition silently degrades.
+If you install presets by hand rather than via `install.ts`, pass the same `--priority` values or the composition silently degrades.
 
 ### The `/speckit-constitution` stack
 

@@ -4,7 +4,7 @@ preset:
   id: "ponytail-plan"
   name: "Ponytail Plan"
   version: "1.0.0"
-  description: "Applies the ponytail ladder (YAGNI, reuse, stdlib, native platform, installed dependency, one line, minimum new code) at the plan phase, where new files, abstractions, dependencies and config knobs get committed to. Every such item plan.md proposes is climbed, cut or rewritten in place when a lower rung holds, and recorded in a mandatory `## Ladder` table; a new dependency needs a `**Dependency justification:**` line. check-ladder.sh is the deterministic gate. Works without the ponytail plugin installed. See presets/ponytail-plan/README.md."
+  description: "Applies the ponytail ladder (YAGNI, reuse, stdlib, native platform, installed dependency, one line, minimum new code) at the plan phase, where new files, abstractions, dependencies and config knobs get committed to. Every such item plan.md proposes is climbed, cut or rewritten in place when a lower rung holds, and recorded in a mandatory `## Ladder` table; a new dependency needs a `**Dependency justification:**` line. check-ladder.ts is the deterministic gate. Works without the ponytail plugin installed. See presets/ponytail-plan/README.md."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads"
   license: "MIT"
@@ -14,12 +14,12 @@ requires:
 
 provides:
   scripts:
-    - name: "check-ladder.sh"
-      file: "scripts/bash/check-ladder.sh"
+    - name: "check-ladder.ts"
+      file: "scripts/ts/check-ladder.ts"
       executable: true
       command: "speckit.plan"
-    - name: "selftest-ponytail-plan.sh"
-      file: "scripts/bash/selftest-ponytail-plan.sh"
+    - name: "selftest-ponytail-plan.ts"
+      file: "scripts/ts/selftest-ponytail-plan.ts"
       executable: true
 
   templates:

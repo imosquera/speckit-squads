@@ -26,7 +26,7 @@ Optional. If the input contains an issue number (e.g. `#42` or `42`), extract it
 eligibility checks in Step 1 (via `preflight-issues.ts`) and refuse (explaining why)
 if it's already in progress, parked, or already claimed by another autopilot run.
 With no input, auto-pick per Step 1 and set `N` to whichever issue the script picks.
-This is also how the wrapper (`autopilot-run.sh`) hands off: it runs its own
+This is also how the wrapper (`autopilot-run.ts`) hands off: it runs its own
 preflight to decide whether to launch at all, then passes the picked issue number as
 `$ARGUMENTS` so this run binds to the exact same issue instead of re-picking
 independently.
@@ -91,8 +91,8 @@ step after writing code is worse than one that never starts.
    On macOS:
    ```bash
    PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-   SCHED="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/autopilot-schedule.sh"
-   [ -x "$SCHED" ] && "$SCHED" status --project "$PROJECT_DIR" | head -1
+   SCHED="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/autopilot-schedule.ts"
+   [ -f "$SCHED" ] && bun "$SCHED" status --project "$PROJECT_DIR" | head -1
    ```
    If the first line is `NOT SCHEDULED`, say once, then continue with this run:
 
@@ -128,7 +128,7 @@ fails** with `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`.
 `python3 -` reads its *program* from stdin, and the heredoc `<<'PY'` binds stdin to
 the heredoc text — that redirect wins over the pipe, so `gh`'s JSON never reaches
 Python and `json.load(sys.stdin)` reads an empty stream. You cannot route both the
-script *and* the data through one stdin. `fetch-open-issues.sh` sidesteps this by
+script *and* the data through one stdin. `fetch-open-issues.ts` sidesteps this by
 landing the data in a file first (sorted oldest-first — the ranking above reorders
 it, and this sort is what makes age the stable final tiebreak — with `labels` and
 `body` included for the ranking and the empty-body check), so every reader — this skill or `preflight-issues.ts`
@@ -136,8 +136,8 @@ directly — takes a **file path**, never stdin:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-FETCH_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/fetch-open-issues.sh"
-bash "$FETCH_SCRIPT" /tmp/autopilot_issues.json
+FETCH_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/fetch-open-issues.ts"
+bun "$FETCH_SCRIPT" /tmp/autopilot_issues.json
 ```
 
 **Run the shared eligibility script for BOTH paths — never restate the rules
@@ -201,7 +201,7 @@ is the one who knows whether that spec was theirs. Never pick for them. Before
 issue #60 this same situation printed `SKIP: #237 in-progress:237-contacts` and
 nothing else, so an operator who had *just* created that worktree in the previous
 session was refused with nothing to act on, seven times in fifty days. Under
-`autopilot-run.sh` the verdict never appears — the wrapper exports
+`autopilot-run.ts` the verdict never appears — the wrapper exports
 `SPECKIT_AUTOPILOT_UNATTENDED=1` and the hard `SKIP:` stands, because there is
 nobody to answer and a live sibling run must never be reaped.
 
@@ -213,8 +213,8 @@ then stop:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
-bash "$PARK_SCRIPT" "$N" \
+PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/park-issue.ts"
+bun "$PARK_SCRIPT" "$N" \
   "delivered by <PR-URL> (<state>) — close this issue, or clear the autopilot:blocked label if that PR does not resolve it" \
   --title "✅ **Already delivered**"
 ```
@@ -223,7 +223,7 @@ Do **not** close the issue yourself: a linked PR is strong evidence, not proof, 
 whether it truly resolves the issue is a human's call. Parking stops the waste;
 closing is theirs.
 
-`autopilot-run.sh` parks deliveries it finds in its own launch preflight, using the
+`autopilot-run.ts` parks deliveries it finds in its own launch preflight, using the
 same script — it exits before this skill ever starts, so it cannot delegate the
 write here (and a delivered issue does not stop preflight's scan, so it can also
 surface one while still picking a different issue). Parking is idempotent: an issue
@@ -237,8 +237,8 @@ older ones that were skipped) before you start building.
 ## Step 1.5 — Confirm the fix belongs in THIS repo
 
 **An autopilot run is bound to exactly one repository and one checkout.**
-`autopilot-schedule.sh` writes the repo root into the launchd plist (one plist per
-checkout, labelled `com.speckit.autopilot.<repo-slug>`), and `fetch-open-issues.sh`
+`autopilot-schedule.ts` writes the repo root into the launchd plist (one plist per
+checkout, labelled `com.speckit.autopilot.<repo-slug>`), and `fetch-open-issues.ts`
 reads issues only from that repo's own `gh issue list`. The work must land there
 too — this run may not open a PR against a different repository.
 
@@ -263,7 +263,7 @@ can actually be closed — **after** the write, not by ordering: the claim block
 compares the issue's `labeled` timeline event before and against after its own edit,
 and a run whose edit produced no new event is looking at somebody else's claim and
 yields. That check works at any ordering, which is why the ordering can stay the one
-that never claims an undeliverable issue. Underneath it, `autopilot-run.sh`'s
+that never claims an undeliverable issue. Underneath it, `autopilot-run.ts`'s
 single-flight lock still serializes this machine's ticks and Step 2.0's liveness
 re-check still catches a sibling that got as far as a branch or worktree.
 
@@ -273,8 +273,8 @@ guard in one call:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-GUARD="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/check-target-repo.sh"
-bash "$GUARD" path/to/one.py ~/some/other/file.ts
+GUARD="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/check-target-repo.ts"
+bun "$GUARD" path/to/one.py ~/some/other/file.ts
 # => "INSIDE: … → <repo>"   per target, then
 #    "OK: 2 target(s) inside <repo>"          (exit 0 — proceed)
 #    "BLOCKED: 1 of 2 target(s) not in <repo>" (exit 1 — stop, see below)
@@ -295,8 +295,8 @@ that is the point of running the guard here.
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
-bash "$PARK_SCRIPT" "$N" \
+PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/park-issue.ts"
+bun "$PARK_SCRIPT" "$N" \
   "fix target <path> lives in <other-repo>; this autopilot run is bound to <this-repo> — move the issue to that repo, or clear autopilot:blocked if it can be fixed here" \
   --title "📍 **Wrong repository**"
 ```
@@ -313,7 +313,7 @@ it is read-only, deterministic, and can rule the issue out entirely (issue #48);
 everything else waits, and the read-after-write check below is what keeps that
 ordering safe rather than merely cheap. This is the one and
 only place that applies the `autopilot:claimed` label — the wrapper script
-(`autopilot-run.sh`) no longer claims on your behalf; it only decides whether to
+(`autopilot-run.ts`) no longer claims on your behalf; it only decides whether to
 launch you and which issue to hand you. That split matters: if the wrapper claimed
 *and* the skill claimed, a session could see its own wrapper-applied claim during
 its eligibility check and mistake it for a competing run (the "self-starve" bug).
@@ -352,7 +352,7 @@ layer, and losing it leaves you exactly where every run stood before it existed,
 not somewhere worse.
 
 Labeling still isn't a distributed lock, so treat the whole thing as
-defense-in-depth: the local single-flight lock in `autopilot-run.sh` serializes
+defense-in-depth: the local single-flight lock in `autopilot-run.ts` serializes
 same-machine ticks, the label plus this read-after-write serializes
 cross-machine/manual runs, and Step 2's fresh liveness re-check catches whatever
 gets past both. Remember to
@@ -418,8 +418,8 @@ mismatched numbering.
    `/speckit-git-worktree` — bind it explicitly:
    ```bash
    PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-   BIND_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/bind-feature-issue.sh"
-   bash "$BIND_SCRIPT" "$N" "<absolute path to the new worktree>"
+   BIND_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/bind-feature-issue.ts"
+   bun "$BIND_SCRIPT" "$N" "<absolute path to the new worktree>"
    ```
    Do **not** write the file by hand. Both that script and `--source-issue` go
    through the git extension's shared writer, `spec_kit_write_feature_json()`,
@@ -431,7 +431,7 @@ mismatched numbering.
    (issue #21).
 
    `source_issue` is the only key you ever write or read here. The file also
-   carries a `feature_directory` written once by `create-new-feature.sh` purely
+   carries a `feature_directory` written once by `create-new-feature.ts` purely
    for core Spec Kit's own `get_feature_paths()` — leave it alone, and never
    resolve a path from it. Never add `branch_name`, `feature_num`, or
    `worktree_path`: every part of a feature's identity is derived from git at
@@ -447,7 +447,7 @@ mismatched numbering.
    printf '\033]0;autopilot #%s: %s\007' "$N" "<short issue title>"
    ```
    This sets the *terminal tab* only — Claude's own session title can't be renamed
-   mid-run. Durable naming comes from the `session-title.sh` SessionStart hook
+   mid-run. Durable naming comes from the `session-title.ts` SessionStart hook
    (see the extension README): any session you open or **resume inside this
    worktree** is auto-titled `#N: <issue title>`.
 6. **Post the first progress comment** on the issue: "🤖 Autopilot picked this up —
@@ -475,7 +475,7 @@ for changes that are obviously small, not for changes you hope are small.
 **On the fast path:**
 
 1. **Skip Steps 3–6 entirely** — no `spec.md`, `plan.md`, `tasks.md`, no clarify.
-   `create-pr.sh` falls back to the branch name when there is no spec, so nothing
+   `create-pr.ts` falls back to the branch name when there is no spec, so nothing
    downstream breaks.
 2. **Post the decision** as the issue comment for this phase: "🤖 Fast path — small
    change (<what changes, which files>); skipping spec/plan/tasks." That comment is
@@ -667,7 +667,7 @@ the user only when continuing would be reckless or is impossible:
 - **Fix target in a DIFFERENT git repo** — the target resolves inside a real
   repository that is not the one this run is bound to. Opening a PR there would put
   the work outside the repo whose backlog, schedule, and checkout this run owns, and
-  would leave the issue open behind it (issue #34). `check-target-repo.sh` decides
+  would leave the issue open behind it (issue #34). `check-target-repo.ts` decides
   this; see [Step 1.5](#step-15--confirm-the-fix-belongs-in-this-repo). Park it and
   name the correct repo so a human can move the issue. *Durable.*
 - **Not a speckit repo** — no `.specify/`. (Happens before any claim; nothing to
@@ -701,11 +701,11 @@ script's `BLOCK` set, so this is the one write that ends the loop:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/park-issue.sh"
-bash "$PARK_SCRIPT" "$N" "<ONE-LINE reason, self-contained, no leading formatting>"
+PARK_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/park-issue.ts"
+bun "$PARK_SCRIPT" "$N" "<ONE-LINE reason, self-contained, no leading formatting>"
 ```
 
-`park-issue.sh` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
+`park-issue.ts` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
 sentinel — the unattended wrapper writes the same park through it — so the strings
 the reader (`preflight-issues.ts`) greps for can never drift between two
 hand-rolled copies. It creates the label if missing, posts the comment, applies the
@@ -745,7 +745,7 @@ stopping is "a human would be angry I proceeded," not "this got hard."
   implementation; auto-answering (with a logged rationale) keeps that value while
   removing the human wait.
 - **Claiming lives in exactly one place** — the skill body, not the wrapper. Two
-  autopilot runs collided on issue #150 partly because `autopilot-run.sh` claimed
+  autopilot runs collided on issue #150 partly because `autopilot-run.ts` claimed
   the label before launching `claude -p`, so that session's own preflight could see
   its own wrapper-applied claim and misread it as a competing run. Now the wrapper
   only picks and hands off an issue number; the skill claims once, per run, so a run

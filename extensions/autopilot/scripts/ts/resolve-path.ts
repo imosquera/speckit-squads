@@ -7,9 +7,9 @@
  * Expands `~`/`~user`, makes the path absolute, and for a path that does not
  * exist yet (an issue may ask for a NEW file) walks up to its deepest existing
  * ancestor — the directory the file would be created in — before resolving
- * symlinks. `check-target-repo.sh` then asks git which repo that directory is in.
+ * symlinks. `check-target-repo.ts` then asks git which repo that directory is in.
  *
- * Ported from the inline Python in `check-target-repo.sh`
+ * Ported from the inline Python in `check-target-repo.ts`
  * (`expanduser` → `abspath` → walk up while missing → `realpath`); the output is
  * the same, including POSIX `normpath`'s keep-exactly-two-leading-slashes rule.
  */

@@ -81,7 +81,7 @@ correct cap is not one line (6).
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-"$PROJECT_DIR/.specify/presets/ponytail-plan/scripts/bash/check-ladder.sh" "$SPECIFY_FEATURE_DIRECTORY/plan.md"
+bun "$PROJECT_DIR/.specify/presets/ponytail-plan/scripts/ts/check-ladder.ts" "$SPECIFY_FEATURE_DIRECTORY/plan.md"
 ```
 
 The check is read-only. Handle the exit code:

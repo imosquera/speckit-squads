@@ -45,7 +45,7 @@ If a command that is supposed to run is unavailable or fails, stop and return an
 5. If the branch isn't yet on `origin`, push it (`git push -u origin <branch>`). If it was already pushed and a squash happened, force-push with `--force-with-lease`.
 6. If a PR already exists for the branch, print its URL and exit. In `--draft` mode, if that existing PR is *not* a draft, also print a warning naming `gh pr ready <url> --undo` — the script does not mutate a PR it did not create.
 7. Otherwise, run `gh pr create --base <base> --head <branch> --title <derived> --body <derived>`, adding `--draft` in draft mode. The draft flag is passed to `gh pr create` directly — never create a mergeable PR and convert it afterwards with `gh pr ready --undo`.
-8. Copy the source issue's labels onto the PR with `gh pr edit --add-label` (also on the already-exists path in step 6, so a re-run backfills them). Skipped when there is no `source_issue` or `pr_copy_labels: false`. Never `gh pr create --label`: `gh` rejects the whole create call if any label is unknown to the repo, which would lose the PR over a cosmetic failure — applied afterwards it degrades to a warning, matching `label-issue.sh`'s rule that label failures are warnings, never errors. `autopilot:*` is always filtered out; those labels are picker run-state (`claimed`/`blocked`), not a description of the change, and `autopilot:blocked` on a PR that exists because the work got done would be a lie.
+8. Copy the source issue's labels onto the PR with `gh pr edit --add-label` (also on the already-exists path in step 6, so a re-run backfills them). Skipped when there is no `source_issue` or `pr_copy_labels: false`. Never `gh pr create --label`: `gh` rejects the whole create call if any label is unknown to the repo, which would lose the PR over a cosmetic failure — applied afterwards it degrades to a warning, matching `label-issue.ts`'s rule that label failures are warnings, never errors. `autopilot:*` is always filtered out; those labels are picker run-state (`claimed`/`blocked`), not a description of the change, and `autopilot:blocked` on a PR that exists because the work got done would be a lie.
 
 ## Agent session footer
 
@@ -66,7 +66,7 @@ Every value is read from the environment or from `git config` by the script. **D
 
 Run the script:
 
-- **Bash**: `.specify/extensions/git/scripts/bash/create-pr.sh [base_branch] [--draft]`
+- **Bash**: `bun .specify/extensions/git/scripts/ts/create-pr.ts [base_branch] [--draft]`
 
 Default `base_branch` is `main`. Pass an alternative as the first argument if needed.
 `--draft` may appear in either position. The script owns the draft flag on

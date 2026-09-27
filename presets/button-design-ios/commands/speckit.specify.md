@@ -1,5 +1,5 @@
 ---
-description: "Composable wrapper for /speckit-specify that requires an `## Actions & Buttons` table for every UI-touching iOS feature, in Apple HIG / SwiftUI terms: Button vs NavigationLink/Link, one `.borderedProminent` per screen, toolbar placement, specific 1–3 word labels, and `role: .destructive` plus a safeguard on every destructive action — checked deterministically after the spec is written."
+description: "Composable wrapper for /speckit-specify that requires a `## iOS Actions & Buttons` table for every feature touching native iOS UI, in Apple HIG / SwiftUI terms: Button vs NavigationLink/Link, one `.borderedProminent` per screen, toolbar placement, specific 1–3 word labels, and `role: .destructive` plus a safeguard on every destructive action — checked deterministically after the spec is written."
 ---
 
 ## Wrapper Layer
@@ -17,6 +17,25 @@ one screen and an `OK` in the delete dialog.
 The target is an iOS app built with SwiftUI (UIKit where the project already
 uses it). Speak Apple Human Interface Guidelines and SwiftUI, not web: there is
 no hover on iPhone, no CSS, no `<a>` vs `<button>`.
+
+### Platform Scope
+
+This layer covers **native iOS app screens only**. It writes and owns
+`## iOS Actions & Buttons`, never `## Actions & Buttons`: that heading belongs
+to the web `button-design` preset, which a mixed project (a SwiftUI app plus a
+web side) installs alongside this one. Never list web screens here. When the
+feature's UI is only on the web side, write `None — no user-facing iOS UI.`
+under `## iOS Actions & Buttons`.
+
+### Migration from 1.1.0 (MANDATORY check first)
+
+button-design-ios 1.1.0 and earlier wrote `## Actions & Buttons` and
+`## Button System`, which are now the web `button-design` preset's headings.
+If `spec.md` has `## Actions & Buttons` but no `## iOS Actions & Buttons`, and
+the project's `.specify/presets/button-design/` does **not** exist, that section
+is this layer's: rename the heading in place to `## iOS Actions & Buttons`
+(content unchanged). If the web preset **is** installed, leave
+`## Actions & Buttons` alone; it is the web layer's.
 
 ### Button Rules (MANDATORY)
 
@@ -55,12 +74,13 @@ Apply these to every user-facing action the feature adds or changes:
 
 ### Required Section (MANDATORY)
 
-`spec.md` MUST carry an `## Actions & Buttons` section, placed after
-`## User Scenarios & Testing`. The `git` extension renders it into the tracking
+`spec.md` MUST carry a `## iOS Actions & Buttons` section, placed after
+`## User Scenarios & Testing` (and after `## Actions & Buttons` when the web
+layer wrote one). The `git` extension renders it into the tracking
 issue, and `/speckit-plan` is held to it.
 
 ```markdown
-## Actions & Buttons
+## iOS Actions & Buttons
 
 | Screen | Label | Control | Style | Role | Placement | Safeguard |
 |---|---|---|---|---|---|---|
@@ -91,8 +111,8 @@ issue, and `/speckit-plan` is held to it.
   names the mechanism: `confirmationDialog`, `alert`, `type-to-confirm`, or
   `undo`.
 - The label is the exact copy the user will read.
-- If the feature has **no user-facing UI**, write `None — no user-facing UI.`
-  under the heading. Do not omit the heading: an absent section and a
+- If the feature has **no user-facing iOS UI**, write
+  `None — no user-facing iOS UI.` under the heading. Do not omit the heading: an absent section and a
   deliberate "none" must read differently.
 
 ### Core Flow
@@ -101,16 +121,18 @@ issue, and `/speckit-plan` is held to it.
 
 ### Applicability Gate (after `spec.md` is written)
 
-Before writing `## Actions & Buttons`, ask Jev whether the spec touches UI:
+Before writing `## iOS Actions & Buttons`, ask Jev whether the spec touches UI:
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
 bun "$PROJECT_DIR/.specify/presets/button-design-ios/scripts/ts/jev.ts" applies-ui --spec "$SPECIFY_FEATURE_DIRECTORY/spec.md"
 ```
 
-- **exit 0, `decision: "skip"`**: write only `None — no user-facing UI.` under
-  `## Actions & Buttons`, then run the post-flight check.
+- **exit 0, `decision: "skip"`**: write only `None — no user-facing iOS UI.`
+  under `## iOS Actions & Buttons`, then run the post-flight check.
 - **exit 0, `decision: "applies"`**: apply the rules above and write the table.
+  The gate asks about UI in general: if all of it is web UI, still write
+  `None — no user-facing iOS UI.`
 - **exit 3** (or any other exit): decide from the spec yourself, as without Jev.
 
 Quote the printed `record` line in your final report.

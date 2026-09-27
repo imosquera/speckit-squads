@@ -70,7 +70,7 @@ presets/      # Spec Kit presets (template + command overrides)
   spec-ui-preview/              GitHub-safe inline HTML UI preview for UI-touching specs
   button-design/                specify + plan wrappers holding UI features to button-design rules: one primary per screen, buttons vs links, specific labels, guarded destructive actions, a reusable button system; checked deterministically
   tdd/                          implement wrapper: Red-Green-Refactor per scenario (failing test first, simplest green, refactor on green); gated on a green suite and tests accompanying every production change
-  library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes research.md
+  library-research/             plan wrapper that web-searches for libraries to replace build-it-yourself surface area, writes its section of research.md (TypeScript/web; the -ios twin writes the iOS one)
   ponytail-plan/                plan wrapper applying the ponytail ladder (YAGNI → reuse → stdlib → native → installed dep → one line → new code): cuts or rewrites proposed files/abstractions/deps in plan.md, mandatory ## Ladder table, checked deterministically
   portfolio-audit/              Portfolio-wide analyze override
   worktree-isolation/           Forces /speckit-implement to run inside feature worktree
@@ -146,22 +146,33 @@ specify preset add --dev "$SQUADS/presets/progress-report"
 ```
 
 In an iOS project, install `tdd-ios`, `button-design-ios`, `parse-dont-validate-ios` and
-`library-research-ios` in place of their base presets, at the same `--priority`.
+`library-research-ios` in place of their base presets, at the same `--priority`. In a mixed project
+(an Xcode app plus a TypeScript backend), install both members of each pair at that same priority.
 
 Or use the bundled script from inside the checkout:
 
 ```bash
-./install.ts /path/to/your/spec-kit-project
+./install.ts /path/to/your/spec-kit-project           # asks which stack (in a terminal)
 ./install.ts --force /path/to/your/spec-kit-project   # reinstall everything
-./install.ts --ios /path/to/project                   # force iOS mode (--no-ios forces web)
+./install.ts --ts --ios /path/to/project               # --ts, --ios, or both for a mixed project
 ```
 
-**iOS vs web.** `install.ts` auto-detects an iOS project from a `*.xcodeproj`, `*.xcworkspace` or
-`Package.swift` at the root or one level down (skipping `Pods`, `Carthage`, `DerivedData`,
-`node_modules` and dot-dirs) and prints the chosen mode and why. A project gets exactly one of each
-`X` / `X-ios` pair: iOS mode installs `X-ios` and skips `X`, web mode the reverse; an `-ios` preset
-with no base is iOS-only. `--force` removes the opposite twin, so it is how you switch modes. The
-extensions have one copy each that serves both kinds of project.
+**Choosing a stack.** You decide which stacks the presets target; the installer never picks silently.
+`--ts` installs `tdd`, `parse-dont-validate`, `button-design` and `library-research`; `--ios` their `-ios`
+Swift versions; `--ts --ios` both sets, for a mixed project (for example an Xcode app plus a TypeScript
+Firebase backend). The two members of each pair are similar but not the same — one per platform — and
+coexist: they compose as `wrap` layers at the same priority (tdd 11, parse-dont-validate 9), each gate
+checks only its own language, and each writes only its own sections (`## Actions & Buttons` vs
+`## iOS Actions & Buttons`, its own part of `research.md`, `Parse, Don't Validate` vs
+`Parse, Don't Validate — Swift`).
+
+With neither flag, the stack comes from: an interactive prompt when run in a terminal (defaulting to the
+saved choice, else detection); the choice saved in `<project>/.specify/speckit-squads.json`
+(`{"stack": "ts"|"ios"|"both"}`, committed with `.specify/` so teammates and later non-interactive
+`--force` reinstalls reuse it); else detection — an `*.xcodeproj`, `*.xcworkspace` or `Package.swift`
+(root or one level down) plus a `package.json`/`tsconfig.json` is `both`, the iOS marker alone is
+`ios`, anything else `ts`. With one stack, `--force` removes the other member of each pair, so it is
+how you switch. The extensions have one copy each that serves every stack.
 
 `--dev` records this checkout as the install source, but it does **not** symlink: `specify` copies the
 directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are

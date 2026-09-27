@@ -1,5 +1,5 @@
 ---
-description: "Composable wrapper for /speckit-specify that requires an `## Actions & Buttons` table for every UI-touching feature: one primary per screen, buttons vs links, specific 1–3 word labels, and a safeguard on every destructive action — checked deterministically after the spec is written."
+description: "Composable wrapper for /speckit-specify that requires an `## Actions & Buttons` table for every feature touching web UI: one primary per screen, buttons vs links, specific 1–3 word labels, and a safeguard on every destructive action — checked deterministically after the spec is written."
 ---
 
 ## Wrapper Layer
@@ -13,6 +13,14 @@ next step, what it says, and what it costs to click it wrongly are product
 decisions. Left to implementation they get made by whoever writes the markup,
 one screen at a time, and the result is three competing primaries and a
 `Submit` on the delete dialog.
+
+### Platform Scope
+
+This layer covers **web / browser screens only** (the TypeScript side). If the
+project also installs `button-design-ios`, native app screens belong to its
+`## iOS Actions & Buttons` section; never list them here. When the feature's
+UI is only on the iOS side, write `None — no user-facing web UI.` under
+`## Actions & Buttons`.
 
 ### Button Rules (MANDATORY)
 
@@ -61,8 +69,8 @@ issue, and `/speckit-plan` is held to it.
 - **Safeguard** is `—` for a non-destructive action. For a destructive one it
   names the mechanism: `confirm dialog`, `type-to-confirm`, or `undo`.
 - The label is the exact copy the user will read.
-- If the feature has **no user-facing UI**, write `None — no user-facing UI.`
-  under the heading. Do not omit the heading: an absent section and a
+- If the feature has **no user-facing web UI**, write
+  `None — no user-facing web UI.` under the heading. Do not omit the heading: an absent section and a
   deliberate "none" must read differently.
 
 If the `spec-ui-preview` preset is also installed, its preview must show the
@@ -83,9 +91,11 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
 bun "$PROJECT_DIR/.specify/presets/button-design/scripts/ts/jev.ts" applies-ui --spec "$SPECIFY_FEATURE_DIRECTORY/spec.md"
 ```
 
-- **exit 0, `decision: "skip"`**: write only `None — no user-facing UI.` under
-  `## Actions & Buttons`, then run the post-flight check.
+- **exit 0, `decision: "skip"`**: write only `None — no user-facing web UI.`
+  under `## Actions & Buttons`, then run the post-flight check.
 - **exit 0, `decision: "applies"`**: apply the rules above and write the table.
+  The gate asks about UI in general: if all of it is native iOS UI, still
+  write `None — no user-facing web UI.`
 - **exit 3** (or any other exit): decide from the spec yourself, as without Jev.
 
 Quote the printed `record` line in your final report.

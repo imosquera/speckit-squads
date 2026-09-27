@@ -1,5 +1,5 @@
 ---
-description: "Composable wrapper for /speckit-plan that, when the spec declares user-facing actions, requires a `## Button System` section in plan.md — component reuse, color roles, states and contrast, touch targets, and placement — checked deterministically after the plan is written."
+description: "Composable wrapper for /speckit-plan that, when the spec declares user-facing web actions, requires a `## Button System` section in plan.md — component reuse, color roles, states and contrast, touch targets, and placement — checked deterministically after the plan is written."
 ---
 
 ## Wrapper Layer
@@ -15,7 +15,11 @@ and behave the same as every other button in the product.
 
 Read `## Actions & Buttons` in `spec.md` first.
 
-- If it says `None.`, add nothing and say so in your report.
+This layer covers **web / browser screens only**. Native iOS screens belong to
+`button-design-ios`'s `## iOS Button System`; never design them here.
+
+- If it says `None.` (e.g. `None — no user-facing web UI.`), add nothing and
+  say so in your report.
 - If the spec has no such section (it was written without this preset's
   `speckit.specify` layer), ask Jev whether it touches UI:
 
@@ -25,7 +29,7 @@ Read `## Actions & Buttons` in `spec.md` first.
   ```
 
   Exit 0 with `decision: "applies"` → write `## Button System` below from the
-  spec's screens. Exit 0 with `"skip"`, exit 3, or any other exit → add nothing
+  spec's web screens (if the UI is only native iOS, add nothing). Exit 0 with `"skip"`, exit 3, or any other exit → add nothing
   and say so. Either way the check passes; quote the `record` line in your
   report.
 - Otherwise `plan.md` MUST carry a `## Button System` section with these five

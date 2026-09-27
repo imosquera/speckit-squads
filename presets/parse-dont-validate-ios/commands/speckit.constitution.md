@@ -1,5 +1,5 @@
 ---
-description: "Enforce a mandatory Parse, Don't Validate constitution section"
+description: "Enforce a mandatory Parse, Don't Validate — Swift constitution section"
 strategy: "wrap"
 ---
 
@@ -15,11 +15,15 @@ You MUST consider the user input before proceeding.
 
 This preset wraps `/speckit-constitution` (and any inner wrapper the core-flow
 seam expands to). It adds exactly one thing: it enforces a canonical
-**Parse, Don't Validate** section in `.specify/memory/constitution.md`
+**Parse, Don't Validate — Swift** section in `.specify/memory/constitution.md`
 after the core flow has written it. It does not otherwise change the workflow.
 
 Other presets may stack the same way and inject their own governance sections.
-Never assume this preset owns the whole document.
+Never assume this preset owns the whole document. In particular, the sibling
+`parse-dont-validate` preset (TypeScript/Python) injects a section titled
+`Parse, Don't Validate (MANDATORY)` — with no `— Swift` — and a mixed project
+(Swift app plus TypeScript backend) installs both. That section is **not** this
+layer's: never match, rewrite, merge, or remove it. The two principles coexist.
 
 ### Core Flow
 
@@ -30,10 +34,22 @@ Never assume this preset owns the whole document.
 Once the entire core flow above has completed and the constitution has been
 written, ensure the canonical section below exists **exactly once**.
 
-- **Match on the section title, not on its number.** A section counts as
-  already present if its heading ends with `Parse, Don't Validate (MANDATORY)`,
-  whatever roman numeral it currently carries. Replace that entire section body
-  with the canonical text below, keeping its existing number.
+- **Match on the exact section title, not on its number.** A section counts as
+  already present if its heading ends with
+  `Parse, Don't Validate — Swift (MANDATORY)`, whatever roman numeral it
+  currently carries. A heading ending in plain `Parse, Don't Validate (MANDATORY)`
+  does **not** match — it is the sibling preset's section (see above).
+  Replace that entire section body with the canonical text below, keeping its
+  existing number.
+- **Legacy migration (one-time).** Versions before 2.1.0 of this preset titled
+  their section `Parse, Don't Validate (MANDATORY)`. If no `— Swift` section
+  exists but a `Parse, Don't Validate (MANDATORY)` section does whose body
+  contains the sentence `This principle applies to every Swift surface in the
+  app and its packages.`, that section is this layer's own legacy copy: retitle
+  it in place to `Parse, Don't Validate — Swift (MANDATORY)` (keeping its
+  number) and then apply the replacement rule above. A
+  `Parse, Don't Validate (MANDATORY)` section without that sentence belongs to
+  the sibling preset and is left alone.
 - If no such section exists, insert it as a new numbered principle section,
   after the last existing numbered principle section, preserving all other
   constitution content.
@@ -61,7 +77,8 @@ First decide what this layer actually did:
   the canonical text verbatim. Do nothing further; skip the rest of this section.
   A re-run must not bump the version.
 - **Body-only change** — the section existed and its body was replaced, or the
-  only difference is renumbering. This is a `PATCH`-level change.
+  only difference is renumbering, or a legacy section was retitled to
+  `— Swift` by the migration rule. This is a `PATCH`-level change.
 - **New principle added** — no such section existed and one was inserted. This
   is at least a `MINOR` change.
 
@@ -91,7 +108,7 @@ Then repeat the core flow's finalization steps for that change, in the same file
 
 The roman numeral below is a placeholder; the body is what must appear verbatim.
 
-### I. Parse, Don't Validate (MANDATORY)
+### I. Parse, Don't Validate — Swift (MANDATORY)
 
 Untrusted data MUST be parsed into precise domain types at the boundary, never
 merely validated and passed along as loose primitives. A validator answers

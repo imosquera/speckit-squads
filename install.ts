@@ -3,23 +3,48 @@
 // `specify ... add --dev`. --dev COPIES the directory (no symlink), so edits here
 // are not live: re-run with --force after changing anything to refresh the target.
 //
-// Presets named `X-ios` replace their base `X` in an iOS project (and are skipped
-// otherwise); see selectPresets() in scripts/manifest.ts. The mode is auto-detected
-// from the project (a *.xcodeproj, *.xcworkspace or Package.swift at the root or one
-// level down) unless --ios / --no-ios forces it.
+// Two flags pick what gets installed: --ts installs the TypeScript presets, --ios
+// the Swift (`X-ios`) presets, and both flags install both sets (a mixed project,
+// e.g. an Xcode app with a TypeScript backend); see selectPresets() in
+// scripts/manifest.ts. With neither flag: on an interactive terminal, a prompt;
+// else the choice saved in <project>/.specify/speckit-squads.json; else
+// detectStack(). The result is saved there (merged), so a team shares it and
+// non-interactive --force reinstalls (agents, autopilot, CI) reuse it.
 //
-// Usage: ./install.ts [--force] [--ios|--no-ios] <project-dir>
-import { existsSync, readdirSync, statSync } from "node:fs";
+// Usage: ./install.ts [--force] [--ts] [--ios] <project-dir>
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { KINDS, cmp, detectIos, manifests, presetPriority, selectPresets } from "./scripts/manifest.ts";
+import { createInterface } from "node:readline/promises";
+import {
+  KINDS,
+  STACKS,
+  type Stack,
+  cmp,
+  detectStack,
+  manifests,
+  parseStack,
+  presetPriority,
+  selectPresets,
+} from "./scripts/manifest.ts";
 
 const REPO_DIR = import.meta.dir;
 const BUN = process.execPath;
 const ME = basename(process.argv[1] ?? "install.ts");
-const USAGE = `usage: ${ME} [--force|-f] [--ios|--no-ios] <project-dir>`;
+const USAGE = `usage: ${ME} [--force|-f] [--ts] [--ios] <project-dir>
+  --ts        install the TypeScript presets
+  --ios       install the Swift presets
+  --ts --ios  install both sets, for a mixed project
+  neither: ask on a terminal, else reuse .specify/speckit-squads.json, else detect`;
+
+const usageError = (msg: string): never => {
+  console.error(`error: ${msg}`);
+  console.error(USAGE);
+  process.exit(2);
+};
 
 let force = false;
-let iosFlag: boolean | null = null;
+let tsFlag = false;
+let iosFlag = false;
 let projectArg = "";
 for (const arg of process.argv.slice(2)) {
   if (arg === "-h" || arg === "--help") {
@@ -27,25 +52,18 @@ for (const arg of process.argv.slice(2)) {
     process.exit(0);
   } else if (arg === "-f" || arg === "--force") {
     force = true;
-  } else if (arg === "--ios" || arg === "--no-ios") {
-    const v = arg === "--ios";
-    if (iosFlag !== null && iosFlag !== v) {
-      console.error("error: --ios and --no-ios are mutually exclusive");
-      process.exit(2);
-    }
-    iosFlag = v;
+  } else if (arg === "--ts") {
+    tsFlag = true;
+  } else if (arg === "--ios") {
+    iosFlag = true;
   } else if (arg.startsWith("-")) {
-    console.error(`error: unknown flag: ${arg}`);
-    console.error(USAGE);
-    process.exit(2);
+    usageError(`unknown flag: ${arg}`);
   } else {
-    if (projectArg) {
-      console.error("error: only one project-dir may be given");
-      process.exit(2);
-    }
+    if (projectArg) usageError("only one project-dir may be given");
     projectArg = arg;
   }
 }
+const flagStack: Stack | null = tsFlag && iosFlag ? "both" : tsFlag ? "ts" : iosFlag ? "ios" : null;
 if (!projectArg) {
   console.error(USAGE);
   process.exit(2);
@@ -66,17 +84,76 @@ const PROJECT_DIR = resolve(projectArg);
 process.chdir(PROJECT_DIR);
 // ponytail: no "bun on PATH" check — this file already runs under bun.
 
-const marker = iosFlag === null ? detectIos(PROJECT_DIR) : null;
-const IOS = iosFlag ?? marker !== null;
-console.log(
-  `==> mode: ${IOS ? "iOS" : "web"} (${
-    iosFlag !== null ? `forced by ${iosFlag ? "--ios" : "--no-ios"}` : marker ? `detected ${marker}` : "no *.xcodeproj, *.xcworkspace or Package.swift found"
-  })`,
-);
+// ---- stack resolution: flag > prompt (TTY) > saved > detected ----------------
+const CONFIG = join(PROJECT_DIR, ".specify", "speckit-squads.json");
+
+/** The whole config object (other keys are preserved on write), or {} if absent/unreadable. */
+function readConfig(): Record<string, unknown> {
+  if (!existsSync(CONFIG)) return {};
+  try {
+    const v: unknown = JSON.parse(readFileSync(CONFIG, "utf8"));
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+  } catch {
+    // fall through
+  }
+  console.error(`warning: ignoring unreadable ${CONFIG}`);
+  return {};
+}
+
+const config = readConfig();
+const savedRaw = config["stack"];
+const saved = typeof savedRaw === "string" ? parseStack(savedRaw) : null;
+if (savedRaw !== undefined && saved === null)
+  console.error(`warning: ignoring invalid stack ${JSON.stringify(savedRaw)} in ${CONFIG}`);
+const detected = detectStack(PROJECT_DIR);
+const detectedDesc = `detected: ${detected.markers.length ? detected.markers.join(", ") : "no markers"}`;
+
+const CHOICES: Record<Stack, string> = {
+  ts: "TypeScript presets: tdd, parse-dont-validate, button-design, library-research (--ts)",
+  ios: "Swift presets: tdd-ios, parse-dont-validate-ios, button-design-ios, library-research-ios (--ios)",
+  both: "both sets, for a mixed project (--ts --ios)",
+};
+
+async function ask(dflt: Stack): Promise<Stack> {
+  console.log(`Which presets should speckit-squads install? (${detectedDesc} -> ${detected.stack})`);
+  STACKS.forEach((s, i) => console.log(`  ${i + 1}) ${s.padEnd(4)}  ${CHOICES[s]}`));
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    for (;;) {
+      const a = (await rl.question(`Stack [${dflt}${saved === dflt ? ", saved" : ""}]: `)).trim().toLowerCase();
+      if (a === "") return dflt;
+      const n = Number(a);
+      const pick = Number.isInteger(n) && n >= 1 && n <= STACKS.length ? STACKS[n - 1] : parseStack(a);
+      if (pick) return pick;
+      console.log(`  please answer 1-${STACKS.length} or one of: ${STACKS.join(", ")}`);
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+let STACK: Stack;
+let why: string;
+if (flagStack !== null) {
+  [STACK, why] = [flagStack, [tsFlag && "--ts", iosFlag && "--ios"].filter(Boolean).join(" ")];
+} else if (process.stdin.isTTY && process.stdout.isTTY) {
+  [STACK, why] = [await ask(saved ?? detected.stack), "chosen interactively"];
+} else if (saved !== null) {
+  [STACK, why] = [saved, "saved in .specify/speckit-squads.json"];
+} else {
+  [STACK, why] = [detected.stack, detectedDesc];
+}
+console.log(`==> stack: ${STACK} (${why})`);
 
 // Pre-flight: CLI verbs, script paths, typecheck.
 if (Bun.spawnSync([BUN, join(REPO_DIR, "check-cli-usage.ts")], { stdio: ["inherit", "inherit", "inherit"] }).exitCode !== 0)
   process.exit(1);
+
+// Persist only after pre-flight passed; merge so other keys survive.
+if (config["stack"] !== STACK) {
+  writeFileSync(CONFIG, JSON.stringify({ ...config, stack: STACK }, null, 2) + "\n");
+  console.log(`==> saved stack: ${STACK} -> .specify/speckit-squads.json`);
+}
 
 // ORDERING CONTRACT for /speckit-implement (issue #25). `specify` resolves a command
 // by (priority ASC, id ASC); the highest-precedence `wrap` composes outermost, and
@@ -142,14 +219,15 @@ function installOne(kind: string, name: string, src: string, priority?: number):
 }
 
 /**
- * --force only: de-register the other member of a web/iOS pair if it is installed,
- * so switching modes never leaves both wrappers of one command in place.
+ * --force only: de-register the other member of a TypeScript/iOS pair if it is installed,
+ * so switching stacks never leaves both wrappers of one command in place. Never
+ * called for "both", which has no counterparts.
  */
 function removeCounterpart(other: string): boolean {
   if (!isDir(join(".specify/presets", other))) return true;
   const rm = specify(["preset", "remove", other]);
   if (rm.rc === 0 || /not installed|not found|unknown/i.test(rm.out)) {
-    console.log(`  removed ${other} (other mode's counterpart)`);
+    console.log(`  removed ${other} (other stack's counterpart)`);
     return true;
   }
   console.log(`  FAILED removing ${other}:`);
@@ -158,7 +236,7 @@ function removeCounterpart(other: string): boolean {
 }
 
 let exit = 0;
-const skipped = new Set<string>(); // presets of the other mode: no post-install either
+const skipped = new Set<string>(); // presets of the other stack: no post-install either
 for (const [kind, manifest] of KINDS) {
   const ids = manifests(REPO_DIR, kind, manifest).map((m) => m.id);
   if (kind === "extensions") {
@@ -168,9 +246,10 @@ for (const [kind, manifest] of KINDS) {
     }
     continue;
   }
-  const { install, skip, counterpart } = selectPresets(ids, IOS);
+  const { install, skip, counterpart } = selectPresets(ids, STACK);
   for (const id of skip) skipped.add(id);
-  if (skip.length) console.log(`==> skipping ${IOS ? "web" : "iOS"} presets: ${skip.join(", ")}`);
+  // ts skips the iOS set, ios the TypeScript set, both skips nothing.
+  if (skip.length) console.log(`==> skipping presets (stack ${STACK}): ${skip.join(", ")}`);
   for (const id of install) {
     const prio = presetPriority(PRIORITY, id);
     console.log(`==> preset: ${id} (priority ${prio})`);
@@ -180,7 +259,7 @@ for (const [kind, manifest] of KINDS) {
     if (force) {
       if (!removeCounterpart(other)) exit = 1;
     } else if (isDir(join(".specify/presets", other))) {
-      console.log(`  warning: ${other} (other mode) is also installed; re-run with --force to remove it`);
+      console.log(`  warning: ${other} (other stack) is also installed; re-run with --force to remove it`);
     }
   }
 }

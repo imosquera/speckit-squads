@@ -3,8 +3,8 @@ schema_version: "1.0"
 preset:
   id: "library-research-ios"
   name: "Library Research (iOS)"
-  version: "1.1.0"
-  description: "Wraps /speckit-plan so that, after the plan is written, the agent researches whether Apple first-party frameworks or Swift packages can replace hand-rolled build-it-yourself surface area identified in the plan (networking, Keychain, image caching, persistence, analytics, etc.) using live web search — native frameworks first, then Swift Package Index candidates vetted for iOS deployment target, Swift 6 strict concurrency, license, maintenance, binary size, and SPM support. Findings and a recommendation per unknown are written to research.md; when a library is a clear win, plan.md is revised in place to reference it instead of a custom build. No-ops gracefully when the plan has no buildable surface area worth researching. Chainable via {CORE_TEMPLATE} so it composes with other speckit.plan wrappers (e.g. parse-dont-validate, spec-minimal)."
+  version: "1.2.0"
+  description: "iOS half of the library-research pair (library-research is the TypeScript/web half; both coexist in a mixed project). Wraps /speckit-plan so that, after the plan is written, the agent researches whether Apple first-party frameworks or Swift packages can replace hand-rolled Swift/app-side build-it-yourself surface area identified in the plan (networking, Keychain, image caching, persistence, analytics, etc.) using live web search — native frameworks first, then Swift Package Index candidates vetted for iOS deployment target, Swift 6 strict concurrency, license, maintenance, binary size, and SPM support. TypeScript/web surface area is out of scope. Findings and a recommendation per unknown are written to this layer's own `## Library research — iOS` section of the shared research.md, never touching other sections; when a library is a clear win, only the iOS parts of plan.md are revised in place to reference it instead of a custom build. When the plan has no such surface area on this platform, writes only an N/A line in its own section and leaves plan.md alone. Chainable via {CORE_TEMPLATE} so it composes with other speckit.plan wrappers (e.g. parse-dont-validate, spec-minimal)."
   author: "imosquera"
   repository: "https://github.com/imosquera/speckit-squads-ios"
   license: "MIT"
@@ -23,7 +23,7 @@ provides:
     - type: "command"
       name: "speckit.plan"
       file: "commands/speckit.plan.md"
-      description: "Composable wrapper for /speckit-plan that researches Apple frameworks and Swift packages for the plan's technical unknowns via live web search and revises plan.md / writes research.md with findings."
+      description: "Composable wrapper for /speckit-plan that researches Apple frameworks and Swift packages for the plan's iOS technical unknowns via live web search, revises the iOS parts of plan.md, and writes its own section of research.md."
       strategy: "wrap"
 
 tags:

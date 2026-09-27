@@ -58,6 +58,7 @@ None — no user-facing UI.`;
 // --- spec mode
 check("spec-good", 0, "spec", GOOD);
 check("spec-none", 0, "spec", NONE);
+check("spec-none-web", 0, "spec", "## Actions & Buttons\n\nNone — no user-facing web UI.");
 check("spec-toolbar-no-primary", 0, "spec", `${HEAD}\n| Toolbar | Bold | button | tertiary | — |`);
 check("spec-missing", 1, "spec", "## User Scenarios");
 check("spec-no-table", 1, "spec", "## Actions & Buttons\n\nSome prose about buttons.");
@@ -78,6 +79,22 @@ check("spec-unguarded-cancel", 1, "spec", `${HEAD}\n| Billing | Cancel Subscript
 check("spec-link-with-role", 1, "spec", `${HEAD}\n| Home | Pricing | link | primary | — |`);
 check("spec-bad-kind", 1, "spec", `${HEAD}\n| Home | Pricing | chip | — | — |`);
 
+// --- mixed project: the iOS preset's sections are never read as the web one's
+// (it deliberately breaks every web rule, so reading it would fail).
+const IOS_SECTION = `## iOS Actions & Buttons
+
+| Screen | Label | Control | Style | Role | Placement | Safeguard |
+|---|---|---|---|---|---|---|
+| Settings | OK | Button | borderedProminent | — | bottom bar | — |
+| Settings | Delete | Button | borderedProminent | destructive | inline | — |`;
+const IOS_PLAN = `## iOS Button System
+
+**Component:** reuse the app's ButtonStyles.
+**Hit targets:** 20×20pt`;
+check("spec-mixed", 0, "spec", `${IOS_SECTION}\n\n${GOOD}`);
+check("spec-mixed-web-none", 0, "spec", `## Actions & Buttons\n\nNone — no user-facing web UI.\n\n${IOS_SECTION}`);
+check("spec-ios-only", 1, "spec", IOS_SECTION);
+
 // --- plan mode
 const PLAN_GOOD = `## Button System
 
@@ -97,6 +114,9 @@ check("plan-missing-section", 1, "plan", GOOD, "## Summary");
 check("plan-missing-marker", 1, "plan", GOOD, PLAN_NO_PLACEMENT);
 check("plan-empty-marker", 1, "plan", GOOD, `${PLAN_NO_PLACEMENT}**Placement:**`);
 check("plan-small-target", 1, "plan", GOOD, PLAN_GOOD.replace("44×44", "32x32"));
+check("plan-mixed", 0, "plan", `${GOOD}\n\n${IOS_SECTION}`, `${IOS_PLAN}\n\n${PLAN_GOOD}`);
+check("plan-mixed-web-none", 0, "plan", `## Actions & Buttons\n\nNone — no user-facing web UI.\n\n${IOS_SECTION}`, IOS_PLAN);
+check("plan-mixed-web-missing", 1, "plan", `${GOOD}\n\n${IOS_SECTION}`, IOS_PLAN);
 
 // --- usage
 if (run().rc === 2) console.log("PASS: usage-no-args");

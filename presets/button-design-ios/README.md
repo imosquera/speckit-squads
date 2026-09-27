@@ -1,13 +1,18 @@
-# button-design
+# button-design-ios
 
 Holds every UI-touching iOS feature to Apple Human Interface Guidelines button
 rules, in SwiftUI terms (UIKit where the project uses it), at the two cheapest
-moments to get them right: the spec and the plan.
+moments to get them right: the spec and the plan. It covers **native app
+screens only** and coexists with the web `button-design` preset in a mixed
+project: this layer owns `## iOS Actions & Buttons` and `## iOS Button System`,
+the web one owns `## Actions & Buttons` and `## Button System`, and each checker
+reads only its own (exact heading match). A feature whose UI is only on the web
+side gets `None — no user-facing iOS UI.` here.
 
 | Layer | Adds | Checked by |
 |---|---|---|
-| `speckit.specify` wrap | `## Actions & Buttons`: a table of every action per screen (label, `Button`/`NavigationLink`/`Link`, button style, `role`, toolbar/bottom-bar placement, destructive safeguard), or `None — no user-facing UI.` | `check-buttons.ts spec <spec.md>` |
-| `speckit.plan` wrap | `## Button System`: the `ButtonStyle` to reuse, styles and semantic tint, pressed/disabled/loading states and haptics, 44×44pt hit targets, Dynamic Type and accessibility labels, placement | `check-buttons.ts plan <feature-dir>` |
+| `speckit.specify` wrap | `## iOS Actions & Buttons`: a table of every action per screen (label, `Button`/`NavigationLink`/`Link`, button style, `role`, toolbar/bottom-bar placement, destructive safeguard), or `None — no user-facing iOS UI.` | `check-buttons.ts spec <spec.md>` |
+| `speckit.plan` wrap | `## iOS Button System`: the `ButtonStyle` to reuse, styles and semantic tint, pressed/disabled/loading states and haptics, 44×44pt hit targets, Dynamic Type and accessibility labels, placement | `check-buttons.ts plan <feature-dir>` |
 
 ## What is enforced vs. prompted
 
@@ -39,6 +44,14 @@ A screen with in-content buttons but no `.borderedProminent` gets a stdout
 note, not a failure; toolbar, dialog, and swipe buttons don't count, since the
 system styles those. A plan that mentions `hover` also gets a note: iPhone has
 no hover, so keep it only for iPad pointer support.
+
+## Migrating from 1.1.0
+
+1.1.0 wrote the web headings (`## Actions & Buttons`, `## Button System`). When
+the web preset is **not** installed (no `.specify/presets/button-design/`), the
+checker still accepts an old heading in place of the missing `iOS` one and
+prints a note, and both layers rename it in place. With the web preset
+installed, the old headings are the web layer's and are never read here.
 
 ## Composition
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// button-design preset: selftest-button-design.ts
+// button-design-ios preset: selftest-button-design.ts
 // Self-contained test for check-buttons.ts. The checker is read-only, so every
 // case asserts the exit code AND that spec.md was left byte-identical.
 //
@@ -19,9 +19,13 @@ function run(...args: string[]) {
   return { rc: p.exitCode ?? -1, out: p.stdout.toString() + p.stderr.toString() };
 }
 
-function check(name: string, want: number, mode: "spec" | "plan", spec: string, plan = "") {
-  const dir = join(WORK, name);
+// `web` simulates a project that also installs the web button-design preset:
+// the nearest `.specify/` carries `presets/button-design/`.
+function check(name: string, want: number, mode: "spec" | "plan", spec: string, plan = "", web = false) {
+  const root = join(WORK, name);
+  const dir = join(root, "specs", "001-feature");
   mkdirSync(dir, { recursive: true });
+  mkdirSync(join(root, ".specify", "presets", web ? "button-design" : "button-design-ios"), { recursive: true });
   const specPath = join(dir, "spec.md");
   writeFileSync(specPath, `# Feature\n\n${spec}\n`);
   writeFileSync(join(dir, "plan.md"), `# Plan\n\n${plan}\n`);
@@ -37,7 +41,7 @@ function check(name: string, want: number, mode: "spec" | "plan", spec: string, 
   } else console.log(`PASS: ${name}`);
 }
 
-const HEAD = `## Actions & Buttons
+const HEAD = `## iOS Actions & Buttons
 
 | Screen | Label | Control | Style | Role | Placement | Safeguard |
 |---|---|---|---|---|---|---|`;
@@ -53,20 +57,37 @@ const GOOD = `${HEAD}
 
 ## Functional Requirements`;
 
-const NONE = `## Actions & Buttons
+const NONE = `## iOS Actions & Buttons
+
+None — no user-facing iOS UI.`;
+const NONE_OLD_WORDING = `## iOS Actions & Buttons
 
 None — no user-facing UI.`;
+// What button-design-ios <= 1.1.0 wrote: the web preset's headings.
+const toLegacy = (t: string) => t.replace("## iOS Actions & Buttons", "## Actions & Buttons").replace("## iOS Button System", "## Button System");
+// The web preset's own section, as the web layer writes it in a mixed project.
+const WEB_SECTION = `## Actions & Buttons
+
+| Screen | Label | Kind | Role | Safeguard |
+|---|---|---|---|---|
+| Export | Submit | button | primary | — |
+| Export | Email | button | primary | — |`;
+const WEB_PLAN = `## Button System
+
+**Component:** reuse \`Button\` from \`src/ui/Button.tsx\`.
+**Touch targets:** 20×20`;
 
 const row = (r: string) => `${HEAD}\n${r}`;
 
 // --- spec mode
 check("spec-good", 0, "spec", GOOD);
 check("spec-none", 0, "spec", NONE);
+check("spec-none-old-wording", 0, "spec", NONE_OLD_WORDING);
 check("spec-toolbar-no-primary", 0, "spec", row("| Editor | Bold | Button | plain | — | toolbar .primaryAction | — |"));
 check("spec-alert-safeguard", 0, "spec", row("| Files | Remove File | Button | bordered | destructive | inline | alert |"));
 check("spec-missing", 1, "spec", "## User Scenarios");
-check("spec-no-table", 1, "spec", "## Actions & Buttons\n\nSome prose about buttons.");
-check("spec-web-columns", 1, "spec", `## Actions & Buttons
+check("spec-no-table", 1, "spec", "## iOS Actions & Buttons\n\nSome prose about buttons.");
+check("spec-web-columns", 1, "spec", `## iOS Actions & Buttons
 
 | Screen | Label | Kind | Role | Safeguard |
 |---|---|---|---|---|
@@ -90,8 +111,18 @@ check("spec-no-placement", 1, "spec", row("| Home | Save Draft | Button | border
 check("spec-cancel-in-confirm", 1, "spec", row("| Sheet | Cancel | Button | automatic | cancel | toolbar .confirmationAction | — |"));
 check("spec-destructive-in-cancel", 1, "spec", row("| Sheet | Discard Draft | Button | automatic | destructive | toolbar .cancellationAction | confirmationDialog |"));
 
+// --- migration: pre-1.2 heading, accepted only without the web preset
+check("spec-legacy-ios-only", 0, "spec", toLegacy(GOOD));
+check("spec-legacy-ios-only-bad", 1, "spec", toLegacy(row("| Export | Submit | Button | borderedProminent | — | inline | — |")));
+check("spec-legacy-with-web", 1, "spec", toLegacy(GOOD), "", true);
+
+// --- mixed project: both sections, each checker reads only its own
+check("spec-mixed", 0, "spec", `${WEB_SECTION}\n\n${GOOD}`, "", true);
+check("spec-mixed-ios-none", 0, "spec", `${WEB_SECTION}\n\n## iOS Actions & Buttons\n\nNone — no user-facing iOS UI.`, "", true);
+check("spec-mixed-web-only", 1, "spec", WEB_SECTION, "", true);
+
 // --- plan mode
-const PLAN_GOOD = `## Button System
+const PLAN_GOOD = `## iOS Button System
 
 **Component:** reuse \`PrimaryButtonStyle\` from \`Sources/DesignSystem/Buttons.swift\`.
 **Styles & tint:**
@@ -113,6 +144,13 @@ check("plan-empty-marker", 1, "plan", GOOD, `${PLAN_NO_PLACEMENT}**Placement:**`
 check("plan-small-target", 1, "plan", GOOD, PLAN_GOOD.replace("44×44pt", "32x32pt"));
 check("plan-no-dynamic-type", 1, "plan", GOOD, PLAN_GOOD.replace("Dynamic Type", "the system font"));
 check("plan-web-markers", 1, "plan", GOOD, PLAN_GOOD.replace("**Hit targets:**", "**Touch targets:**"));
+check("plan-legacy-ios-only", 0, "plan", toLegacy(GOOD), toLegacy(PLAN_GOOD));
+check("plan-legacy-plan-only", 0, "plan", GOOD, toLegacy(PLAN_GOOD));
+check("plan-legacy-with-web", 1, "plan", GOOD, toLegacy(PLAN_GOOD), true);
+check("plan-legacy-spec-with-web", 0, "plan", toLegacy(GOOD), "", true);
+check("plan-mixed", 0, "plan", `${WEB_SECTION}\n\n${GOOD}`, `${WEB_PLAN}\n\n${PLAN_GOOD}`, true);
+check("plan-mixed-ios-none", 0, "plan", `${WEB_SECTION}\n\n${NONE}`, WEB_PLAN, true);
+check("plan-mixed-ios-missing", 1, "plan", `${WEB_SECTION}\n\n${GOOD}`, WEB_PLAN, true);
 
 // --- usage
 if (run().rc === 2) console.log("PASS: usage-no-args");
@@ -122,4 +160,4 @@ if (failures > 0) {
   console.log(`${failures} failure(s)`);
   process.exit(1);
 }
-console.log("all button-design checks passed");
+console.log("all button-design-ios checks passed");

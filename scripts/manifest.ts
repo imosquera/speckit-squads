@@ -56,17 +56,51 @@ export function commandFiles(kind: string): string[] {
   return out;
 }
 
-// ---- iOS / web preset selection (install.ts) --------------------------------
-// A preset `X-ios` whose base `X` exists wraps the same command as `X`, so a
-// project gets exactly one of the pair. Derived from names; no hand-kept list.
+// ---- stack-based preset selection (install.ts) -------------------------------
+// A preset `X-ios` pairs with a base `X` that wraps the same command. The user
+// picks the stack: "ts" installs only the base of each pair, "ios" only the -ios
+// member, and "both" (a mixed project, e.g. an Xcode app plus a TypeScript
+// backend) installs every preset. install.ts maps its flags onto this: --ts is
+// ts, --ios is ios, both flags together are both. detectStack() only suggests a
+// default. Pairs are derived from names; no hand-kept list.
 
 export const IOS_SUFFIX = "-ios";
+
+export type Stack = "ts" | "ios" | "both";
+export const STACKS: readonly Stack[] = ["ts", "ios", "both"];
+
+/** `s` if it is exactly one of STACKS, else null. */
+export function parseStack(s: string): Stack | null {
+  return (STACKS as readonly string[]).includes(s) ? (s as Stack) : null;
+}
 
 /** Directories never searched for an Xcode/SwiftPM marker. */
 const DETECT_SKIP = new Set(["Pods", "Carthage", "DerivedData", "node_modules"]);
 
 const isIosMarker = (name: string): boolean =>
   name === "Package.swift" || name.endsWith(".xcodeproj") || name.endsWith(".xcworkspace");
+
+/** Sorted directory entries, or [] when unreadable. */
+const listDir = (d: string): string[] => {
+  try {
+    return readdirSync(d).sort(cmp);
+  } catch {
+    return [];
+  }
+};
+
+/** First entry matching `isMarker` at `dir`'s root, else one level down (skipping dotted dirs and DETECT_SKIP). */
+function findMarker(dir: string, isMarker: (name: string) => boolean): string | null {
+  const top = listDir(dir);
+  const hit = top.find(isMarker);
+  if (hit) return hit;
+  for (const sub of top) {
+    if (sub.includes(".") || DETECT_SKIP.has(sub)) continue;
+    const inner = listDir(join(dir, sub)).find(isMarker);
+    if (inner) return `${sub}/${inner}`;
+  }
+  return null;
+}
 
 /**
  * An iOS project has a *.xcodeproj, *.xcworkspace or Package.swift at `dir`'s root
@@ -75,22 +109,29 @@ const isIosMarker = (name: string): boolean =>
  * marker found (relative to `dir`), or null.
  */
 export function detectIos(dir: string): string | null {
-  const list = (d: string): string[] => {
-    try {
-      return readdirSync(d).sort(cmp);
-    } catch {
-      return [];
-    }
-  };
-  const top = list(dir);
-  const hit = top.find(isIosMarker);
-  if (hit) return hit;
-  for (const sub of top) {
-    if (sub.includes(".") || DETECT_SKIP.has(sub)) continue;
-    const inner = list(join(dir, sub)).find(isIosMarker);
-    if (inner) return `${sub}/${inner}`;
-  }
-  return null;
+  return findMarker(dir, isIosMarker);
+}
+
+const isWebMarker = (name: string): boolean => name === "package.json" || name === "tsconfig.json";
+
+/**
+ * A web/TypeScript project has a package.json or tsconfig.json at `dir`'s root or
+ * one level down (same skip rules as detectIos: dotted dirs, DETECT_SKIP). Returns
+ * the first marker found (relative to `dir`), or null.
+ */
+export function detectWeb(dir: string): string | null {
+  return findMarker(dir, isWebMarker);
+}
+
+/**
+ * Suggested stack: both markers → "both", only iOS → "ios", else "ts" (the
+ * default when nothing is found). `markers` lists what was found, iOS first.
+ */
+export function detectStack(dir: string): { stack: Stack; markers: string[] } {
+  const ios = detectIos(dir);
+  const web = detectWeb(dir);
+  const markers = [ios, web].filter((m): m is string => m !== null);
+  return { stack: ios && web ? "both" : ios ? "ios" : "ts", markers };
 }
 
 /** `X` for `X-ios`, else null. */
@@ -98,15 +139,18 @@ export const iosBase = (id: string): string | null =>
   id.endsWith(IOS_SUFFIX) && id.length > IOS_SUFFIX.length ? id.slice(0, -IOS_SUFFIX.length) : null;
 
 /**
- * Which presets to install for a mode. For each `X-ios` whose base `X` is in `ids`,
- * iOS mode keeps `X-ios` and skips `X`; web mode the reverse. An `X-ios` with no base
- * is iOS-only. `counterpart` maps each installed id to the skipped member of its pair
- * (what --force removes when switching modes). Order of `ids` is preserved.
+ * Which presets to install for a stack. For each `X-ios` whose base `X` is in `ids`,
+ * "ios" keeps `X-ios` and skips `X`; "ts" the reverse. An `X-ios` with no base is
+ * iOS-only. "both" installs every id (skip [], counterpart {}). `counterpart` maps
+ * each installed id to the skipped member of its pair (what --force removes when
+ * switching stacks). Order of `ids` is preserved.
  */
 export function selectPresets(
   ids: readonly string[],
-  ios: boolean,
+  stack: Stack,
 ): { install: string[]; skip: string[]; counterpart: Record<string, string> } {
+  if (stack === "both") return { install: [...ids], skip: [], counterpart: {} };
+  const ios = stack === "ios";
   const all = new Set(ids);
   const skip = new Set<string>();
   const counterpart: Record<string, string> = {};

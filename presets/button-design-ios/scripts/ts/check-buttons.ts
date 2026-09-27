@@ -1,9 +1,20 @@
 #!/usr/bin/env bun
-// button-design preset: check-buttons.ts
-// Deterministic half of the button-design rules.
+// button-design-ios preset: check-buttons.ts
+// Deterministic half of the iOS button-design rules.
 // Read-only: never edits a file.
 //
-//   spec <spec.md>       `## Actions & Buttons` exists and is either `None.` or a
+// This layer owns `## iOS Actions & Buttons` (spec) and `## iOS Button System`
+// (plan) and nothing else, so it coexists with the web `button-design` preset,
+// which owns `## Actions & Buttons` and `## Button System`. Headings match
+// exactly, so neither checker reads the other's section.
+//
+// Migration: a spec/plan written by button-design-ios <= 1.1.0 used the web
+// headings. When the iOS heading is absent AND the web preset is not installed
+// (no `.specify/presets/button-design/` in the nearest ancestor `.specify/`),
+// the old heading is checked as the iOS section, with a note to rename it.
+// With the web preset installed the old heading is the web layer's, never ours.
+//
+//   spec <spec.md>       `## iOS Actions & Buttons` exists and is either `None.` or a
 //                        SwiftUI action table where: control is Button |
 //                        NavigationLink | Link; a Button has a style
 //                        (borderedProminent|bordered|borderless|plain|automatic);
@@ -15,7 +26,7 @@
 //                        `role: .destructive`, name their object, and carry a
 //                        confirmationDialog/alert/undo/type-to-confirm safeguard.
 //   plan <feature-dir>   when the spec declares actions, plan.md has a
-//                        `## Button System` with all six markers populated, no
+//                        `## iOS Button System` with all six markers populated, no
 //                        hit target under 44×44pt, and Accessibility covering
 //                        Dynamic Type. A `hover` state is a note (iPad pointer
 //                        only), never a failure.
@@ -28,7 +39,8 @@
 //        check-buttons.ts plan <feature-dir>
 // Exit:  0 pass   1 rule violation (stderr says which)   2 bad usage
 
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join as pathJoin, resolve } from "node:path";
 
 // Python's str whitespace set and Unicode-aware `\b`, so matching stays exactly
 // what the original python helper accepted.
@@ -36,8 +48,11 @@ const WS = "\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\
 const WS_CHARS = new RegExp(`[${WS}]`, "u");
 const WORD_END = "(?![\\p{L}\\p{N}_])";
 
-const SPEC_TITLE = "Actions & Buttons";
-const PLAN_TITLE = "Button System";
+const SPEC_TITLE = "iOS Actions & Buttons";
+const PLAN_TITLE = "iOS Button System";
+// Headings button-design-ios <= 1.1.0 wrote; now the web preset's.
+const LEGACY_SPEC_TITLE = "Actions & Buttons";
+const LEGACY_PLAN_TITLE = "Button System";
 const PLAN_MARKERS: readonly string[] = [
   "Component", "Styles & tint", "States & feedback", "Hit targets", "Accessibility", "Placement",
 ];
@@ -68,9 +83,9 @@ const ANY_HEADING = new RegExp(`^#{1,6}[${WS}]`, "u");
 const NONE_RE = new RegExp(`^[${WS}]*None${WORD_END}`, "iu");
 const RULE_CELL = /^:?-+:?$/;
 
-const SPEC_SHAPE = `  Expected shape (or \`None — no user-facing UI.\` under the heading):
+const SPEC_SHAPE = `  Expected shape (or \`None — no user-facing iOS UI.\` under the heading):
 
-    ## Actions & Buttons
+    ## iOS Actions & Buttons
 
     | Screen | Label | Control | Style | Role | Placement | Safeguard |
     |---|---|---|---|---|---|---|
@@ -176,6 +191,35 @@ function section(lines: readonly string[], title: string): string[] | null {
   return null;
 }
 
+// True when the nearest ancestor `.specify/` has the web preset installed.
+// No `.specify/` at all reads as "not installed".
+function webPresetInstalled(from: string): boolean {
+  let dir = resolve(from);
+  for (;;) {
+    if (existsSync(pathJoin(dir, ".specify"))) {
+      return existsSync(pathJoin(dir, ".specify", "presets", "button-design"));
+    }
+    const up = dirname(dir);
+    if (up === dir) return false;
+    dir = up;
+  }
+}
+
+// The iOS section's body, falling back to the pre-1.2 heading only when the web
+// preset can't own it. `legacy` is set when the fallback was used.
+function ownSection(
+  lines: readonly string[], title: string, legacyTitle: string, dir: string,
+): { body: string[] | null; legacy: boolean } {
+  const body = section(lines, title);
+  if (body !== null || webPresetInstalled(dir)) return { body, legacy: false };
+  const old = section(lines, legacyTitle);
+  return { body: old, legacy: old !== null };
+}
+
+function legacyNote(file: string, legacyTitle: string, title: string): string {
+  return `${file} uses the pre-1.2 heading \`## ${legacyTitle}\`; rename it to \`## ${title}\` (accepted because the web button-design preset is not installed)`;
+}
+
 function declaredNone(body: readonly string[]): boolean {
   const first = body.find((l) => strip(l) !== "") ?? "";
   return NONE_RE.test(first);
@@ -195,9 +239,10 @@ const COLUMNS = ["screen", "label", "control", "style", "role", "placement", "sa
 type Column = (typeof COLUMNS)[number];
 
 function checkSpec(spec: string): Result {
-  const body = section(readLines(spec), SPEC_TITLE);
+  const { body, legacy } = ownSection(readLines(spec), SPEC_TITLE, LEGACY_SPEC_TITLE, dirname(spec));
   if (body === null) return [[`missing section: \`## ${SPEC_TITLE}\`\n${SPEC_SHAPE}`], []];
-  if (declaredNone(body)) return [[], ["spec declares no user-facing actions"]];
+  const lead = legacy ? [legacyNote("spec.md", LEGACY_SPEC_TITLE, SPEC_TITLE)] : [];
+  if (declaredNone(body)) return [[], [...lead, "spec declares no user-facing iOS actions"]];
   const [header, rows] = table(body);
   if (header === null || rows.length === 0) {
     return [[`\`## ${SPEC_TITLE}\` has no action table\n${SPEC_SHAPE}`], []];
@@ -214,7 +259,7 @@ function checkSpec(spec: string): Result {
   }
 
   const problems: string[] = [];
-  const notes: string[] = [];
+  const notes: string[] = [...lead];
   const primaries = new Map<string, number>();
   const buttonScreens: string[] = [];
   // `.borderedProminent` / `role: .destructive` / `Button` all normalise to a
@@ -324,15 +369,20 @@ function marker(body: readonly string[], name: string): string | null {
 
 function checkPlan(fdir: string): Result {
   const spec = join(fdir, "spec.md");
-  const body = isFile(spec) ? section(readLines(spec), SPEC_TITLE) : null;
+  const s = isFile(spec)
+    ? ownSection(readLines(spec), SPEC_TITLE, LEGACY_SPEC_TITLE, fdir)
+    : { body: null, legacy: false };
+  const body = s.body;
   if (body === null) {
     return [[], [`spec has no \`## ${SPEC_TITLE}\` section (written without this preset's specify layer); nothing to hold the plan to`]];
   }
-  if (declaredNone(body)) return [[], ["spec declares no user-facing actions; no button system required"]];
-  const plan = section(readLines(join(fdir, "plan.md")), PLAN_TITLE);
+  const notes: string[] = s.legacy ? [legacyNote("spec.md", LEGACY_SPEC_TITLE, SPEC_TITLE)] : [];
+  if (declaredNone(body)) return [[], [...notes, "spec declares no user-facing iOS actions; no iOS button system required"]];
+  const p = ownSection(readLines(join(fdir, "plan.md")), PLAN_TITLE, LEGACY_PLAN_TITLE, fdir);
+  const plan = p.body;
   if (plan === null) return [[`missing section in plan.md: \`## ${PLAN_TITLE}\`\n${PLAN_SHAPE}`], []];
+  if (p.legacy) notes.push(legacyNote("plan.md", LEGACY_PLAN_TITLE, PLAN_TITLE));
   const problems: string[] = [];
-  const notes: string[] = [];
   for (const name of PLAN_MARKERS) {
     const content = marker(plan, name);
     if (content === null) problems.push(`\`## ${PLAN_TITLE}\` lacks \`**${name}:**\``);
@@ -376,9 +426,9 @@ try {
 }
 const [problems, notes] = result;
 if (problems.length > 0) {
-  console.error(`error: ${target} breaks the button-design rules`);
+  console.error(`error: ${target} breaks the button-design-ios rules`);
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
-for (const note of notes) console.log(`button-design: note: ${note}`);
-console.log(`button-design: ${mode} check passed.`);
+for (const note of notes) console.log(`button-design-ios: note: ${note}`);
+console.log(`button-design-ios: ${mode} check passed.`);

@@ -1,5 +1,5 @@
 ---
-description: "Composable wrapper for /speckit-plan that, when the spec declares user-facing actions, requires a `## Button System` section in plan.md in SwiftUI / Apple HIG terms — ButtonStyle reuse, styles and tint, pressed/disabled states and haptics, 44×44pt hit targets, Dynamic Type and accessibility labels, and toolbar/bottom-bar placement — checked deterministically after the plan is written."
+description: "Composable wrapper for /speckit-plan that, when the spec declares user-facing iOS actions, requires a `## iOS Button System` section in plan.md in SwiftUI / Apple HIG terms — ButtonStyle reuse, styles and tint, pressed/disabled states and haptics, 44×44pt hit targets, Dynamic Type and accessibility labels, and toolbar/bottom-bar placement — checked deterministically after the plan is written."
 ---
 
 ## Wrapper Layer
@@ -8,16 +8,32 @@ This preset wraps the stock `/speckit-plan` command (and any inner wrapper the
 core flow expands to, e.g. from another chained `speckit.plan` preset).
 
 The spec decided **which** actions exist and what they say
-(`## Actions & Buttons`). This layer decides **how they are built in SwiftUI**
+(`## iOS Actions & Buttons`). This layer decides **how they are built in SwiftUI**
 so they look and behave the same as every other button in the app. There is no
 hover on iPhone and no CSS: states come from the button style's
 configuration and the environment.
 
-### Button System (MANDATORY)
+### Platform Scope
 
-Read `## Actions & Buttons` in `spec.md` first.
+This layer covers **native iOS app screens only** and owns
+`## iOS Button System`. `## Button System` belongs to the web `button-design`
+preset in a mixed project; never write or edit it here.
 
-- If it says `None.`, add nothing and say so in your report.
+### Migration from 1.1.0
+
+button-design-ios 1.1.0 and earlier wrote `## Actions & Buttons` (spec) and
+`## Button System` (plan). When the project's `.specify/presets/button-design/`
+does **not** exist and a file has the old heading but not the `iOS` one,
+rename the old heading in place (`spec.md` → `## iOS Actions & Buttons`,
+`plan.md` → `## iOS Button System`), content unchanged. With the web preset
+installed, the old headings are the web layer's: leave them alone.
+
+### iOS Button System (MANDATORY)
+
+Read `## iOS Actions & Buttons` in `spec.md` first.
+
+- If it says `None.` (e.g. `None — no user-facing iOS UI.`), add nothing and
+  say so in your report.
 - If the spec has no such section (it was written without this preset's
   `speckit.specify` layer), ask Jev whether it touches UI:
 
@@ -26,15 +42,15 @@ Read `## Actions & Buttons` in `spec.md` first.
   bun "$PROJECT_DIR/.specify/presets/button-design-ios/scripts/ts/jev.ts" applies-ui --spec "$SPECIFY_FEATURE_DIRECTORY/spec.md"
   ```
 
-  Exit 0 with `decision: "applies"` → write `## Button System` below from the
-  spec's screens. Exit 0 with `"skip"`, exit 3, or any other exit → add nothing
+  Exit 0 with `decision: "applies"` → write `## iOS Button System` below from
+  the spec's native iOS screens (if the UI is only web, add nothing). Exit 0 with `"skip"`, exit 3, or any other exit → add nothing
   and say so. Either way the check passes; quote the `record` line in your
   report.
-- Otherwise `plan.md` MUST carry a `## Button System` section with these six
-  markers, each populated:
+- Otherwise `plan.md` MUST carry a `## iOS Button System` section with these
+  six markers, each populated:
 
 ```markdown
-## Button System
+## iOS Button System
 
 **Component:** reuse the app's button styles in
 `Sources/DesignSystem/ButtonStyles.swift` (system `.borderedProminent`,
@@ -102,8 +118,9 @@ bun "$PROJECT_DIR/.specify/presets/button-design-ios/scripts/ts/check-buttons.ts
 
 The check is read-only. Handle the exit code:
 
-- **`0`**: the plan carries a populated `## Button System`, or the spec
-  declares no actions. Report success.
+- **`0`**: the plan carries a populated `## iOS Button System`, or the spec
+  declares no iOS actions. A note about a pre-1.2 heading means the rename
+  above was missed: do it. Report success.
 - **`1`**: stderr names the missing section, the empty marker, a hit
   target under 44×44pt, or an Accessibility marker that never mentions
   Dynamic Type. Fix `plan.md` and re-run. Do not report success while it

@@ -28,6 +28,8 @@ const WS = "\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\
 const WS_CHARS = new RegExp(`[${WS}]`, "u");
 const WORD_END = "(?![\\p{L}\\p{N}_])";
 
+// Matched exactly (anchored, whole heading), so the iOS preset's
+// `## iOS Actions & Buttons` / `## iOS Button System` are never read as ours.
 const SPEC_TITLE = "Actions & Buttons";
 const PLAN_TITLE = "Button System";
 const PLAN_MARKERS: readonly string[] = ["Component", "Color roles", "States", "Touch targets", "Placement"];

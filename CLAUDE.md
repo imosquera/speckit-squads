@@ -11,7 +11,7 @@ install.ts         install every extension+preset into a Spec Kit project
 uninstall.ts       remove every extension+preset from a Spec Kit project
 check-cli-usage.ts validate `specify <verb>` calls AND every script path in command files
 scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.ts) + check-script-paths.ts + jev.ts (the canonical Jev helper, see *Jev*)
-                   + manifest.ts (detectIos/selectPresets/presetPriority) + ci-ios-smoke.ts
+                   + manifest.ts (detectStack/selectPresets/presetPriority) + ci-ios-smoke.ts
 .github/workflows/ci.yml   `test` job + `ios-smoke` job (real Xcode, needs xcodegen)
 ```
 
@@ -95,17 +95,30 @@ Both scripts auto-discover every directory under `extensions/` and `presets/` th
 Both require a `<project-dir>` argument — there is no implicit `$PWD` default, so you can't accidentally install into the wrong place.
 
 ```bash
-./install.ts [--force] [--ios|--no-ios] /path/to/spec-kit-project
+./install.ts [--force] [--ts] [--ios] /path/to/spec-kit-project
 ./uninstall.ts /path/to/spec-kit-project
 ```
 
-**iOS vs web mode.** Without a flag, `install.ts` calls `detectIos()` (`scripts/manifest.ts`):
-a `*.xcodeproj`, `*.xcworkspace` or `Package.swift` at the root or one level down, skipping
-`Pods`/`Carthage`/`DerivedData`/`node_modules` and dot-dirs. It prints the mode and why.
-`selectPresets()` gives a project exactly one of each `X` / `X-ios` pair: iOS installs `X-ios`
-and skips `X`, web the reverse; an `-ios` preset with no base is iOS-only. `--force` removes
-the opposite twin, which is how a project switches modes. `gen-agent-index.ts` indexes only
-installed items. Extensions are not twinned; one copy serves both kinds of project.
+**The user picks the stack; the installer never guesses silently.** `--ts` installs the
+TypeScript/web presets (`tdd`, `parse-dont-validate`, `button-design`, `library-research`),
+`--ios` their `-ios` Swift twins, and `--ts --ios` both sets, for a mixed project (e.g.
+`~/Code/beadbits`: an Xcode app plus a TypeScript Firebase backend). Each pair is built to
+coexist — the two members are similar but not the same, one per platform: they compose as
+`wrap` layers at the same priority (`presetPriority()` gives an `-ios` preset its base's
+number: tdd 11, parse-dont-validate 9), each gate checks only its own language, and each
+layer writes only its own sections — the constitution principles are `Parse, Don't Validate`
+and `Parse, Don't Validate — Swift`, the button sections `## Actions & Buttons` /
+`## Button System` and their `## iOS …` twins, and each library-research layer owns one
+section of the shared `research.md`. With neither flag: an interactive prompt in a terminal
+(default: the saved choice, else detection); else the choice saved in
+`<project>/.specify/speckit-squads.json` (`{"stack": "ts"|"ios"|"both"}`, committed with
+`.specify/` so a team and later non-interactive `--force` reinstalls reuse it); else
+`detectStack()` (`scripts/manifest.ts`) — an Xcode/SwiftPM marker (`*.xcodeproj`,
+`*.xcworkspace`, `Package.swift`, root or one level down) plus `package.json`/`tsconfig.json`
+is `both`, only the iOS marker is `ios`, anything else `ts`. With one stack, `--force`
+removes the other member of each pair, which is how a project switches. An
+`-ios` preset with no base installs under `ios` and `both`. `gen-agent-index.ts` indexes only
+installed items. Extensions are not twinned; one copy serves every stack.
 
 Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this repo as the install source; it does not symlink.** Verified in the installed specify-cli:
 
@@ -607,7 +620,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   layers in id order, and the stripper never touches either new section
 - `spec-ui-preview` — adds a GitHub-safe inline HTML UI preview to UI-touching specs (split out of `spec-minimal`)
 - `button-design` — `wrap` layers on `speckit.specify` and `speckit.plan` that hold
-  every UI-touching feature to button-design rules. The spec gets a mandatory
+  every web UI-touching feature to button-design rules (browser screens only; `button-design-ios` covers native screens with its own `## iOS Actions & Buttons` / `## iOS Button System`, so both coexist in a mixed project). The spec gets a mandatory
   `## Actions & Buttons` table (screen, label, `button`/`link`, primary/secondary/
   tertiary, destructive safeguard) or an explicit `None — no user-facing UI.`; the
   plan gets `## Button System` with five populated markers (Component, Color roles,
@@ -639,7 +652,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   `red-reason` is gated: shadow mode until `SPECKIT_JEV_AUTOMATE=red-reason`
   (or the legacy `TDD_JEV_AUTOMATE_RED=1`). `selftest-tdd.ts` checks the gate;
   `scripts/selftest-jev.ts` checks the cases
-- `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
+- `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to its own `## Library research — TypeScript/web` section of `research.md` (the `-ios` twin owns `## Library research — iOS`, so both coexist in a mixed project) and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
   (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the
   phase where new files, abstractions, dependencies and config knobs get committed

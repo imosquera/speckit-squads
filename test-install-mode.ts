@@ -1,10 +1,18 @@
 #!/usr/bin/env bun
-// Self-check for install.ts's iOS/web mode: detectIos() on throwaway trees, and the
-// pure selectPresets()/presetPriority() for both modes. Run: ./test-install-mode.ts
+// Self-check for install.ts's stack selection: detectIos()/detectWeb()/detectStack()
+// on throwaway trees, parseStack(), and the pure selectPresets()/presetPriority()
+// for every stack. Run: ./test-install-mode.ts
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { detectIos, presetPriority, selectPresets } from "./scripts/manifest.ts";
+import {
+  detectIos,
+  detectStack,
+  detectWeb,
+  parseStack,
+  presetPriority,
+  selectPresets,
+} from "./scripts/manifest.ts";
 
 const TMP = mkdtempSync(join(tmpdir(), "install-mode-"));
 let failures = 0;
@@ -45,27 +53,53 @@ eq(detectIos(tree("Foo.app/Package.swift")), null, "bundles not descended into")
 eq(detectIos(tree("package.json", "src/index.ts", "web/")), null, "web project");
 eq(detectIos(join(TMP, "missing")), null, "missing dir");
 
+eq(detectWeb(tree("package.json")), "package.json", "package.json at root");
+eq(detectWeb(tree("functions/package.json")), "functions/package.json", "package.json one level down");
+eq(detectWeb(tree("tsconfig.json")), "tsconfig.json", "tsconfig.json at root");
+eq(detectWeb(tree("node_modules/package.json")), null, "node_modules ignored");
+eq(detectWeb(tree("a/b/package.json")), null, "two levels down is not searched (web)");
+eq(detectWeb(tree("App.xcodeproj/", "Sources/App.swift", "Package.swift")), null, "Swift-only tree");
+eq(detectWeb(join(TMP, "missing")), null, "missing dir (web)");
+
+eq(
+  detectStack(tree("App.xcodeproj/", "functions/package.json")),
+  { stack: "both", markers: ["App.xcodeproj", "functions/package.json"] },
+  "xcodeproj + functions/package.json -> both",
+);
+eq(detectStack(tree("ios/App.xcodeproj/")), { stack: "ios", markers: ["ios/App.xcodeproj"] }, "ios only");
+eq(detectStack(tree("package.json", "src/")), { stack: "ts", markers: ["package.json"] }, "ts only");
+eq(detectStack(tree()), { stack: "ts", markers: [] }, "empty -> ts");
+
+eq(parseStack("ts"), "ts", "parseStack ts");
+eq(parseStack("web"), null, "parseStack web is not a stack");
+eq(parseStack("ios"), "ios", "parseStack ios");
+eq(parseStack("both"), "both", "parseStack both");
+eq(parseStack("iOS"), null, "parseStack is case-sensitive");
+eq(parseStack(""), null, "parseStack empty");
+eq(parseStack("all"), null, "parseStack unknown");
+
 // selection
 const ids = ["button-design", "button-design-ios", "diff-minimal", "tdd", "tdd-ios", "watch-only-ios"];
 eq(
-  selectPresets(ids, true),
+  selectPresets(ids, "ios"),
   {
     install: ["button-design-ios", "diff-minimal", "tdd-ios", "watch-only-ios"],
     skip: ["button-design", "tdd"],
     counterpart: { "button-design-ios": "button-design", "tdd-ios": "tdd" },
   },
-  "iOS mode",
+  "ios stack",
 );
 eq(
-  selectPresets(ids, false),
+  selectPresets(ids, "ts"),
   {
     install: ["button-design", "diff-minimal", "tdd"],
     skip: ["button-design-ios", "tdd-ios", "watch-only-ios"],
     counterpart: { "button-design": "button-design-ios", tdd: "tdd-ios" },
   },
-  "web mode (base-less -ios preset skipped)",
+  "ts stack (base-less -ios preset skipped)",
 );
-eq(selectPresets(["-ios"], false).install, ["-ios"], "bare -ios is not a pair");
+eq(selectPresets(ids, "both"), { install: ids, skip: [], counterpart: {} }, "both stack installs every preset");
+eq(selectPresets(["-ios"], "ts").install, ["-ios"], "bare -ios is not a pair");
 
 // priority
 const P = { tdd: 11, "parse-dont-validate": 9, "tdd-special-ios": 3 };

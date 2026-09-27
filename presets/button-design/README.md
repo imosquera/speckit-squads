@@ -1,11 +1,14 @@
 # button-design
 
-Holds every UI-touching feature to established button-design rules, at the two
-cheapest moments to get them right: the spec and the plan.
+Holds every feature that touches **web / browser UI** to established
+button-design rules, at the two cheapest moments to get them right: the spec
+and the plan. Native iOS screens are `button-design-ios`'s job; a mixed project
+installs both, and each layer writes and checks only its own sections (see
+*Composition*).
 
 | Layer | Adds | Checked by |
 |---|---|---|
-| `speckit.specify` wrap | `## Actions & Buttons`: a table of every action per screen (label, button vs link, primary/secondary/tertiary, destructive safeguard), or `None — no user-facing UI.` | `check-buttons.ts spec <spec.md>` |
+| `speckit.specify` wrap | `## Actions & Buttons`: a table of every action per screen (label, button vs link, primary/secondary/tertiary, destructive safeguard), or `None — no user-facing web UI.` | `check-buttons.ts spec <spec.md>` |
 | `speckit.plan` wrap | `## Button System`: the component to reuse, color roles, states and contrast, touch targets, placement | `check-buttons.ts plan <feature-dir>` |
 
 ## What is enforced vs. prompted
@@ -32,7 +35,13 @@ toolbar legitimately has no primary.
 Both layers are `strategy: wrap` at the default priority, so they stack with
 `spec-minimal`, `diff-minimal`, `spec-ui-preview`, and `library-research` in id
 order. `spec-minimal`'s stripper never touches
-either section. With `spec-ui-preview` installed, the preview must show the
+either section.
+
+With `button-design-ios` also installed (`./install.ts --ts --ios`), the iOS
+layer owns `## iOS Actions & Buttons` / `## iOS Button System` and this one
+owns `## Actions & Buttons` / `## Button System`. Headings match exactly, so
+neither checker reads the other's section. A feature whose UI is only on the
+iOS side gets `None — no user-facing web UI.` here. With `spec-ui-preview` installed, the preview must show the
 same hierarchy as the table.
 
 ## Test

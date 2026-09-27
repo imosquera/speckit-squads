@@ -3,7 +3,7 @@ schema_version: "1.0"
 preset:
   id: "parse-dont-validate-ios"
   name: "Parse, Don't Validate (iOS)"
-  version: "2.0.0"
+  version: "2.1.0"
   description: "Overrides /speckit-constitution, /speckit-plan, and /speckit-implement to enforce the 'parse, don't validate' discipline in Swift/iOS code — untrusted `Data` / `[String: Any]` stays at the boundary, parsers are throwing/failable `init`s or `Decodable` types that return domain types (newtypes such as `struct Email { let raw: String; init(parsing:) throws }`, `RawRepresentable`, tagged types), and a deterministic scanner gates completion by flagging `Any`/`AnyObject`, untyped deserialization, boolean validators, `as!` outside parser scopes, and `try!`."
   author: "speckit-squads"
   repository: "local"
@@ -24,7 +24,7 @@ provides:
       name: "speckit.constitution"
       strategy: "wrap"
       file: "commands/speckit.constitution.md"
-      description: "Constitution command that always injects a canonical 'Parse, Don't Validate' governance section (Swift)"
+      description: "Constitution command that always injects a canonical 'Parse, Don't Validate — Swift' governance section, titled distinctly so it coexists with the parse-dont-validate preset's TypeScript/Python section"
 
     - type: "command"
       name: "speckit.plan"

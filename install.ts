@@ -3,29 +3,15 @@
 // `specify ... add --dev`. --dev COPIES the directory (no symlink), so edits here
 // are not live: re-run with --force after changing anything to refresh the target.
 //
-// Two flags pick what gets installed: --ts installs the TypeScript presets, --ios
-// the Swift (`X-ios`) presets, and both flags install both sets (a mixed project,
-// e.g. an Xcode app with a TypeScript backend); see selectPresets() in
-// scripts/manifest.ts. With neither flag: on an interactive terminal, a prompt;
-// else the choice saved in <project>/.specify/speckit-squads.json; else
-// detectStack(). The result is saved there (merged), so a team shares it and
-// non-interactive --force reinstalls (agents, autopilot, CI) reuse it.
+// Every extension and every language-neutral preset always installs. The paired
+// language presets are opt-in: --ts installs the TypeScript ones, --ios the Swift
+// (`X-ios`) ones, both flags both sets (a mixed project, e.g. an Xcode app with a
+// TypeScript backend); see selectPresets() in scripts/manifest.ts.
 //
 // Usage: ./install.ts [--force] [--ts] [--ios] <project-dir>
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
-import {
-  KINDS,
-  STACKS,
-  type Stack,
-  cmp,
-  detectStack,
-  manifests,
-  parseStack,
-  presetPriority,
-  selectPresets,
-} from "./scripts/manifest.ts";
+import { KINDS, type Stack, cmp, manifests, presetPriority, selectPresets } from "./scripts/manifest.ts";
 
 const REPO_DIR = import.meta.dir;
 const BUN = process.execPath;
@@ -34,7 +20,7 @@ const USAGE = `usage: ${ME} [--force|-f] [--ts] [--ios] <project-dir>
   --ts        install the TypeScript presets
   --ios       install the Swift presets
   --ts --ios  install both sets, for a mixed project
-  neither: ask on a terminal, else reuse .specify/speckit-squads.json, else detect`;
+  neither     only the language-neutral extensions and presets`;
 
 const usageError = (msg: string): never => {
   console.error(`error: ${msg}`);
@@ -63,7 +49,6 @@ for (const arg of process.argv.slice(2)) {
     projectArg = arg;
   }
 }
-const flagStack: Stack | null = tsFlag && iosFlag ? "both" : tsFlag ? "ts" : iosFlag ? "ios" : null;
 if (!projectArg) {
   console.error(USAGE);
   process.exit(2);
@@ -84,76 +69,15 @@ const PROJECT_DIR = resolve(projectArg);
 process.chdir(PROJECT_DIR);
 // ponytail: no "bun on PATH" check — this file already runs under bun.
 
-// ---- stack resolution: flag > prompt (TTY) > saved > detected ----------------
-const CONFIG = join(PROJECT_DIR, ".specify", "speckit-squads.json");
-
-/** The whole config object (other keys are preserved on write), or {} if absent/unreadable. */
-function readConfig(): Record<string, unknown> {
-  if (!existsSync(CONFIG)) return {};
-  try {
-    const v: unknown = JSON.parse(readFileSync(CONFIG, "utf8"));
-    if (v !== null && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
-  } catch {
-    // fall through
-  }
-  console.error(`warning: ignoring unreadable ${CONFIG}`);
-  return {};
-}
-
-const config = readConfig();
-const savedRaw = config["stack"];
-const saved = typeof savedRaw === "string" ? parseStack(savedRaw) : null;
-if (savedRaw !== undefined && saved === null)
-  console.error(`warning: ignoring invalid stack ${JSON.stringify(savedRaw)} in ${CONFIG}`);
-const detected = detectStack(PROJECT_DIR);
-const detectedDesc = `detected: ${detected.markers.length ? detected.markers.join(", ") : "no markers"}`;
-
-const CHOICES: Record<Stack, string> = {
-  ts: "TypeScript presets: tdd, parse-dont-validate, button-design, library-research (--ts)",
-  ios: "Swift presets: tdd-ios, parse-dont-validate-ios, button-design-ios, library-research-ios (--ios)",
-  both: "both sets, for a mixed project (--ts --ios)",
-};
-
-async function ask(dflt: Stack): Promise<Stack> {
-  console.log(`Which presets should speckit-squads install? (${detectedDesc} -> ${detected.stack})`);
-  STACKS.forEach((s, i) => console.log(`  ${i + 1}) ${s.padEnd(4)}  ${CHOICES[s]}`));
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    for (;;) {
-      const a = (await rl.question(`Stack [${dflt}${saved === dflt ? ", saved" : ""}]: `)).trim().toLowerCase();
-      if (a === "") return dflt;
-      const n = Number(a);
-      const pick = Number.isInteger(n) && n >= 1 && n <= STACKS.length ? STACKS[n - 1] : parseStack(a);
-      if (pick) return pick;
-      console.log(`  please answer 1-${STACKS.length} or one of: ${STACKS.join(", ")}`);
-    }
-  } finally {
-    rl.close();
-  }
-}
-
-let STACK: Stack;
-let why: string;
-if (flagStack !== null) {
-  [STACK, why] = [flagStack, [tsFlag && "--ts", iosFlag && "--ios"].filter(Boolean).join(" ")];
-} else if (process.stdin.isTTY && process.stdout.isTTY) {
-  [STACK, why] = [await ask(saved ?? detected.stack), "chosen interactively"];
-} else if (saved !== null) {
-  [STACK, why] = [saved, "saved in .specify/speckit-squads.json"];
-} else {
-  [STACK, why] = [detected.stack, detectedDesc];
-}
-console.log(`==> stack: ${STACK} (${why})`);
+// No flag installs only the language-neutral items: every extension, and the
+// presets that are not one member of a TypeScript/Swift pair.
+const STACK: Stack = tsFlag && iosFlag ? "both" : tsFlag ? "ts" : iosFlag ? "ios" : "none";
+console.log(`==> stack: ${STACK === "none" ? "language-neutral only (pass --ts and/or --ios for the language presets)" : STACK}`);
 
 // Pre-flight: CLI verbs, script paths, typecheck.
 if (Bun.spawnSync([BUN, join(REPO_DIR, "check-cli-usage.ts")], { stdio: ["inherit", "inherit", "inherit"] }).exitCode !== 0)
   process.exit(1);
 
-// Persist only after pre-flight passed; merge so other keys survive.
-if (config["stack"] !== STACK) {
-  writeFileSync(CONFIG, JSON.stringify({ ...config, stack: STACK }, null, 2) + "\n");
-  console.log(`==> saved stack: ${STACK} -> .specify/speckit-squads.json`);
-}
 
 // ORDERING CONTRACT for /speckit-implement (issue #25). `specify` resolves a command
 // by (priority ASC, id ASC); the highest-precedence `wrap` composes outermost, and
@@ -250,6 +174,10 @@ for (const [kind, manifest] of KINDS) {
   for (const id of skip) skipped.add(id);
   // ts skips the iOS set, ios the TypeScript set, both skips nothing.
   if (skip.length) console.log(`==> skipping presets (stack ${STACK}): ${skip.join(", ")}`);
+  // A skip never uninstalls: language presets from an earlier --ts/--ios run stay,
+  // as the stale snapshot they are, until an install with the flag refreshes them.
+  const stale = skip.filter((id) => isDir(join(".specify/presets", id)));
+  if (stale.length) console.log(`  note: already installed, left as is and not refreshed: ${stale.join(", ")} (pass --ts/--ios to refresh)`);
   for (const id of install) {
     const prio = presetPriority(PRIORITY, id);
     console.log(`==> preset: ${id} (priority ${prio})`);

@@ -11,7 +11,7 @@ install.ts         install every extension+preset into a Spec Kit project
 uninstall.ts       remove every extension+preset from a Spec Kit project
 check-cli-usage.ts validate `specify <verb>` calls AND every script path in command files
 scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.ts) + check-script-paths.ts + jev.ts (the canonical Jev helper, see *Jev*)
-                   + manifest.ts (detectStack/selectPresets/presetPriority) + ci-ios-smoke.ts
+                   + manifest.ts (selectPresets/presetPriority) + ci-ios-smoke.ts
 .github/workflows/ci.yml   `test` job + `ios-smoke` job (real Xcode, needs xcodegen)
 ```
 
@@ -99,25 +99,24 @@ Both require a `<project-dir>` argument — there is no implicit `$PWD` default,
 ./uninstall.ts /path/to/spec-kit-project
 ```
 
-**The user picks the stack; the installer never guesses silently.** `--ts` installs the
-TypeScript/web presets (`tdd`, `parse-dont-validate`, `button-design`, `library-research`),
-`--ios` their `-ios` Swift twins, and `--ts --ios` both sets, for a mixed project (e.g.
-`~/Code/beadbits`: an Xcode app plus a TypeScript Firebase backend). Each pair is built to
-coexist — the two members are similar but not the same, one per platform: they compose as
-`wrap` layers at the same priority (`presetPriority()` gives an `-ios` preset its base's
-number: tdd 11, parse-dont-validate 9), each gate checks only its own language, and each
-layer writes only its own sections — the constitution principles are `Parse, Don't Validate`
-and `Parse, Don't Validate — Swift`, the button sections `## Actions & Buttons` /
+**Language presets are opt-in; with no flag the installer installs only what is
+language-neutral** — every extension and every preset that is not one member of a
+TypeScript/Swift pair. `--ts` adds the TypeScript/web presets (`tdd`,
+`parse-dont-validate`, `button-design`, `library-research`), `--ios` their `-ios` Swift
+twins, and `--ts --ios` both sets, for a mixed project (e.g. `~/Code/beadbits`: an Xcode
+app plus a TypeScript Firebase backend). Nothing is detected, prompted for or saved: the
+flags are the whole choice, so pass them again on every `--force` refresh — a run without
+them leaves already-installed language presets alone (noted as not refreshed), never
+uninstalls them. Each pair is built to coexist — the two members are similar but not the
+same, one per platform: they compose as `wrap` layers at the same priority
+(`presetPriority()` gives an `-ios` preset its base's number: tdd 11,
+parse-dont-validate 9), each gate checks only its own language, and each layer writes
+only its own sections — the constitution principles are `Parse, Don't Validate` and
+`Parse, Don't Validate — Swift`, the button sections `## Actions & Buttons` /
 `## Button System` and their `## iOS …` twins, and each library-research layer owns one
-section of the shared `research.md`. With neither flag: an interactive prompt in a terminal
-(default: the saved choice, else detection); else the choice saved in
-`<project>/.specify/speckit-squads.json` (`{"stack": "ts"|"ios"|"both"}`, committed with
-`.specify/` so a team and later non-interactive `--force` reinstalls reuse it); else
-`detectStack()` (`scripts/manifest.ts`) — an Xcode/SwiftPM marker (`*.xcodeproj`,
-`*.xcworkspace`, `Package.swift`, root or one level down) plus `package.json`/`tsconfig.json`
-is `both`, only the iOS marker is `ios`, anything else `ts`. With one stack, `--force`
-removes the other member of each pair, which is how a project switches. An
-`-ios` preset with no base installs under `ios` and `both`. `gen-agent-index.ts` indexes only
+section of the shared `research.md`. With exactly one of the flags, `--force` removes the
+other member of each pair, which is how a project switches. An `-ios` preset with no base
+installs under `--ios`. `gen-agent-index.ts` indexes only
 installed items. Extensions are not twinned; one copy serves every stack.
 
 Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this repo as the install source; it does not symlink.** Verified in the installed specify-cli:

@@ -152,27 +152,23 @@ In an iOS project, install `tdd-ios`, `button-design-ios`, `parse-dont-validate-
 Or use the bundled script from inside the checkout:
 
 ```bash
-./install.ts /path/to/your/spec-kit-project           # asks which stack (in a terminal)
-./install.ts --force /path/to/your/spec-kit-project   # reinstall everything
-./install.ts --ts --ios /path/to/project               # --ts, --ios, or both for a mixed project
+./install.ts /path/to/your/spec-kit-project           # language-neutral extensions and presets only
+./install.ts --ts /path/to/project                     # + the TypeScript/web presets
+./install.ts --ios /path/to/project                    # + the Swift/iOS presets
+./install.ts --force --ts --ios /path/to/project       # both, for a mixed project; --force refreshes
 ```
 
-**Choosing a stack.** You decide which stacks the presets target; the installer never picks silently.
-`--ts` installs `tdd`, `parse-dont-validate`, `button-design` and `library-research`; `--ios` their `-ios`
-Swift versions; `--ts --ios` both sets, for a mixed project (for example an Xcode app plus a TypeScript
-Firebase backend). The two members of each pair are similar but not the same — one per platform — and
-coexist: they compose as `wrap` layers at the same priority (tdd 11, parse-dont-validate 9), each gate
-checks only its own language, and each writes only its own sections (`## Actions & Buttons` vs
-`## iOS Actions & Buttons`, its own part of `research.md`, `Parse, Don't Validate` vs
-`Parse, Don't Validate — Swift`).
-
-With neither flag, the stack comes from: an interactive prompt when run in a terminal (defaulting to the
-saved choice, else detection); the choice saved in `<project>/.specify/speckit-squads.json`
-(`{"stack": "ts"|"ios"|"both"}`, committed with `.specify/` so teammates and later non-interactive
-`--force` reinstalls reuse it); else detection — an `*.xcodeproj`, `*.xcworkspace` or `Package.swift`
-(root or one level down) plus a `package.json`/`tsconfig.json` is `both`, the iOS marker alone is
-`ios`, anything else `ts`. With one stack, `--force` removes the other member of each pair, so it is
-how you switch. The extensions have one copy each that serves every stack.
+**Language presets are opt-in.** With no flag you get every extension and the presets that work in any
+language. `--ts` adds `tdd`, `parse-dont-validate`, `button-design` and `library-research`; `--ios` their
+`-ios` Swift versions; `--ts --ios` both sets, for a mixed project (for example an Xcode app plus a
+TypeScript Firebase backend). The two members of each pair are similar but not the same — one per
+platform — and coexist: they compose as `wrap` layers at the same priority (tdd 11, parse-dont-validate
+9), each gate checks only its own language, and each writes only its own sections (`## Actions & Buttons`
+vs `## iOS Actions & Buttons`, its own part of `research.md`, `Parse, Don't Validate` vs
+`Parse, Don't Validate — Swift`). Nothing is detected or remembered, so pass the same flags on every
+refresh: a run without them leaves installed language presets as they are (and says so). With exactly
+one flag, `--force` removes the other member of each pair, so it is how you switch. The extensions have
+one copy each that serves every stack.
 
 `--dev` records this checkout as the install source, but it does **not** symlink: `specify` copies the
 directory into the project (`shutil.copytree`) for both presets and extensions. Edits made here are

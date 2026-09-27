@@ -174,7 +174,10 @@ contains gh "https://github.com/o/r/issues/41" "$out8"
 contains gh "The saved-search list disappears after a reload." "$(cat "$TMP/edited.md" 2>/dev/null)"
 
 echo "9. --render-only is the create path: no issue number, no gh, no sentinel"
-ro="$(PATH="/usr/bin:/bin" bash "$SYNC" --render-only "$SPEC")"; rc=$?
+# A PATH holding bun (the renderer's runtime) and nothing else beyond the base
+# system — so a stray `gh` call cannot succeed by accident.
+mkdir -p "$TMP/bunonly" && ln -sf "$(command -v bun)" "$TMP/bunonly/bun"
+ro="$(PATH="$TMP/bunonly:/usr/bin:/bin" bash "$SYNC" --render-only "$SPEC")"; rc=$?
 check --render-only "exit code" 0 "$rc"
 contains --render-only "## Functional Requirements" "$ro"
 lacks --render-only "$ORIG_BEGIN" "$ro"

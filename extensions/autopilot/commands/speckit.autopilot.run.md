@@ -23,7 +23,7 @@ $ARGUMENTS
 
 Optional. If the input contains an issue number (e.g. `#42` or `42`), extract it as
 `N` and work **that** issue instead of auto-picking by rank — but still apply the
-eligibility checks in Step 1 (via `preflight-issues.py`) and refuse (explaining why)
+eligibility checks in Step 1 (via `preflight-issues.ts`) and refuse (explaining why)
 if it's already in progress, parked, or already claimed by another autopilot run.
 With no input, auto-pick per Step 1 and set `N` to whichever issue the script picks.
 This is also how the wrapper (`autopilot-run.sh`) hands off: it runs its own
@@ -110,7 +110,7 @@ step after writing code is worse than one that never starts.
 
 "Eligible" = open, not already in progress, not parked, not already claimed by
 another autopilot run. Among the eligible, the pick is the **highest-ranked**, not
-the oldest: `preflight-issues.py` orders candidates by **priority label** (`p0` <
+the oldest: `preflight-issues.ts` orders candidates by **priority label** (`p0` <
 `p1` < `p2` < `p3`, with an unlabelled issue treated as `p2`), then **bugs before
 features** within a tier, then oldest `createdAt` as the final tiebreak. A backlog
 with no triage labels therefore behaves exactly as it used to — oldest-first —
@@ -131,7 +131,7 @@ Python and `json.load(sys.stdin)` reads an empty stream. You cannot route both t
 script *and* the data through one stdin. `fetch-open-issues.sh` sidesteps this by
 landing the data in a file first (sorted oldest-first — the ranking above reorders
 it, and this sort is what makes age the stable final tiebreak — with `labels` and
-`body` included for the ranking and the empty-body check), so every reader — this skill or `preflight-issues.py`
+`body` included for the ranking and the empty-body check), so every reader — this skill or `preflight-issues.ts`
 directly — takes a **file path**, never stdin:
 
 ```bash
@@ -141,7 +141,7 @@ bash "$FETCH_SCRIPT" /tmp/autopilot_issues.json
 ```
 
 **Run the shared eligibility script for BOTH paths — never restate the rules
-inline.** `preflight-issues.py` is the single source of truth for what counts as
+inline.** `preflight-issues.ts` is the single source of truth for what counts as
 eligible (block labels — including `autopilot:claimed` — empty body, and an
 existing branch/worktree/PR). An inline reimplementation of this list has drifted
 from the script before (the explicit-issue path once omitted `autopilot:claimed`,
@@ -150,14 +150,14 @@ which is exactly how two runs collided on the same issue — see issue #19). Alw
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-PREFLIGHT_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/bash/preflight-issues.py"
+PREFLIGHT_SCRIPT="$PROJECT_DIR/.specify/extensions/autopilot/scripts/ts/preflight-issues.ts"
 
 # With an explicit issue number in $ARGUMENTS, validate THAT issue only:
-python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json "$N" --cross-repo
+bun "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json "$N" --cross-repo
 # => "PICK: #42 \"Fix the thing\" (explicit)"  or  "SKIP: #42 <reason>"
 
 # With no input, auto-pick the highest-ranked eligible issue:
-python3 "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json --cross-repo
+bun "$PREFLIGHT_SCRIPT" /tmp/autopilot_issues.json --cross-repo
 # => "PICK: #42 \"Fix the thing\" [p0, bug] (7 open — 2 parked, 1 in-progress)"  or  "SKIP: ..."
 ```
 
@@ -379,7 +379,7 @@ mismatched numbering.
    with yourself on every single run. `--worktree-check` only looks at
    branches/worktrees/PRs, never labels, so it can't trip on your own claim:
    ```bash
-   python3 "$PREFLIGHT_SCRIPT" --worktree-check "$N"
+   bun "$PREFLIGHT_SCRIPT" --worktree-check "$N"
    ```
    **Only `CLEAR` means proceed.** Anything else — `LIVE:` or `STALE:` — is a
    collision: a branch, worktree, or PR for `#N` now exists that did not exist a
@@ -677,7 +677,7 @@ gh issue edit "$N" --remove-label "autopilot:claimed" 2>/dev/null || true
 
 **Additionally, for a stop marked *Durable* above**, record the blocker where the
 next run's preflight will actually see it. Removing the claim alone writes *no*
-durable state, so `preflight-issues.py` sees a clean, unlabeled, eligible issue on
+durable state, so `preflight-issues.ts` sees a clean, unlabeled, eligible issue on
 the very next tick and picks it again — forever. `autopilot:blocked` is in that
 script's `BLOCK` set, so this is the one write that ends the loop:
 
@@ -689,11 +689,11 @@ bash "$PARK_SCRIPT" "$N" "<ONE-LINE reason, self-contained, no leading formattin
 
 `park-issue.sh` is the single writer of the label and the `AUTOPILOT-BLOCKED:`
 sentinel — the unattended wrapper writes the same park through it — so the strings
-the reader (`preflight-issues.py`) greps for can never drift between two
+the reader (`preflight-issues.ts`) greps for can never drift between two
 hand-rolled copies. It creates the label if missing, posts the comment, applies the
 label, and no-ops when the issue is already parked.
 
-The `AUTOPILOT-BLOCKED:` marker is not decoration — `preflight-issues.py`'s
+The `AUTOPILOT-BLOCKED:` marker is not decoration — `preflight-issues.ts`'s
 `blocked_reason()` greps the issue's comments for that exact string (newest
 match wins) and replays the text after it when a human explicitly re-runs
 `/speckit-autopilot-run N`. So write **one** line there that stands alone out of
@@ -734,7 +734,7 @@ stopping is "a human would be angry I proceeded," not "this got hard."
   always recognizes its own claim as its own.
 - **One eligibility script, not two copies** — the explicit-issue path used to
   restate the block-label list inline and had already drifted from
-  `preflight-issues.py` (missing `autopilot:claimed`) by the time #150 collided.
+  `preflight-issues.ts` (missing `autopilot:claimed`) by the time #150 collided.
   Both paths now `exec` the same script so they can't drift again.
 - **A hard stop writes durable state, not just an unlock** — the cleanup path used
   to remove `autopilot:claimed` and nothing else. `autopilot:claimed` is a

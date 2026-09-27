@@ -65,7 +65,7 @@ It reads the **artifacts, not the diff**, because at plan time there is no diff
 ## Wrapped bullets are one bullet
 
 Both checkers parse **folded logical lines**, not physical ones:
-`scope-common.py`'s `logical_lines()` joins a wrapped line onto the bullet or
+`scope-common.ts`'s `logicalLines()` joins a wrapped line onto the bullet or
 `**marker:**` line it continues, and a blank line — or any line that opens
 something of its own — closes the block. The reported line number is the line
 the block *started* on, so a violation still points at the bullet rather than at
@@ -156,7 +156,7 @@ path is used — so a forgotten backtick degrades to a check, not to silence.
 ## Tests
 
 ```bash
-./presets/diff-minimal/scripts/bash/selftest-diff-minimal.sh
+bun presets/diff-minimal/scripts/ts/selftest-diff-minimal.ts
 ```
 
 Self-contained, no framework. Both scripts are read-only, so every case asserts

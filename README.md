@@ -149,7 +149,7 @@ empty in an ordinary interactive session, so the path starts at `/` and the call
 `PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"` — per block,
 because each bash call is its own shell.
 
-After installing, `install.sh` runs `gen-agent-index.py`, which writes the command→script
+After installing, `install.sh` runs `scripts/gen-agent-index.ts`, which writes the command→script
 mapping into the consumer as `.specify/extensions/AGENTS.md` plus a breadcrumb at
 `.specify/scripts/bash/README.md`. Extension scripts install to
 `.specify/extensions/<id>/scripts/…`, never into the flat core tree, and command names do

@@ -5,8 +5,10 @@ description: "Wraps the review coordinator (/speckit-review-run) to drive the da
 ## Dashboard — enter `review`
 
 ```bash
-REPORT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/.specify/presets/progress-report/scripts/python/progress_report.py"
-python3 "$REPORT" enter review
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+REPORT="$PROJECT_DIR/.specify/presets/progress-report/scripts/ts/progress_report.ts"
+command -v bun >/dev/null || { echo "progress-report: bun not found on PATH — install bun (https://bun.sh); the dashboard writer is TypeScript run by bun" >&2; exit 1; }
+bun "$REPORT" enter review
 ```
 
 As you run each specialized review pass in the core flow, update its substep on the
@@ -15,9 +17,11 @@ keys are exactly `code arch comments tests errors types simplify` (plus `pr`, wh
 tracks the draft PR opening rather than a review pass):
 
 ```bash
-REPORT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/.specify/presets/progress-report/scripts/python/progress_report.py"
-python3 "$REPORT" substep code=active     # when the code pass starts
-python3 "$REPORT" substep code=done       # when it returns
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+REPORT="$PROJECT_DIR/.specify/presets/progress-report/scripts/ts/progress_report.ts"
+command -v bun >/dev/null || { echo "progress-report: bun not found on PATH — install bun (https://bun.sh); the dashboard writer is TypeScript run by bun" >&2; exit 1; }
+bun "$REPORT" substep code=active     # when the code pass starts
+bun "$REPORT" substep code=done       # when it returns
 # ...and likewise for arch, comments, tests, errors, types, simplify
 ```
 
@@ -30,13 +34,15 @@ fixed, say so in the summary; if it surfaced a blocker you can't resolve, mark t
 phase blocked instead.
 
 ```bash
-REPORT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}/.specify/presets/progress-report/scripts/python/progress_report.py"
-python3 "$REPORT" substep code=done arch=done comments=done tests=done errors=done types=done simplify=done
-python3 "$REPORT" done review --summary "<pass/fail + what was fixed>"
-# blocked instead:  python3 "$REPORT" block review --reason "<what's blocking>"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+REPORT="$PROJECT_DIR/.specify/presets/progress-report/scripts/ts/progress_report.ts"
+command -v bun >/dev/null || { echo "progress-report: bun not found on PATH — install bun (https://bun.sh); the dashboard writer is TypeScript run by bun" >&2; exit 1; }
+bun "$REPORT" substep code=done arch=done comments=done tests=done errors=done types=done simplify=done
+bun "$REPORT" done review --summary "<pass/fail + what was fixed>"
+# blocked instead:  bun "$REPORT" block review --reason "<what's blocking>"
 ```
 
 The `pr` substep tracks the PR itself; when the PR is opened by a later
 step (e.g. autopilot's draft-PR step or `/speckit-git-pr`), mark it there with
-`python3 "$REPORT" substep pr=done`. When all five phases read `done`, the dashboard
+`bun "$REPORT" substep pr=done`. When all five phases read `done`, the dashboard
 auto-renders the card as complete.

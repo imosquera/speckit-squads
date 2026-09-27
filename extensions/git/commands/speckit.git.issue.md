@@ -413,7 +413,7 @@ What the script does, so you do not duplicate any of it:
 - Labels them `frontend`+`mock-first`, `backend`, `integration`, and copies the
   parent's `--priority`/`--kind` onto all three.
 - Writes `Blocked by: #<fe>, #<be>` into the wire-up child, which
-  `preflight-issues.py` reads — autopilot will not touch it until both siblings
+  `preflight-issues.ts` reads — autopilot will not touch it until both siblings
   close.
 - Rewrites the parent's `<!-- speckit:work-breakdown -->` block and labels the
   parent `epic`, which is in autopilot's block set. **The parent is no longer

@@ -20,7 +20,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-DECODER="$SCRIPT_DIR/stream-decode.py"
+DECODER="$SCRIPT_DIR/../ts/stream-decode.ts"
+PREFLIGHT_SCRIPT="$SCRIPT_DIR/../ts/preflight-issues.ts"
 
 ts() { date '+%Y-%m-%d %H:%M:%S'; }
 
@@ -53,6 +54,14 @@ if ! command -v claude >/dev/null 2>&1; then
   exit 127
 fi
 
+# The preflight and the log decoder are bun scripts. Without bun the preflight
+# would read as "could not evaluate" and launch a session blind, and the log
+# would be empty — so refuse the tick loudly instead of passing it silently.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "$(ts) FATAL 'bun' not on PATH (${PATH}) — required by the preflight and log decoder (https://bun.sh)"
+  exit 127
+fi
+
 # --- Backlog preflight: log what we're about to work on (or skip and exit) ---
 # Fetch open issues once so the log is descriptive before a full claude session
 # is launched. Exits early with code 0 if there's nothing actionable — no point
@@ -77,7 +86,7 @@ if command -v gh >/dev/null 2>&1 \
   # --cross-repo: an issue whose fix already shipped as a PR in ANOTHER repo is
   # invisible to every other check here, and launching a full claude session to
   # rediscover that by hand cost three runs in one day (issue #34).
-  PREFLIGHT=$(python3 "$SCRIPT_DIR/preflight-issues.py" "$ISSUES_TMP" --cross-repo 2>/dev/null) || PREFLIGHT=""
+  PREFLIGHT=$(bun "$PREFLIGHT_SCRIPT" "$ISSUES_TMP" --cross-repo 2>/dev/null) || PREFLIGHT=""
   rm -f "$ISSUES_TMP"
 
   if [ -z "$PREFLIGHT" ]; then
@@ -133,12 +142,12 @@ if [ -n "$PICKED_ISSUE" ]; then
   trap 'gh issue edit "$PICKED_ISSUE" --remove-label "autopilot:claimed" 2>/dev/null || true; rmdir "$lock" 2>/dev/null' EXIT
 fi
 
-# Tell the session nobody is reading it. `preflight-issues.py` uses this to
+# Tell the session nobody is reading it. `preflight-issues.ts` uses this to
 # decide what a STALE branch/worktree means on the explicit-issue path: a human
 # who typed the number is offered resume-or-clean (issue #60), while a scheduled
 # tick keeps the hard SKIP, because there is nobody to make that choice and
 # reaping a sibling run's worktree is unrecoverable. Both arrive as the same
-# `preflight-issues.py <file> <N>` call, so the environment is the only seam.
+# `preflight-issues.ts <file> <N>` call, so the environment is the only seam.
 export SPECKIT_AUTOPILOT_UNATTENDED=1
 
 echo "$(ts) === autopilot pass start :: $PROJECT ==="
@@ -151,10 +160,10 @@ PROMPT="/speckit-autopilot-run"
 [ -n "$PICKED_ISSUE" ] && PROMPT="/speckit-autopilot-run $PICKED_ISSUE"
 #
 # Stream the session live into this log instead of only the final result:
-# --output-format stream-json emits one JSON event per line, which stream-decode.py
-# turns into pretty, timestamped lines. The decoder is piped as `claude … | python3
-# FILE` (a real file, NOT `python3 - <<'HEREDOC'`) — piping data into a stdin-heredoc
-# script silently loses the data, the same trap Step 1 warns about.
+# --output-format stream-json emits one JSON event per line, which stream-decode.ts
+# turns into pretty, timestamped lines. The decoder is piped as `claude … | bun
+# FILE` (a real file, NOT a program read from a stdin heredoc) — piping data into a
+# stdin-heredoc script silently loses the data, the same trap Step 1 warns about.
 #
 # `PIPESTATUS[0]` preserves claude's real exit code (a pipe would otherwise report
 # the decoder's). If stream-json/verbose ever stops being supported, fall back to a
@@ -183,11 +192,11 @@ if [ -f "$DECODER" ]; then
     claude -p "$PROMPT" --dangerously-skip-permissions \
            --verbose --output-format stream-json 2>&1 \
       | tee -a "$RAW" \
-      | python3 "$DECODER"
+      | bun "$DECODER"
   else
     claude -p "$PROMPT" --dangerously-skip-permissions \
            --verbose --output-format stream-json 2>&1 \
-      | python3 "$DECODER"
+      | bun "$DECODER"
   fi
   status=${PIPESTATUS[0]}
 else

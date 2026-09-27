@@ -96,83 +96,13 @@ fi
 #      re-derive it in every block: each bash call is its own shell.
 # Runs with or without the `specify` CLI on PATH.
 # ---------------------------------------------------------------------------
-python3 - <<'PYEOF' || fail=1
-import glob, os, re, sys
-
-problems = []
-declared = {}
-
-def scripts_block(text):
-    m = re.search(r'^provides:[ \t]*$\n(.*?)(?=^\S)', text + "\n\x00", re.M | re.S)
-    if not m:
-        return ""
-    s = re.search(r'^  scripts:[ \t]*$\n(.*?)(?=^  \S|\Z)', m.group(1), re.M | re.S)
-    return s.group(1) if s else ""
-
-for kind, manifest in (("extensions", "extension.yml"), ("presets", "preset.yml")):
-    for path in sorted(glob.glob(f"{kind}/*/{manifest}")):
-        oid = path.split("/")[1]
-        files = set(re.findall(r'^\s*file:\s*["\']?([^"\'\s]+)',
-                               scripts_block(open(path).read()), re.M))
-        declared[(kind, oid)] = files
-        for f in sorted(files):
-            if not os.path.isfile(os.path.join(kind, oid, f)):
-                problems.append(f"{path}: declared script does not exist: {f}")
-
-REF = re.compile(
-    r'\.specify/(extensions|presets)/([A-Za-z0-9_-]+)/(scripts/[A-Za-z0-9_./-]+)'
-    r'|\.specify/scripts/(bash|powershell|python)/([A-Za-z0-9_./-]+)')
-
-cmd_files = sorted(glob.glob("extensions/*/commands/*.md") + glob.glob("presets/*/commands/*.md"))
-for cf in cmd_files:
-    owner_kind, owner_id = cf.split("/")[0], cf.split("/")[1]
-    for lineno, line in enumerate(open(cf), 1):
-        for m in REF.finditer(line):
-            if m.group(1):
-                kind, oid, rel = m.group(1), m.group(2), m.group(3)
-                disk = os.path.join(kind, oid, rel)
-                if not os.path.isfile(disk):
-                    problems.append(f"{cf}:{lineno}: path does not exist: {m.group(0)}")
-                elif (kind, oid) not in declared:
-                    problems.append(f"{cf}:{lineno}: unknown {kind[:-1]} id '{oid}'")
-                elif rel not in declared[(kind, oid)]:
-                    problems.append(
-                        f"{cf}:{lineno}: {rel} is not declared in {kind}/{oid}/"
-                        f"{'extension.yml' if kind == 'extensions' else 'preset.yml'} "
-                        f"(add it under provides.scripts)")
-            else:
-                # Core tree: flat by construction. A subdirectory here is the
-                # `.specify/scripts/bash/<extension-id>/` mistake.
-                tail = m.group(5)
-                if "/" in tail:
-                    problems.append(
-                        f"{cf}:{lineno}: `.specify/scripts/{m.group(4)}/` is the FLAT core "
-                        f"tree — it has no '{tail.split('/')[0]}/' subdirectory. Extension "
-                        f"scripts live at .specify/extensions/<id>/scripts/{m.group(4)}/")
-
-BARE_CPD = re.compile(r'\$(?:CLAUDE_PROJECT_DIR\b|\{CLAUDE_PROJECT_DIR\})')
-for cf in cmd_files:
-    in_bash = False
-    for lineno, line in enumerate(open(cf), 1):
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_bash = stripped[3:].strip() == "bash" if not in_bash else False
-            continue
-        if in_bash and BARE_CPD.search(line):
-            problems.append(
-                f"{cf}:{lineno}: bare $CLAUDE_PROJECT_DIR in a bash block — it is empty "
-                f"in an interactive session (issue #59). Use "
-                f"PROJECT_DIR=\"${{CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}}\" "
-                f"in this block and reference $PROJECT_DIR")
-
-for p in problems:
-    print(p, file=sys.stderr)
-if problems:
-    print("error: command files reference script paths that do not resolve", file=sys.stderr)
-    sys.exit(1)
-print(f"script path check: ok ({sum(len(v) for v in declared.values())} declared scripts, "
-      f"{len(cmd_files)} command files)")
-PYEOF
+# Runs as TypeScript under bun (scripts/check-script-paths.ts). bun is required.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "error: bun not on PATH — required for the script-path check (https://bun.sh)" >&2
+  fail=1
+else
+  bun "$REPO_DIR/scripts/check-script-paths.ts" || fail=1
+fi
 
 # Every shipped bash script must parse. Cheap, and it catches the trap that a
 # heredoc inside $( ) still scans its body for quotes — an odd apostrophe in

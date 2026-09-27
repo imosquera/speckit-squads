@@ -9,7 +9,7 @@
 # delivery) and the unattended wrapper (autopilot-run.sh, which exits before the
 # skill ever starts) call it, so the label name and the AUTOPILOT-BLOCKED
 # sentinel can never drift between the two writers the way an inline
-# reimplementation would. `preflight-issues.py` is the matching reader.
+# reimplementation would. `preflight-issues.ts` is the matching reader.
 #
 # Parking is deliberately NOT closing: a park says "autopilot should stop
 # spending runs on this", which is a weaker claim than "this issue is resolved".
@@ -52,7 +52,7 @@ if ! command -v gh >/dev/null 2>&1; then
     exit 1
 fi
 
-# The reason has to survive as ONE line: preflight-issues.py's blocked_reason()
+# The reason has to survive as ONE line: preflight-issues.ts's blocked_reason()
 # reads back everything after the sentinel on the matching line and replays it
 # out of context to whoever re-runs the issue explicitly.
 REASON=$(printf '%s' "$REASON" | tr '\n' ' ')

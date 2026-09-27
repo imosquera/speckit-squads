@@ -47,6 +47,16 @@ if ! command -v git >/dev/null 2>&1; then
     exit 2
 fi
 
+# Path resolution is a bun script. Without bun every target would resolve to
+# nothing and the verdict would be meaningless, so refuse loudly instead.
+if ! command -v bun >/dev/null 2>&1; then
+    echo "[autopilot] Error: bun not found — required to resolve target paths (https://bun.sh)" >&2
+    exit 2
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+RESOLVE="$SCRIPT_DIR/../ts/resolve-path.ts"
+
 # Identity of a repo = its common git dir (shared by every worktree).
 repo_id() {
     git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true
@@ -56,14 +66,7 @@ repo_id() {
 # ask for a NEW file) fall back to its deepest existing ancestor — that is the
 # directory the file would be created in, so it decides the repo.
 resolve() {
-    python3 - "$1" <<'PY'
-import os, sys
-p = os.path.expanduser(sys.argv[1])
-p = os.path.abspath(p)
-while not os.path.exists(p) and p != os.path.dirname(p):
-    p = os.path.dirname(p)
-print(os.path.realpath(p))
-PY
+    bun "$RESOLVE" "$1"
 }
 
 OURS_DIR="${REPO_ROOT:-$PWD}"

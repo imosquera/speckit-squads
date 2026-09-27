@@ -33,7 +33,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMMON="$HERE/scope-common.py"
+IMPL="$HERE/../ts/check-plan-scope.ts"
 
 usage() {
     echo "usage: $(basename "$0") <feature-dir>" >&2
@@ -45,8 +45,12 @@ if [[ $# -eq 0 ]]; then
     usage
     exit 2
 fi
-if [[ ! -f "$COMMON" ]]; then
-    echo "error: missing helper: $COMMON" >&2
+if [[ ! -f "$IMPL" ]]; then
+    echo "error: missing helper: $IMPL" >&2
+    exit 2
+fi
+if ! command -v bun >/dev/null 2>&1; then
+    echo "error: bun is required but not on PATH (https://bun.sh) — $(basename "$0") cannot run" >&2
     exit 2
 fi
 
@@ -87,83 +91,7 @@ done
 
 STATUS=0
 for DIR in "${DIRS[@]}"; do
-
-python3 - "$DIR" "$COMMON" <<'PY'
-import pathlib
-import re
-import sys
-
-feature = pathlib.Path(sys.argv[1])
-exec(compile(pathlib.Path(sys.argv[2]).read_text(), sys.argv[2], "exec"))
-
-spec_lines = (feature / "spec.md").read_text().splitlines()
-paths = must_not_paths(spec_lines)
-
-if not paths:
-    print("diff-minimal: spec forbids no paths — nothing to check.")
-    sys.exit(0)
-
-# A line that says "don't touch X" names X on purpose.
-NEGATION = re.compile(
-    r'must\s+not|do(es)?\s+not\s+(touch|modify|edit|change)|never\s+(touch|modify|edit)'
-    r'|out\s+of\s+scope|forbidden|excluded|exclude|no\s+changes?\s+to|not\s+in\s+scope'
-    r'|leave\s+(it\s+)?alone|untouched',
-    re.I,
-)
-# Whole sections that exist to restate the exclusions.
-EXEMPT_HEADING = re.compile(r'scope|non-goals?|out of scope|corrections|constraints', re.I)
-
-patterns = [(p, path_pattern(p)) for p in paths]
-violations = []
-
-for name in ("plan.md", "tasks.md", "quickstart.md", "research.md"):
-    path = feature / name
-    if not path.is_file():
-        continue
-
-    exempt_until = None  # heading level we are exempt beneath, or None
-    # Fold wrapped continuations before matching: these artifacts are prose, and
-    # a restatement that wraps ("this file MUST NOT be / touched") lost its
-    # negation on the physical line carrying the path and was reported as a
-    # violation (issue #68). Headings still arrive as their own entries, so the
-    # exempt-heading state machine below is unchanged.
-    for n, line in logical_lines(path.read_text().splitlines()):
-        h = heading(line)
-        if h:
-            level, title = h
-            if exempt_until is not None and level <= exempt_until:
-                exempt_until = None
-            if EXEMPT_HEADING.search(title):
-                exempt_until = level
-            continue
-        if exempt_until is not None:
-            continue
-        if NEGATION.search(line):
-            continue
-        for listed, pat in patterns:
-            if pat.search(line):
-                # A folded block can be a whole paragraph; keep the report readable.
-                text = line.strip()
-                if len(text) > 200:
-                    text = text[:197] + "..."
-                violations.append((name, n, listed, text))
-                break
-
-if violations:
-    print("error: plan artifacts touch paths the spec put out of scope", file=sys.stderr)
-    for name, n, listed, text in violations:
-        print(f"  {feature}/{name}:{n}: forbidden by `{listed}`", file=sys.stderr)
-        print(f"      {text}", file=sys.stderr)
-    print(
-        "\nEither remove the work from the plan, or — if the path is genuinely required —\n"
-        "amend `## Scope discipline` in spec.md and say so on the tracking issue.\n"
-        "Never widen the plan quietly.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-print(f"diff-minimal: plan artifacts respect all {len(paths)} out-of-scope path(s).")
-PY
+    bun "$IMPL" "$DIR"
     rc=$?
     [[ $rc -ne 0 ]] && STATUS=$rc
 done

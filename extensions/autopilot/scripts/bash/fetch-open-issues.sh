@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Fetch the open-issue backlog to a FILE, oldest-first, for preflight-issues.py
+# Fetch the open-issue backlog to a FILE, oldest-first, for preflight-issues.ts
 # to read. This is deliberately a standalone script rather than an inline
 # `gh issue list | python3 - <<'PY' ...` one-liner in the skill body: piping
 # `gh`'s JSON into a script whose stdin is also bound to a heredoc silently

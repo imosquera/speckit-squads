@@ -15,10 +15,13 @@ of this section.
 
 1. **Resolve the script path and run it:**
    ```bash
-   ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-   SCRIPT="$ROOT/.specify/extensions/stale-tasks-guard/scripts/python/stale_tasks_guard.py"
-   if [ -f "$SCRIPT" ]; then
-     python3 "$SCRIPT"
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   SCRIPT="$PROJECT_DIR/.specify/extensions/stale-tasks-guard/scripts/ts/stale-tasks-guard.ts"
+   if [ -f "$SCRIPT" ] && ! command -v bun >/dev/null 2>&1; then
+     echo "stale-tasks-guard: bun is not on PATH — the guard cannot run; install bun (https://bun.sh) or pass --force" >&2
+     STATUS=2
+   elif [ -f "$SCRIPT" ]; then
+     bun "$SCRIPT"
      STATUS=$?
    else
      echo "stale-tasks-guard script not found — skipping guard" >&2
@@ -34,6 +37,9 @@ of this section.
      steps. Halt immediately, print that banner, and do **not** invoke
      `/speckit-implement`'s body. No implementation code is written until the operator
      reconciles tasks (`/speckit-tasks`) or opts in with `--force`.
+   - `2` — `bun` is not installed, so the guard could not run. This is **not** a pass:
+     halt, print the stderr message, and tell the operator to install bun or re-run
+     with `--force`.
 
 The script resolves the feature directory the same way core Spec Kit does (`common.sh`'s
 `get_feature_paths()`): the `SPECIFY_FEATURE_DIRECTORY` env var first (an explicit

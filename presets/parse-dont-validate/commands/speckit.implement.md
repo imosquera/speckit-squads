@@ -69,15 +69,17 @@ TypeScript/Python changed during this run:
 
 1. **Review the discipline items** the scan enforces:
 
-   ```sh
-   python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py checklist
+   ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   bun "$PROJECT_DIR/.specify/presets/parse-dont-validate/scripts/ts/parse_dont_validate.ts" checklist
    ```
 
 2. **Scan the changed files.** This is the whole invocation — one command, from
    anywhere in the checkout:
 
-   ```sh
-   python3 .specify/presets/parse-dont-validate/scripts/python/parse_dont_validate.py scan --new-only
+   ```bash
+   PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+   bun "$PROJECT_DIR/.specify/presets/parse-dont-validate/scripts/ts/parse_dont_validate.ts" scan --new-only
    ```
 
    With no paths the script inspects the git change set — working-tree changes
@@ -96,15 +98,20 @@ TypeScript/Python changed during this run:
 
    **A scan that examined nothing never exits zero.** Exit `2` is a bad
    invocation (an unknown option, `--base` with no ref); exit `3` is a scan that
-   could not run (missing `bun`/`typescript`, paths that resolved to no file,
+   could not run (missing `typescript`, paths that resolved to no file,
    a cwd outside any git worktree); exit `4` is an empty *input* — the change
    set holds no TypeScript or Python. Read the message and fix the call. Never
-   invoke `scripts/node/pdv_ts_scan.ts` yourself: it takes a JSON job on stdin
+   invoke `scripts/ts/pdv_ts_scan.ts` yourself: it takes a JSON job on stdin
    and ignores file arguments, so a direct call with filenames used to print an
    empty findings list that read exactly like a pass.
 
-   Both languages are analysed as real ASTs. Scanning **TypeScript** requires
-   `bun` on PATH and a TS 5.x `typescript` installed in the project (the bun
+   The scanner runs under `bun`; if the shell reports `bun: command not found`
+   (exit `127`) the gate never ran — install bun (https://bun.sh) and re-run,
+   never report it as a pass. Neither language is matched by line regex:
+   Python is tokenized and parsed structurally in-process, and a Python file it
+   cannot tokenize (unbalanced brackets, an unterminated string) exits `3`.
+   Scanning **TypeScript** additionally requires a TS 5.x `typescript` installed
+   in the project (the bun
    helper uses the TypeScript Compiler API, which TypeScript 7 does not ship).
    If the scanner exits `3` with a message that `typescript` is missing, install
    a TS 5.x copy with the project's package manager (e.g.
@@ -135,7 +142,7 @@ invocation is wrong, not that the gate passed — fix the call and re-run.
 
 ## Failure Policy
 
-- A non-zero exit from `parse_dont_validate.py scan --new-only` is a hard stop on
+- A non-zero exit from `parse_dont_validate.ts scan --new-only` is a hard stop on
   reporting completion, with the single verified exit-`4` exception above. Exit
   `1` means findings: fix the flagged code or add a boundary waiver, then
   re-scan. Exits `2`/`3` mean the gate never ran — fix the invocation or the

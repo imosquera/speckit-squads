@@ -10,7 +10,7 @@ presets/<id>/      preset.yml    + commands/ + templates/
 install.sh         install every extension+preset into a Spec Kit project
 uninstall.sh       remove every extension+preset from a Spec Kit project
 check-cli-usage.sh validate `specify <verb>` calls AND every script path in command files
-gen-agent-index.py  generate the consumer-side command->script index (run by install.sh)
+scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.sh) + check-script-paths.ts
 ```
 
 **Installed layout is not the same shape.** In a consumer project, `specify` copies each
@@ -60,6 +60,19 @@ dependency is not ours: the `parse-dont-validate` scanner loads the
 #113), so it types that module with a local interface and never imports
 `typescript` statically. Consumer-side package managers stay polyglot —
 `install-deps.sh` reads each consumer's lockfile and must keep doing so.
+
+**There is no Python.** Every script this repo ships is bash or TypeScript: logic
+lives in TypeScript under an item's `scripts/ts/` (or the root `scripts/`), and a
+bash wrapper that existed before stays as a thin shim that `exec bun`s it. Bun is
+therefore required wherever these items run — `install.sh` refuses to start
+without it, and a wrapper with no bun fails loudly (exit 127, or the item's own
+error code), never as a pass; only best-effort scripts such as `seed-graph.sh`
+downgrade it to a warning. The ports were held byte-for-byte to the Python they
+replaced (side-by-side diffs, every `--selftest` carried over), which is why a few
+helpers — autopilot's `py.ts`, diff-minimal's `scope-common.ts` — reproduce
+Python's whitespace, JSON and `repr` rules. The PDV driver scans Python *source*
+with its own tokenizer now, not `ast`: identical on a 2,300-finding corpus, but a
+file with an indentation-only syntax error is scanned rather than rejected.
 
 ## Install / uninstall
 
@@ -162,7 +175,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `archive` — archive a completed feature folder, close linked GitHub issues
 - `autopilot` — `/speckit-autopilot-run`: take the **highest-ranked** eligible open issue (or a given issue number) from backlog to a reviewed **draft PR** by driving the whole pipeline unattended (specify → clarify auto-answered → plan → tasks → implement → review), binding the worktree to the existing issue and posting progress comments at every stage.
   A hard, non-recoverable stop writes a durable `autopilot:blocked` label plus an
-  `AUTOPILOT-BLOCKED:`-tagged comment, which `preflight-issues.py` skips on and reads
+  `AUTOPILOT-BLOCKED:`-tagged comment, which `preflight-issues.ts` skips on and reads
   the reason back out of — without it, removing the transient `autopilot:claimed`
   label left no durable state and one issue was re-picked in 10 consecutive runs
   (issue #32); only a human clears `autopilot:blocked`.
@@ -201,7 +214,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   choose between. Auto-pick and the explicit path under
   `SPECKIT_AUTOPILOT_UNATTENDED=1` (exported by `autopilot-run.sh`) keep the hard
   SKIP; that variable is the only seam between a human and a scheduled tick, since
-  both reach the script as the same `preflight-issues.py <file> <N>` call. Autopilot
+  both reach the script as the same `preflight-issues.ts <file> <N>` call. Autopilot
   still never resumes or deletes work by itself.
   **Age means the age of the work, never of the commit it started from.** A worktree
   created seconds ago off a months-old base commit inherits that commit's date, is
@@ -225,7 +238,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   output meant for people, whose `* `/`+ ` markers, colour codes and columns
   each broke the parse. The `+ ` git prints for a branch checked out in another
   worktree meant no worktree-backed branch could ever be reported STALE.
-  `preflight-issues.py --cross-repo` (passed by both the skill and the wrapper) is the
+  `preflight-issues.ts --cross-repo` (passed by both the skill and the wrapper) is the
   cleanup net for deliveries that already exist — it scans an issue's own thread for
   PR links, resolves them with `gh pr view --repo`, and skips an issue already
   delivered elsewhere. It never *sources* work from another repo; a finding can only
@@ -261,7 +274,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   `check-cli-usage.sh` already fails the install on a `specify hook` line inside a
   fenced bash block; the runtime invention is what the prose has to prevent.
   **The per-repo log is timestamped and attributed from the stream, not from the
-  decoder.** `stream-decode.py` used to stamp `datetime.now()` at decode time, so a
+  decoder.** `stream-decode.ts` used to stamp `datetime.now()` at decode time, so a
   buffered burst of turns minutes apart all printed on one wall-clock second and in
   an order that implied a history that never happened — the tail once read
   "reviews still running" as the last line of a pass that had already opened a draft
@@ -275,7 +288,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   re-decoded after a decoder fix without re-running it. Deliberately NOT per-run log
   files: passes are already single-flight under the wrapper's lock, so what was
   missing was per-line attribution, not per-file separation.
-  **The pick is ranked, not oldest-first.** `preflight-issues.py`'s `auto_pick`
+  **The pick is ranked, not oldest-first.** `preflight-issues.ts`'s `auto_pick`
   sorts the eligible pool by (priority label, bug-before-feature, age) instead of
   taking the first row of an oldest-first fetch, so a `p0` filed today no longer
   waits behind a year-old chore. `p0`/`P1`/`priority: p2`/`priority/p3` spellings
@@ -303,7 +316,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   `Blocked by: #43,\n#44` read as unblocked the moment #43 closed (issue #76).
   A blank line, a bullet, or a new `key:` ends the marker; folding one line too
   many only over-blocks, which is the safe direction.
-  `preflight-issues.py --selftest` is the check.
+  `preflight-issues.ts --selftest` is the check.
   **Ceremony is proportional to the change.** Step 2.5 is the fast path: a change
   that touches one behaviour in ~1–3 files with nothing structural and no real
   ambiguity skips Steps 3–6 entirely — no `spec.md`, `plan.md`, or `tasks.md` — and
@@ -382,14 +395,14 @@ on first run in a project that still tracks it, so the migration is automatic.
   all**, so it starts immediately, is reviewable on its own, and freezes the data
   shape the backend child then implements; the wire-up child retires the fixtures.
   Three pieces of the mechanism are load-bearing and easy to break:
-  the **layer term** in `preflight-issues.py`'s `rank_key`, which ranks
+  the **layer term** in `preflight-issues.ts`'s `rank_key`, which ranks
   `frontend` < `backend` < `integration` (and an unlabelled issue level with
   `backend`) between the bug/feature term and the age tiebreak — that is the
   implementation of "mock first". It used to fall out of `split-issue.sh`'s
   creation order via the age tiebreak, which silently inverted the moment
   anyone raised the backend child's priority, titled it `fix: …`, or let
   `upsert` adopt an older backend issue (issue #56); the wire-up child's body carries
-  `Blocked by: #fe, #be`, which `preflight-issues.py`'s new `blocked_by()` resolves
+  `Blocked by: #fe, #be`, which `preflight-issues.ts`'s new `blocked_by()` resolves
   against the open-issue list it already fetched (no extra `gh` calls, and a
   dependency absent from that list counts as closed); and the parent is labelled
   `epic`, already a member of the picker's `BLOCK` set, so autopilot works the
@@ -472,7 +485,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   silently skips on those turns exactly the unverifiable cases into an unverified
   delete. `./test-verify-landed.sh` is the check.
   `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.sh` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`), and **`scrub-commit-exclude.sh` is the single handler for them** — it unstages those paths, restores tracked edits to HEAD, drops untracked output, and reports every line it discarded. The untracked list is re-read **after** the unstage, never before: `git restore --staged` turns a staged *addition* into an untracked file, so the one reading taken up front is stale in exactly the case this exists for — a freshly generated dated snapshot swept up by the flow's own `git add -A` — and the scrub reported success while leaving `?? graphify-out/` for the next `git add` to commit. `auto-commit.sh`, `create-pr.sh` and `clean.sh` all call it, and the auto-commit call happens **before the config is read**, which is the whole fix: the `:(exclude)` pathspec only ever governed commits that hook made, so in a project whose `auto_commit.default` is `false` — the default — the commits come from the flow's own `git add` and the exclusion had no effect at all (issue #62). One handler also replaces the six improvisations each phase had for a background graph rebuild dirtying the tree on its own, which blocked the squash, the pull, and the cleanup step in three different ways; a rebuild **in flight** is waited for on a bounded timeout rather than raced, and `--require-clean` exits 2 when anything outside the excluded paths is dirty, since that is real work and the caller should still refuse (issue #55). `create-pr.sh` additionally resets them to the base before opening the PR: the working tree is the handler's job, but a divergence already **committed** on the branch is invisible to it. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. `./test-commit-exclude.sh` is the check. The extension ships **bash only** (see *No PowerShell* above) — the twin was deleted rather than taught the same rules, since a second copy of a handler whose whole point is being the single one is a second place for it to drift. Empty by default (issue #22)
-- `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.py` and no-ops if absent. Install alongside the preset.
+- `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.ts` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review, **one engine for every scope**: `/speckit-review-run`
   reviews the feature branch (Mode A), the working directory (Mode B), or a GitHub PR
   (`--pr N`, Mode C) with the same agents (code — incl. security/performance — arch,
@@ -551,7 +564,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   within a day): lines whose own text negates (`MUST NOT`, `out of scope`, …)
   and everything under a heading matching scope/non-goals/corrections/constraints.
   Both checkers read **folded logical lines**, never physical ones
-  (`scope-common.py`'s `logical_lines()`, which reports the line the block
+  (`scope-common.ts`'s `logical_lines()`, which reports the line the block
   started on). These artifacts are prose and every editor wraps prose: matching
   physical lines ended a `MUST NOT touch:` list at its first continuation —
   nine paths silently became one and the gate passed — and stripped the
@@ -628,8 +641,8 @@ on first run in a project that still tracks it, so the migration is automatic.
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
 - `implement-prelude-skills` — `/speckit-implement` override that invokes the `ponytail:ponytail` skill (when available) as a mandatory prelude before implementation begins. Implementation-discipline skills only: a prose-register skill compresses the very audit trail an unattended `/speckit-autopilot-run` depends on, so it does not belong in the prelude (issue #72)
-- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic AST scanner — Python via stdlib `ast`, TypeScript via a bun-run TS helper on the consumer's TS 5.x Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules).
-  **The gate is one invocation: `parse_dont_validate.py scan --new-only`.** The two
+- `parse-dont-validate` — overrides `/speckit-constitution` (injects a canonical "Parse, Don't Validate" governance section), `/speckit-plan` (requires a "Parse Boundaries" design section: trust boundaries + branded domain types + parsers; chainable via `{CORE_TEMPLATE}`), and `/speckit-implement` (applies the discipline while writing TypeScript/Python, then gates completion on a deterministic scanner — Python via its own tokenizer (it no longer runs Python), TypeScript via a bun-run TS helper on the consumer's TS 5.x Compiler API — flagging `any`/`Any`, stray `JSON.parse`/`json.loads`, boolean validators, and narrowing casts outside parser modules).
+  **The gate is one invocation: `parse_dont_validate.ts scan --new-only`.** The two
   deterministic steps around it used to be driven by hand every run (issue #66) and
   both had exactly one right answer: change-set detection now anchors at the git
   worktree root instead of the cwd — `git diff --name-only` reports root-relative
@@ -662,7 +675,7 @@ on first run in a project that still tracks it, so the migration is automatic.
 ## When you add a new extension or preset
 
 1. Drop the new directory under `extensions/<id>/` or `presets/<id>/` with a valid manifest. The install/uninstall scripts will pick it up automatically — do **not** edit them.
-1a. **Declare every script under `provides.scripts:`** with `file:` and, when one command owns it, `command:`. This is not decoration — `check-cli-usage.sh` fails the install when a command file references a script that is undeclared or missing, and `gen-agent-index.py` builds the consumer's command→script table from these entries. An undeclared script is invisible to agents working in a consumer project.
+1a. **Declare every script under `provides.scripts:`** with `file:` and, when one command owns it, `command:`. This is not decoration — `check-cli-usage.sh` fails the install when a command file references a script that is undeclared or missing, and `scripts/gen-agent-index.ts` builds the consumer's command→script table from these entries. An undeclared script is invisible to agents working in a consumer project.
 1b. If the item needs harness-level wiring (a `.claude/settings.json` hook, a
     `CLAUDE.md` rule), ship it as `scripts/bash/post-install.sh` plus a
     `scripts/bash/pre-uninstall.sh` that reverses it exactly. Declare both under

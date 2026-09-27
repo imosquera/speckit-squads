@@ -20,7 +20,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMMON="$HERE/scope-common.py"
+IMPL="$HERE/../ts/check-scope-sections.ts"
 
 SPEC="${1:-}"
 if [[ -z "$SPEC" ]]; then
@@ -32,81 +32,13 @@ if [[ ! -f "$SPEC" ]]; then
     echo "error: not a file: $SPEC" >&2
     exit 2
 fi
-if [[ ! -f "$COMMON" ]]; then
-    echo "error: missing helper: $COMMON" >&2
+if [[ ! -f "$IMPL" ]]; then
+    echo "error: missing helper: $IMPL" >&2
+    exit 2
+fi
+if ! command -v bun >/dev/null 2>&1; then
+    echo "error: bun is required but not on PATH (https://bun.sh) — $(basename "$0") cannot run" >&2
     exit 2
 fi
 
-python3 - "$SPEC" "$COMMON" <<'PY'
-import pathlib
-import sys
-
-spec = pathlib.Path(sys.argv[1])
-exec(compile(pathlib.Path(sys.argv[2]).read_text(), sys.argv[2], "exec"))
-
-lines = spec.read_text().splitlines()
-problems = []
-
-corrections = section(lines, CORRECTIONS_TITLE)
-if corrections is None:
-    problems.append(
-        "missing section: `## Corrections to the issue as filed`\n"
-        "  Every file and precondition the issue asserts is a hypothesis. Record\n"
-        "  which ones you re-derived against main and dropped, and why — or write\n"
-        "  `None.` if the issue was right in every particular."
-    )
-elif not has_content(corrections):
-    problems.append(
-        "empty section: `## Corrections to the issue as filed`\n"
-        "  Write the corrections, or `None.` if there were none."
-    )
-
-scope = section(lines, SCOPE_TITLE)
-if scope is None:
-    problems.append(
-        "missing section: `## Scope discipline`\n"
-        "  This section is the contract /speckit-plan and the review passes are\n"
-        "  held to. Expected shape:\n"
-        "\n"
-        "    ## Scope discipline\n"
-        "\n"
-        "    **MUST NOT touch:**\n"
-        "\n"
-        "    - `infra/**` — no Terraform apply behind this change\n"
-        "    - `firestore.rules` — the read runs on the Admin SDK, which never consults rules\n"
-    )
-elif not has_content(scope):
-    problems.append(
-        "empty section: `## Scope discipline`\n"
-        "  List what MUST NOT be touched, or state `None.` explicitly."
-    )
-else:
-    text = "\n".join(scope)
-    declared_none = any(NONE_ANSWER.match(line) for line in scope if line.strip())
-    if not MUST_NOT_MARKER.search(text) and not declared_none:
-        problems.append(
-            "`## Scope discipline` has no `MUST NOT touch:` list\n"
-            "  The list is the machine-checkable half — without it nothing downstream\n"
-            "  can be held to this section. Add the list, or state `None.`"
-        )
-    elif MUST_NOT_MARKER.search(text) and not must_not_paths(lines) and not declared_none:
-        problems.append(
-            "`## Scope discipline` declares `MUST NOT touch:` but lists no paths\n"
-            "  Each entry must be a bullet naming a path or glob in backticks,\n"
-            "  e.g. ``- `infra/**` — no Terraform apply behind this change``."
-        )
-
-if problems:
-    print(f"error: {spec} does not satisfy the minimum-diff mandate", file=sys.stderr)
-    for p in problems:
-        print(f"  - {p}", file=sys.stderr)
-    sys.exit(1)
-
-paths = must_not_paths(lines)
-if paths:
-    print(f"diff-minimal: scope sections present; {len(paths)} path(s) held out of scope:")
-    for p in paths:
-        print(f"  - {p}")
-else:
-    print("diff-minimal: scope sections present (nothing held out of scope).")
-PY
+exec bun "$IMPL" "$SPEC"

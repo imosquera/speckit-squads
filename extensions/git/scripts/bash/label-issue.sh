@@ -5,13 +5,13 @@
 # `frontend`/`backend`/`integration` — plus the `mock-first` and `epic` markers.
 #
 # These axes are not decoration — they are the input to autopilot's picker.
-# `preflight-issues.py` orders the eligible backlog by (priority, bug-before-
+# `preflight-issues.ts` orders the eligible backlog by (priority, bug-before-
 # feature, age), so an unlabelled backlog degrades to plain oldest-first and a
 # genuine P0 waits behind whatever chore happens to be older. This script is the
 # single writer of that vocabulary, shared by `/speckit-git-issue` and
 # `/speckit-git-feature`, so the strings a writer emits can never drift from the
 # ones the reader matches on. Keep it in sync with `PRIORITY_RE` / `BUG_LABELS`
-# in `extensions/autopilot/scripts/bash/preflight-issues.py`.
+# in `extensions/autopilot/scripts/ts/preflight-issues.ts`.
 #
 # Priority is exclusive: setting one removes the other three, so an issue can
 # never carry `p0, p2` and leave the picker to guess (it takes the lowest, but
@@ -20,7 +20,7 @@
 #
 # `mock-first` and `epic` are markers, not axes: they are added or removed on
 # their own and coexist with any priority/kind/layer. `epic` is deliberately a
-# member of `preflight-issues.py`'s BLOCK set — labelling the parent of a work
+# member of `preflight-issues.ts`'s BLOCK set — labelling the parent of a work
 # breakdown `epic` is what keeps autopilot working the *children* rather than
 # re-implementing the whole feature from the parent issue.
 #

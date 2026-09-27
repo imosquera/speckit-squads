@@ -28,6 +28,9 @@ provides:
     - name: seed-graph.sh
       file: scripts/bash/seed-graph.sh
       executable: true
+    - name: unexclude-graph.ts
+      file: scripts/ts/unexclude-graph.ts
+      executable: true
     - name: install-deps.sh
       file: scripts/bash/install-deps.sh
       executable: true
@@ -53,6 +56,10 @@ provides:
       command: speckit.git.issue
     - name: sync-issue-body.sh
       file: scripts/bash/sync-issue-body.sh
+      executable: true
+      command: speckit.git.issue
+    - name: render-spec.ts
+      file: scripts/ts/render-spec.ts
       executable: true
       command: speckit.git.issue
     - name: split-issue.sh

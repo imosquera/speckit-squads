@@ -17,6 +17,9 @@ provides:
     - name: "check-buttons.sh"
       file: "scripts/bash/check-buttons.sh"
       executable: true
+    - name: "check-buttons.ts"
+      file: "scripts/ts/check-buttons.ts"
+      executable: true
     - name: "selftest-button-design.sh"
       file: "scripts/bash/selftest-button-design.sh"
       executable: true

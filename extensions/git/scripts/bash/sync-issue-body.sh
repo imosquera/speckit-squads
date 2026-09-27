@@ -166,29 +166,13 @@ else
 fi
 
 # ----------------------------------------------------------------- render ----
+# The render itself lives in ../ts/render-spec.ts; this wrapper owns the
+# preservation surgery. bun is required — a missing runtime is a loud failure,
+# never an empty body.
+TS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../ts" && pwd)"
 render_spec() {
-  SPEC_PATH="$SPEC" python3 - "$SPEC" ${OMIT[@]+"${OMIT[@]}"} <<'PY'
-import os, re, sys
-spec, omit = sys.argv[1], {a.strip().lower() for a in sys.argv[2:]}
-text = open(spec, encoding="utf-8").read().splitlines()
-out, skipping = [], False
-seen_h1 = False
-for line in text:
-    m = re.match(r"^(#{1,6})\s+(.*?)\s*$", line)
-    if m:
-        level, title = len(m.group(1)), m.group(2)
-        if level == 1 and not seen_h1:
-            seen_h1 = True          # the H1 is the template heading, not a section
-            continue
-        if level == 2:
-            skipping = title.lower() in omit
-    if not skipping:
-        out.append(line)
-body = "\n".join(out).strip("\n")
-print(f"Spec path: {os.environ['SPEC_PATH']}\n")
-print(body)
-print("\n## Notes\n\nGenerated/updated by /speckit-git-issue")
-PY
+  command -v bun >/dev/null 2>&1 || die "bun is required to render $SPEC (not on PATH)"
+  bun "$TS_DIR/render-spec.ts" "$SPEC" ${OMIT[@]+"${OMIT[@]}"}
 }
 
 if [ -n "$BODY_FILE" ]; then

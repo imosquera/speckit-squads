@@ -15,11 +15,11 @@
 # needs nothing from the backend, so the two can be worked in either order (or
 # at once) and the UI is reviewable long before an endpoint exists. The
 # integration child is the only one that needs both, and it carries a
-# `Blocked by:` line so `preflight-issues.py` keeps autopilot off it until its
+# `Blocked by:` line so `preflight-issues.ts` keeps autopilot off it until its
 # dependencies close.
 #
 # Children are created frontend → backend → integration, but the ORDER IS NOT
-# what makes autopilot work the mock first: `preflight-issues.py`'s `rank_key`
+# what makes autopilot work the mock first: `preflight-issues.ts`'s `rank_key`
 # carries an explicit layer term reading the `frontend`/`backend`/`integration`
 # labels applied below, so the frontend child outranks its backend sibling at
 # equal priority and kind however the two were created or relabelled (#56).
@@ -164,7 +164,7 @@ upsert "$BE" "backend: $TITLE" "$TMP/be.md"; BE="$UPSERTED"
 label "$BE" --layer backend ${TRIAGE[@]+"${TRIAGE[@]}"}
 
 # The integration child is written last because its body names its siblings.
-# `Blocked by:` is the exact string `preflight-issues.py` reads, so autopilot
+# `Blocked by:` is the exact string `preflight-issues.ts` reads, so autopilot
 # leaves this issue alone until both numbers are closed.
 {
   parent_ref

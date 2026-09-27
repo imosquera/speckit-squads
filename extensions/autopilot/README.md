@@ -35,7 +35,7 @@ An issue with **no** priority label ranks as `p2`, deliberately mid-pack rather 
 last: ranking it last would let an explicitly deprioritized `p3` chore outrank every
 untriaged bug in the backlog, inverting the point of the label.
 
-The vocabulary lives in `preflight-issues.py` (`PRIORITY_RE`, `PRIORITY_WORDS`,
+The vocabulary lives in `preflight-issues.ts` (`PRIORITY_RE`, `PRIORITY_WORDS`,
 `BUG_LABELS`) and is written by the git extension's `label-issue.sh`, which
 `/speckit-git-issue` calls after every spec sync — that command is what asks the
 human for a priority, or infers one when nobody is there to ask. An explicit
@@ -52,7 +52,7 @@ things and are cleaned up by different actors.
 | `autopilot:claimed` | **transient** — one run | the skill body, once, at Step 1 | the skill on every exit path; `autopilot-run.sh`'s `EXIT` trap as a safety net if the session dies ungracefully |
 | `autopilot:blocked` | **durable** — until the blocker is fixed | the skill body, on a hard non-recoverable stop | **a human**, deliberately |
 
-Both are in `preflight-issues.py`'s `BLOCK` set, so a labelled issue is skipped by
+Both are in `preflight-issues.ts`'s `BLOCK` set, so a labelled issue is skipped by
 the auto-pick and explicit-issue paths alike.
 
 `autopilot:blocked` exists because removing the claim on a hard stop restores the
@@ -66,7 +66,7 @@ marker line:
 AUTOPILOT-BLOCKED: fix target `~/.claude/skills/hindsight/hindsight.py` resolves outside any git repo
 ```
 
-`preflight-issues.py`'s `blocked_reason()` reads that line back (newest matching
+`preflight-issues.ts`'s `blocked_reason()` reads that line back (newest matching
 comment wins) so an explicit `/speckit-autopilot-run N` on a parked issue prints
 `SKIP: #N blocked — <reason>` instead of silently repeating the cycle. Nothing
 automatic ever removes `autopilot:blocked` — clearing it is the human signal that
@@ -144,7 +144,7 @@ to act on and had to judge staleness by hand. Seven sessions over fifty days
 `liveness()` now reads the evidence and `classify()` turns it into a verdict:
 
 ```
-$ preflight-issues.py --worktree-check 237
+$ preflight-issues.ts --worktree-check 237
 STALE: 237-contacts — commit abc1234, clean, last commit 3d ago, 4/12 tasks done, no open PR
 ```
 
@@ -176,7 +176,7 @@ where the operator typed the number and gets `RESUME:` and `CLEAN:` lines to cho
 between instead of a refusal. Auto-pick keeps the hard SKIP, and so does the
 explicit path under `SPECKIT_AUTOPILOT_UNATTENDED=1`, which `autopilot-run.sh`
 exports before launching the session: both arrive as the same
-`preflight-issues.py <file> <N>` call, so the environment is the only seam between a
+`preflight-issues.ts <file> <N>` call, so the environment is the only seam between a
 human and a scheduled tick. Autopilot still never resumes or deletes anything by
 itself.
 
@@ -194,7 +194,7 @@ fresh, and gets picked again. That is what cost three sessions on lead-drop#182.
 Note this never *sources* work from another repo — it reads issues from this repo
 only, and a finding can only ever cause a **skip**.
 
-`preflight-issues.py <issues.json> [N] --cross-repo` closes that gap. It reads the
+`preflight-issues.ts <issues.json> [N] --cross-repo` closes that gap. It reads the
 issue's own thread (body + comments — the same fetch `blocked_reason()` already
 pays for), pulls out every `github.com/<owner>/<repo>/pull/<n>` URL, and resolves
 each with `gh pr view --repo`:

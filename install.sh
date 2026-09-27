@@ -57,6 +57,13 @@ fi
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 cd "$PROJECT_DIR"
 
+# bun is required: the pre-flight script-path check, the agent script index, and
+# every scripts/ts/post-install.ts run as TypeScript under bun.
+if ! command -v bun >/dev/null 2>&1; then
+  echo "error: bun is required but not on PATH — install it (https://bun.sh) and re-run" >&2
+  exit 1
+fi
+
 # Pre-flight: every `specify <verb>` a command file tells an agent to run must exist
 # in the installed CLI. Catches invented CLI surface before it ships to a project.
 "$REPO_DIR/check-cli-usage.sh" || exit 1
@@ -222,7 +229,7 @@ done
 # The installed layout does not match this repo's, and command names do not predict
 # script names. A consumer-side agent cannot read this repo's CLAUDE.md, so the
 # command -> script mapping is generated into the project on every install.
-"$REPO_DIR/gen-agent-index.py" "$REPO_DIR" "$PROJECT_DIR" || EXIT=1
+bun "$REPO_DIR/scripts/gen-agent-index.ts" "$REPO_DIR" "$PROJECT_DIR" || EXIT=1
 
 echo
 echo "Done. Target: $PROJECT_DIR"

@@ -24,8 +24,8 @@ provides:
     - name: autopilot-run.sh
       file: scripts/bash/autopilot-run.sh
       executable: true
-    - name: stream-decode.py
-      file: scripts/bash/stream-decode.py
+    - name: stream-decode.ts
+      file: scripts/ts/stream-decode.ts
       executable: true
     - name: bind-feature-issue.sh
       file: scripts/bash/bind-feature-issue.sh
@@ -35,8 +35,8 @@ provides:
       file: scripts/bash/fetch-open-issues.sh
       executable: true
       command: speckit.autopilot.run
-    - name: preflight-issues.py
-      file: scripts/bash/preflight-issues.py
+    - name: preflight-issues.ts
+      file: scripts/ts/preflight-issues.ts
       executable: true
       command: speckit.autopilot.run
     - name: park-issue.sh
@@ -47,6 +47,12 @@ provides:
       file: scripts/bash/check-target-repo.sh
       executable: true
       command: speckit.autopilot.run
+    - name: resolve-path.ts
+      file: scripts/ts/resolve-path.ts
+      executable: true
+    - name: py.ts
+      file: scripts/ts/py.ts
+      executable: false
 
   commands:
     - name: speckit.autopilot.run

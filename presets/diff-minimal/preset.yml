@@ -14,19 +14,27 @@ requires:
 
 provides:
   scripts:
-    - name: "scope-common.py"
-      file: "scripts/bash/scope-common.py"
+    - name: "scope-common.ts"
+      file: "scripts/ts/scope-common.ts"
       executable: false
     - name: "check-scope-sections.sh"
       file: "scripts/bash/check-scope-sections.sh"
+      executable: true
+      command: "speckit.specify"
+    - name: "check-scope-sections.ts"
+      file: "scripts/ts/check-scope-sections.ts"
       executable: true
       command: "speckit.specify"
     - name: "check-plan-scope.sh"
       file: "scripts/bash/check-plan-scope.sh"
       executable: true
       command: "speckit.plan"
-    - name: "selftest-diff-minimal.sh"
-      file: "scripts/bash/selftest-diff-minimal.sh"
+    - name: "check-plan-scope.ts"
+      file: "scripts/ts/check-plan-scope.ts"
+      executable: true
+      command: "speckit.plan"
+    - name: "selftest-diff-minimal.ts"
+      file: "scripts/ts/selftest-diff-minimal.ts"
       executable: true
 
   templates:

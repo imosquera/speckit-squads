@@ -11,7 +11,8 @@
  *
  *     { "findings": [ { "rule": "PDV004", "path": "src/user.ts", "line": 12 }, ... ] }
  *
- * Waiver comments and result presentation are handled by the Python driver;
+ * Waiver comments and result presentation are handled by the driver
+ * (`parse_dont_validate.ts`, next to this file);
  * this helper only reports structural findings. It never prints an empty
  * findings list for an input it could not use: a missing/empty/malformed job,
  * file arguments (which it ignores), an unreadable source, or a TypeScript
@@ -216,7 +217,7 @@ function scanFile(ts: TsApi, file: JobFile, findings: Finding[]): void {
 const STDIN_HINT =
   'pdv_ts_scan reads a JSON job on stdin — {"files":[{"path":"src/a.ts",' +
   '"isParser":false}]} — and ignores file arguments. It is not the entry ' +
-  'point: run `parse_dont_validate.py scan` instead.';
+  'point: run `parse_dont_validate.ts scan` instead.';
 
 function main(): void {
   // Every path out of here that examined nothing exits non-zero. Printing

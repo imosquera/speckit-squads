@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check for parse_dont_validate.py's change-set handling:
+# Check for parse_dont_validate.ts's change-set handling:
 #   1. the scan anchors at the git worktree root (it used to collapse to the
 #      untracked files below the cwd when run from a subdirectory);
 #   2. --new-only subtracts findings that already reproduce on the base ref;
@@ -10,8 +10,9 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="$ROOT/presets/parse-dont-validate/scripts/python/parse_dont_validate.py"
-TS_HELPER="$ROOT/presets/parse-dont-validate/scripts/node/pdv_ts_scan.ts"
+SCRIPT="$ROOT/presets/parse-dont-validate/scripts/ts/parse_dont_validate.ts"
+TS_HELPER="$ROOT/presets/parse-dont-validate/scripts/ts/pdv_ts_scan.ts"
+command -v bun >/dev/null 2>&1 || { echo "test-pdv-changeset: FAIL — bun is not on PATH (https://bun.sh)"; exit 1; }
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 fail=0
@@ -46,13 +47,13 @@ git add -A && git commit -qm work
 
 echo "test-pdv-changeset"
 
-out="$(cd functions && python3 "$SCRIPT" scan --base main 2>&1)"; st=$?
+out="$(cd functions && bun "$SCRIPT" scan --base main 2>&1)"; st=$?
 check "scan from a subdirectory sees the whole change set" 1 "$st" "$out"
 for f in functions/src/new.py pkg/old.py; do
   grep -q "$f" <<<"$out" || { echo "  FAIL missing $f in scan output"; echo "$out" | sed 's/^/       /'; fail=1; }
 done
 
-out="$(cd functions && python3 "$SCRIPT" scan --base main --new-only 2>&1)"; st=$?
+out="$(cd functions && bun "$SCRIPT" scan --base main --new-only 2>&1)"; st=$?
 check "--new-only still fails on findings this branch added" 1 "$st" "$out"
 grep -q "def added" <<<"$out" || { echo "  FAIL --new-only dropped a new finding"; fail=1; }
 grep -q "def handle" <<<"$out" && { echo "  FAIL --new-only kept a pre-existing finding"; fail=1; }
@@ -64,39 +65,39 @@ grep -q "ignored 1 pre-existing" <<<"$out" || { echo "  FAIL no pre-existing cou
 git checkout -q main && git checkout -qb shuffle
 printf '# a comment\n%s' "$(cat pkg/old.py)" > pkg/old.py
 git commit -qam shuffle
-out="$(python3 "$SCRIPT" scan --base main 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan --base main 2>&1)"; st=$?
 check "plain scan reports the shifted pre-existing finding" 1 "$st" "$out"
-out="$(python3 "$SCRIPT" scan --base main --new-only 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan --base main --new-only 2>&1)"; st=$?
 check "--new-only is clean when the branch only moved existing code" 0 "$st" "$out"
 
 # --- a scan that examined nothing is never a clean pass (issue #50) ----------
 git checkout -q main && git checkout -qb empty
 mkdir -p docs && echo hello > docs/readme.md && git add -A && git commit -qm docs
 
-out="$(python3 "$SCRIPT" scan --base main --nwe-only 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan --base main --nwe-only 2>&1)"; st=$?
 check "a typo'd flag is a usage error, not a clean scan" 2 "$st" "$out"
 grep -q "unknown option" <<<"$out" || { echo "  FAIL typo'd flag not named"; fail=1; }
 
-out="$(python3 "$SCRIPT" scan --base 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan --base 2>&1)"; st=$?
 check "--base with no ref is a usage error" 2 "$st" "$out"
 
 # `--base --new-only` used to consume the flag as the ref: the scan then ran
 # without --new-only against an unresolvable ref, found no change set, and
 # exited 4 — an empty-input answer to what is really a usage error.
-out="$(python3 "$SCRIPT" scan --base --new-only 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan --base --new-only 2>&1)"; st=$?
 check "--base followed by another option is a usage error" 2 "$st" "$out"
 grep -q "needs a ref argument" <<<"$out" || { echo "  FAIL --base misuse not named"; echo "$out" | sed 's/^/       /'; fail=1; }
 
-out="$(python3 "$SCRIPT" scan --base= --new-only 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan --base= --new-only 2>&1)"; st=$?
 check "--base= with an empty ref is a usage error" 2 "$st" "$out"
 
-out="$(python3 "$SCRIPT" scan nosuchfile.ts 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan nosuchfile.ts 2>&1)"; st=$?
 check "paths that resolve to nothing are a hard error" 3 "$st" "$out"
 
-out="$(cd / && python3 "$SCRIPT" scan 2>&1)"; st=$?
+out="$(cd / && bun "$SCRIPT" scan 2>&1)"; st=$?
 check "no change set outside a git worktree is a hard error" 3 "$st" "$out"
 
-out="$(python3 "$SCRIPT" scan --base main 2>&1)"; st=$?
+out="$(bun "$SCRIPT" scan --base main 2>&1)"; st=$?
 check "an empty change set exits 4, not 0" 4 "$st" "$out"
 grep -q "not a clean scan" <<<"$out" || { echo "  FAIL empty change set not called out"; echo "$out" | sed 's/^/       /'; fail=1; }
 
@@ -111,6 +112,46 @@ if command -v bun >/dev/null 2>&1; then
 else
   echo "  skip bun helper checks (bun not on PATH)"
 fi
+
+# --- the Python scanner (a tokenizer, not stdlib `ast`) keeps ast's rules ------
+# Each expected `<line>:<rule>` is what the retired stdlib-`ast` scanner reported:
+# a Name on its own line, an Attribute/Call where its expression starts, a def
+# on its `def` line. Strings, comments, f-string literals and lambda params in
+# defaults must not trip it; an f-string *expression* must.
+echo "Python scanner"
+PYF="$TMP/pyfix" && mkdir -p "$PYF"
+cat > "$PYF/svc.py" <<'PY'
+from typing import Any, cast
+x: Any = 1
+s: "Any" = "cast(int, y) json.loads(z)"  # Any cast(
+def f(a: Any, cb=lambda p, q: Any, *r: typing.Any) -> bool: ...
+def is_ok(v) -> (bool):
+    return cast(int, v)
+async def validate_it(v) -> bool: ...
+def is_opt(v) -> Optional[bool]: ...
+d = json.loads(raw); e = a.json.loads(raw)
+g = (
+    obj
+    .cast(1)
+)
+h = f"{json.loads(raw)!r:>4} {{json.loads(no)}}"
+if True: w: Any = 0
+def cast(x): ...
+k = cast(str, x)  # parse-dont-validate: allow PDV004 (boundary)
+PY
+cp "$PYF/svc.py" "$PYF/user_schema.py"
+want_svc='2:PDV001 4:PDV001 5:PDV003 6:PDV004 7:PDV003 9:PDV002 11:PDV004 14:PDV002 15:PDV001'
+want_schema='2:PDV001 4:PDV001 5:PDV003 7:PDV003 15:PDV001'
+for pair in "svc.py:$want_svc" "user_schema.py:$want_schema"; do
+  f="${pair%%:*}"; want="${pair#*:}"
+  got="$(cd "$PYF" && bun "$SCRIPT" scan "$f" 2>&1 | sed -nE 's/^[^ ]+\.py:([0-9]+): (PDV[0-9]+).*/\1:\2/p' | tr '\n' ' ' | sed 's/ $//')"
+  if [[ "$got" == "$want" ]]; then echo "  ok   $f findings match ast's rule/line set"
+  else echo "  FAIL $f findings"; echo "       want: $want"; echo "       got:  $got"; fail=1; fi
+done
+printf 'def broken(:\n  x = (1, 2\n' > "$PYF/bad.py"
+out="$(cd "$PYF" && bun "$SCRIPT" scan bad.py 2>&1)"; st=$?
+check "unparseable Python is a scan failure, not a clean file" 3 "$st" "$out"
+grep -q "cannot parse Python source" <<<"$out" || { echo "  FAIL parse failure not named"; fail=1; }
 
 # --- the prompt's exit contract is internally consistent ---------------------
 # The command file grants one exception (proceed past a verified exit 4). Every

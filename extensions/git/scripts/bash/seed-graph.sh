@@ -64,16 +64,14 @@ if [[ -n "$COMMON_DIR" ]]; then
         # Heal: our own stanza only (the same expression pre-uninstall.sh uses),
         # and skip-worktree bits in THIS worktree's index (a linked worktree has
         # its own index).
-        if [[ -f "$EXCLUDE" ]] && grep -qxF 'graphify-out/' "$EXCLUDE" && command -v python3 >/dev/null 2>&1; then
-            python3 - "$EXCLUDE" <<'PYEOF' >&2 || true
-import re, sys, pathlib
-p = pathlib.Path(sys.argv[1])
-t = p.read_text(encoding="utf-8")
-new = re.sub(r"\n*# Local knowledge graph[^\n]*\n# [^\n]*\ngraphify-out/\n", "\n", t)
-if new != t:
-    p.write_text(new, encoding="utf-8")
-    print(f"[specify] seed-graph: removed our graphify-out/ exclusion from {p} (the repo tracks its graph)")
-PYEOF
+        # The stanza removal is ../ts/unexclude-graph.ts. Best effort like the
+        # rest of this script: no bun means a warning, never a failed caller.
+        if [[ -f "$EXCLUDE" ]] && grep -qxF 'graphify-out/' "$EXCLUDE"; then
+            if command -v bun >/dev/null 2>&1; then
+                bun "$(cd "$(dirname "${BASH_SOURCE[0]}")/../ts" && pwd)/unexclude-graph.ts" "$EXCLUDE" >&2 || true
+            else
+                echo "[specify] seed-graph: WARNING: bun not on PATH; could not remove our graphify-out/ exclusion from $EXCLUDE" >&2
+            fi
         fi
         SKIPPED="$(git -C "$WORKTREE_PATH" ls-files -v -- graphify-out 2>/dev/null | sed -n 's/^S //p')"
         if [[ -n "$SKIPPED" ]]; then

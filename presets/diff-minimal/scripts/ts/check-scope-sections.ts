@@ -1,8 +1,14 @@
 #!/usr/bin/env bun
 // diff-minimal preset: check-scope-sections.ts
-// Body of check-scope-sections.sh, which owns usage checking and calls this with
-// one existing spec.md path. See that script for the contract and exit codes.
+// Asserts spec.md carries the two sections the minimum-diff mandate adds, and
+// that they say something: `## Corrections to the issue as filed` (non-empty or
+// "None.") and `## Scope discipline` (a `MUST NOT touch:` list or "None.").
+// Read-only.
+//
+// Usage: check-scope-sections.ts <spec.md>
+// Exit:  0 both populated   1 a section missing or empty   2 bad usage
 
+import { existsSync, statSync } from "node:fs";
 import {
   CORRECTIONS_TITLE,
   MUST_NOT_MARKER,
@@ -16,9 +22,14 @@ import {
   strip,
 } from "./scope-common.ts";
 
-const arg = process.argv[2];
+const arg = process.argv[2] ?? "";
 if (!arg) {
+  console.error("error: spec.md path required");
   console.error("usage: check-scope-sections.ts <spec.md>");
+  process.exit(2);
+}
+if (!existsSync(arg) || !statSync(arg).isFile()) {
+  console.error(`error: not a file: ${arg}`);
   process.exit(2);
 }
 const spec = pyPath(arg);

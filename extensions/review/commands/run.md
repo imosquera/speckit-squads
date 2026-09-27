@@ -1,7 +1,7 @@
 ---
 description: Comprehensive code review using specialized agents — code (incl. security & performance), arch, comments, tests, errors, types, and simplify (incl. ponytail review + audit) — then applies the behaviour-preserving ponytail cuts. One engine for every scope: the current feature branch, the working directory, or a GitHub pull request (`--pr N`). Use this whenever the user asks to review their changes, do a code review, review a PR, check a pull request, "look at this PR", "give me feedback on this PR", or "what do you think of this PR".
 scripts:
-  sh: scripts/bash/detect-changed-files.sh
+  sh: bun scripts/ts/detect-changed-files.ts
 ---
 
 # Comprehensive Code Review

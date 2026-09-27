@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 // Git extension: unexclude-graph.ts
 //
-// Remove the graphify-out/ stanza seed-graph.sh (or the graph-first-navigation
+// Remove the graphify-out/ stanza seed-graph.ts (or the graph-first-navigation
 // preset) once wrote to info/exclude — our own stanza only, matched by the same
-// expression pre-uninstall.sh uses. seed-graph.sh calls it when the repo tracks
+// expression pre-uninstall.ts uses. seed-graph.ts calls it when the repo tracks
 // its graph, which must then stay visible.
 //
 // Usage: unexclude-graph.ts <info-exclude-path>

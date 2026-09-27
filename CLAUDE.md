@@ -7,10 +7,10 @@ This repo is the source of truth for a personal set of Spec Kit extensions and p
 ```
 extensions/<id>/   extension.yml + commands/ + scripts/
 presets/<id>/      preset.yml    + commands/ + templates/
-install.sh         install every extension+preset into a Spec Kit project
-uninstall.sh       remove every extension+preset from a Spec Kit project
-check-cli-usage.sh validate `specify <verb>` calls AND every script path in command files
-scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.sh) + check-script-paths.ts
+install.ts         install every extension+preset into a Spec Kit project
+uninstall.ts       remove every extension+preset from a Spec Kit project
+check-cli-usage.ts validate `specify <verb>` calls AND every script path in command files
+scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.ts) + check-script-paths.ts
 ```
 
 **Installed layout is not the same shape.** In a consumer project, `specify` copies each
@@ -19,21 +19,21 @@ never merges extension scripts into the core tree, so a consumer has **two** scr
 
 ```
 .specify/scripts/bash/                    core Spec Kit scripts — FLAT, no per-extension subdirs
-    check-prerequisites.sh  common.sh  create-new-feature.sh  setup-plan.sh  setup-tasks.sh
+    check-prerequisites.sh  common.sh  create-new-feature.ts  setup-plan.sh  setup-tasks.sh
 .specify/extensions/<id>/scripts/bash/    one tree per extension
 .specify/presets/<id>/
 ```
 
 There is no `.specify/scripts/bash/<extension-id>/`. Never guess a script path from the
 command name: **command names and script names do not correspond.** `/speckit-git-feature`
-runs `create-new-feature.sh` (not `feature.sh`), and that filename also collides with the
+runs `create-new-feature.ts` (not `feature.ts`), and that filename also collides with the
 unrelated core `scripts/bash/create-new-feature.sh`. The authoritative path for every
 extension command is the `- **Bash**:` line in its own `commands/*.md`; `ls` the extension
 tree before invoking anything.
 
 ## No PowerShell
 
-**Everything here is bash. Never add a `.ps1`, a `scripts/powershell/` tree, or a
+**Everything here is TypeScript run by bun. Never add a `.ps1`, a `scripts/powershell/` tree, or a
 `ps:` line pointing at a script this repo owns.** Nothing that consumes these
 extensions runs on Windows, so a PowerShell twin is never exercised — it is a
 second copy of logic whose only job is to stay identical to the first, and it
@@ -53,21 +53,23 @@ this repo owns.
 `#!/usr/bin/env bun`, never `node`/`npm`/`npx` — and it is typechecked by
 TypeScript 7 (the native compiler) via `bun run typecheck` against the root
 `package.json`/`tsconfig.json`. Run `bun install` once per checkout;
-`check-cli-usage.sh` runs the typecheck as part of install pre-flight when bun
+`check-cli-usage.ts` runs the typecheck as part of install pre-flight when bun
 and `node_modules` are present, and warns and skips otherwise. The one TS 5.x
 dependency is not ours: the `parse-dont-validate` scanner loads the
 **consumer's** `typescript` compiler API at runtime (TS 7 ships none, issue
 #113), so it types that module with a local interface and never imports
 `typescript` statically. Consumer-side package managers stay polyglot —
-`install-deps.sh` reads each consumer's lockfile and must keep doing so.
+`install-deps.ts` reads each consumer's lockfile and must keep doing so.
 
-**There is no Python.** Every script this repo ships is bash or TypeScript: logic
-lives in TypeScript under an item's `scripts/ts/` (or the root `scripts/`), and a
-bash wrapper that existed before stays as a thin shim that `exec bun`s it. Bun is
-therefore required wherever these items run — `install.sh` refuses to start
-without it, and a wrapper with no bun fails loudly (exit 127, or the item's own
-error code), never as a pass; only best-effort scripts such as `seed-graph.sh`
-downgrade it to a warning. The ports were held byte-for-byte to the Python they
+**There is no Python and no bash.** Every script this repo ships is TypeScript
+under an item's `scripts/ts/` (or `hooks/`, the repo root, or the root `scripts/`),
+started with `bun <path>.ts`. Command files call them that way, and frontmatter keeps
+the `sh:` key Spec Kit selects by name with a `bun scripts/ts/<name>.ts` value.
+`check-cli-usage.ts` fails on any reference to a `scripts/bash/*.sh` of ours; core
+Spec Kit's own `scripts/bash/` stays allowed. Bun is therefore required wherever these
+items run — `install.ts` refuses to start without it. The bash port kept each
+script's CLI, output and exit codes, proved by running the old bash tests against the
+new scripts; the few intended differences are listed in its PR. The Python ports were held byte-for-byte to the Python they
 replaced (side-by-side diffs, every `--selftest` carried over), which is why a few
 helpers — autopilot's `py.ts`, diff-minimal's `scope-common.ts` — reproduce
 Python's whitespace, JSON and `repr` rules. The PDV driver scans Python *source*
@@ -81,8 +83,8 @@ Both scripts auto-discover every directory under `extensions/` and `presets/` th
 Both require a `<project-dir>` argument — there is no implicit `$PWD` default, so you can't accidentally install into the wrong place.
 
 ```bash
-./install.sh /path/to/spec-kit-project
-./uninstall.sh /path/to/spec-kit-project
+./install.ts /path/to/spec-kit-project
+./uninstall.ts /path/to/spec-kit-project
 ```
 
 Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this repo as the install source; it does not symlink.** Verified in the installed specify-cli:
@@ -94,10 +96,10 @@ Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this r
 **Consequence: edits made in this repo are NOT picked up live.** Any change — command markdown, scripts, templates, or the manifest — requires a refresh in the consumer:
 
 ```bash
-./install.sh --force /path/to/spec-kit-project
+./install.ts --force /path/to/spec-kit-project
 ```
 
-Plain `./install.sh <project>` treats "already installed" as a no-op success, so it will **not** propagate edits. Use `--force` whenever you have changed anything here.
+Plain `./install.ts <project>` treats "already installed" as a no-op success, so it will **not** propagate edits. Use `--force` whenever you have changed anything here.
 
 Note on capabilities (verified empirically): **only extensions can declare `hooks:` and register brand-new standalone commands**; a `hooks:` block or a new command in a `preset.yml` is silently dropped by `specify`. **Only presets can `wrap`/`replaces` an existing command body**; extensions add new commands and hooks but never rewrite a core command. When a feature needs both (e.g. `progress-report` wraps cycle commands *and* needs `before_*` hooks), ship it as a preset + companion extension pair.
 
@@ -107,11 +109,11 @@ that default silently disabled five `/speckit-implement` presets at once. Always
 declare `strategy:` explicitly. There is no `replaces:` key; it is not in the
 schema and is silently dropped. Presets are ordered by `(priority ASC, id ASC)`,
 lowest number outermost, and priority is an **install-time** argument, not a
-manifest field — so `install.sh`'s `preset_priority()` map is load-bearing
+manifest field — so `install.ts`'s `preset_priority()` map is load-bearing
 wherever more than one preset targets a command. The `/speckit-implement`
 ordering contract is tabulated in `README.md`; keep the two in sync.
 
-`install.sh` runs `check-cli-usage.sh` as a pre-flight and aborts on failure: every
+`install.ts` runs `check-cli-usage.ts` as a pre-flight and aborts on failure: every
 `specify <verb> [<subverb>]` inside a fenced bash block in `*/commands/*.md` is checked
 against `specify --help`, so a command file can't ship instructions to run CLI surface
 that doesn't exist. Prose outside code fences is ignored. Run it standalone any time.
@@ -121,27 +123,27 @@ an ordinary interactive session, so the path starts at `/` and the call dies wit
 `exit 127` — six sessions over 50 days paid that tax before it was caught (issue #59).
 Each block resolves the root itself with
 `PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"`, per block because
-each bash call is its own shell. `check-cli-usage.sh` fails the install on a bare use.
+each bash call is its own shell. `check-cli-usage.ts` fails the install on a bare use.
 
 Anything that must reach *outside* `specify` — the Claude Code harness
 (`.claude/settings.json`) or the project's `CLAUDE.md` — ships as
-`scripts/bash/post-install.sh <project-dir>` inside the extension or preset that
-owns it. `install.sh` runs every executable one it finds after registration, and
-`uninstall.sh` runs the matching `scripts/bash/pre-uninstall.sh` before
+`scripts/ts/post-install.ts <project-dir>` inside the extension or preset that
+owns it. `install.ts` runs every executable one it finds after registration, and
+`uninstall.ts` runs the matching `scripts/ts/pre-uninstall.ts` before
 de-registering. Both are auto-discovered; both must be idempotent, since
 `--force` re-runs them.
 
-`uninstall.sh` only de-registers items from the target project; it never touches the source files in this repo.
+`uninstall.ts` only de-registers items from the target project; it never touches the source files in this repo.
 
 ## Feature identity: `.specify/feature.json`
 
 The file is **gitignored per-worktree state**. It carries `source_issue` — the only part
 of a feature's identity that cannot be derived from git — plus `feature_directory`,
-written once at creation by `create-new-feature.sh` **solely for core Spec Kit's own
+written once at creation by `create-new-feature.ts` **solely for core Spec Kit's own
 `get_feature_paths()`**, which hard-errors without it and takes `setup-plan.sh` down with
 it. Our tooling never reads `feature_directory`: branch, feature number, worktree path,
 and spec directory are resolved at read time by `spec_kit_resolve_feature()` in
-`extensions/git/scripts/bash/git-common.sh`.
+`extensions/git/scripts/ts/git-common.ts`.
 
 **Our writers merge; core's does not, so `source_issue` is mirrored to a sidecar.**
 `spec_kit_write_feature_json()` is the only writer here and it preserves the keys it
@@ -152,10 +154,10 @@ plain `>` redirect, dropping `source_issue` mid-pipeline — the PR then opened 
 writer is not ours to fix, the linkage is mirrored to
 `<worktree git dir>/speckit-source-issue`: private to the worktree, never shared, never
 committed, unreachable by core. `spec_kit_feature_source_issue()` recovers from it,
-heals the file, and warns on stderr; `auto-commit.sh` reads through that helper on every
+heals the file, and warns on stderr; `auto-commit.ts` reads through that helper on every
 `after_*` phase, so the heal lands before the readers that still inline the `sed`
-(archive, session-title). `create-pr.sh` refuses to open a PR when the sidecar says the
-worktree was linked but the issue cannot be recovered. `./test-feature-json.sh` is the
+(archive, session-title). `create-pr.ts` refuses to open a PR when the sidecar says the
+worktree was linked but the issue cannot be recovered. `./test-feature-json.ts` is the
 check.
 
 Never reintroduce `branch_name`, `feature_num`, or `worktree_path` into that file, and
@@ -183,7 +185,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   schedule always were (`gh issue list` with no `--repo`; one launchd plist per repo
   root). Output was not: nothing checked where the *fix* had to land, so an issue
   whose target resolved into a different repo got worked and delivered there while
-  staying open behind it (issue #34). `check-target-repo.sh` is the guard — Step 1.5
+  staying open behind it (issue #34). `check-target-repo.ts` is the guard — Step 1.5
   hands it every path the issue names, and a `FOREIGN`/`OUTSIDE` verdict is a durable
   stop. It keys on the git **common dir**, never `--show-toplevel`: autopilot always
   runs in a worktree, so comparing toplevels would flag every in-repo file as foreign.
@@ -212,7 +214,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   command the STALE output now prints. STALE downgrades the verdict on exactly one
   path — an *attended* explicit-issue run, which gets `RESUME:`/`CLEAN:` lines to
   choose between. Auto-pick and the explicit path under
-  `SPECKIT_AUTOPILOT_UNATTENDED=1` (exported by `autopilot-run.sh`) keep the hard
+  `SPECKIT_AUTOPILOT_UNATTENDED=1` (exported by `autopilot-run.ts`) keep the hard
   SKIP; that variable is the only seam between a human and a scheduled tick, since
   both reach the script as the same `preflight-issues.ts <file> <N>` call. Autopilot
   still never resumes or deletes work by itself.
@@ -244,7 +246,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   delivered elsewhere. It never *sources* work from another repo; a finding can only
   cause a skip. Merged beats open, closed-unmerged never counts, and the script stays
   read-only: it emits `DELIVERED: <n> <url> (<state>)` after the verdict and the
-  caller parks via `park-issue.sh` — the single writer of `autopilot:blocked` and the
+  caller parks via `park-issue.ts` — the single writer of `autopilot:blocked` and the
   `AUTOPILOT-BLOCKED:` sentinel, shared by the skill and the wrapper. Both must park:
   the wrapper exits on `SKIP:` before the skill ever launches, and a delivered issue
   doesn't stop the scan, so a run can `PICK:` a later issue while an earlier delivered
@@ -271,7 +273,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   features in `imosquera/enroute` while the run reported success (issue #45). A hook's
   registered command id **is** its slash command — `speckit.agent-context.update` →
   `/speckit-agent-context-update` — and a non-zero exit is a failure, not noise.
-  `check-cli-usage.sh` already fails the install on a `specify hook` line inside a
+  `check-cli-usage.ts` already fails the install on a `specify hook` line inside a
   fenced bash block; the runtime invention is what the prose has to prevent.
   **The per-repo log is timestamped and attributed from the stream, not from the
   decoder.** `stream-decode.ts` used to stamp `datetime.now()` at decode time, so a
@@ -283,7 +285,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   every line with the subagent that produced it (from `parent_tool_use_id`; the main
   session is untagged) using a `tool_use_id` -> label map built from
   `system/task_started`, and renders `task_started`/`task_notification` so a
-  subagent's start and finish are visible. `autopilot-run.sh` tees the raw
+  subagent's start and finish are visible. `autopilot-run.ts` tees the raw
   stream-json to `<slug>.raw.jsonl` beside the decoded log so a finished pass can be
   re-decoded after a decoder fix without re-running it. Deliberately NOT per-run log
   files: passes are already single-flight under the wrapper's lock, so what was
@@ -303,7 +305,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   the winning rank (`[p0, bug, frontend]`); the explicit-issue path prints no rank because a
   typed number is already a choice. `--cross-repo` now runs per candidate in rank
   order until one is not already delivered, instead of only against the oldest.
-  The writer of this vocabulary is the git extension's `label-issue.sh` — keep
+  The writer of this vocabulary is the git extension's `label-issue.ts` — keep
   `PRIORITY_RE`/`PRIORITY_WORDS`/`BUG_LABELS`/`LAYER_RANKS` in sync with it.
   Eligibility also honours **dependencies**: an issue whose body says
   `Blocked by: #N` is skipped while any named issue is still open
@@ -321,7 +323,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   that touches one behaviour in ~1–3 files with nothing structural and no real
   ambiguity skips Steps 3–6 entirely — no `spec.md`, `plan.md`, or `tasks.md` — and
   implements directly. Four documents for a three-line diff cost more than the work
-  and bury the diff in review. It is safe to skip the spec because `create-pr.sh`
+  and bury the diff in review. It is safe to skip the spec because `create-pr.ts`
   falls back to the branch name for the PR title when there is none. Review, the
   commit, and the draft PR are **not** skippable on that path — they are the only
   gates left — and the moment the edit spreads past those bounds the run bails back
@@ -329,12 +331,12 @@ on first run in a project that still tracks it, so the migration is automatic.
   Plus `/speckit-autopilot-schedule` to put `.run` on a recurring launchd timer (default every 2h, configurable; opt-in, macOS-only)
 - `git` — feature branches + worktree + linked GitHub issue (numbered to match the spec), issue sync via `speckit.git.issue` on the `after_specify` hook, clean, PR, auto-commit hooks across all phases.
   `/speckit-git-issue` also owns **triage labels**, the input side of autopilot's
-  ranked picker: `label-issue.sh` is the single writer of `p0`..`p3`,
+  ranked picker: `label-issue.ts` is the single writer of `p0`..`p3`,
   `bug`/`feature` and `frontend`/`backend`/`integration`, plus the `mock-first`
   and `epic` markers — creating any label the repo lacks and keeping each axis
   exclusive (`--priority p1` removes the other three; `--layer backend` removes
   the other two). Markers are independent and only ever touch themselves.
-  **The spec→body render is a script, not prose.** `sync-issue-body.sh` is the
+  **The spec→body render is a script, not prose.** `sync-issue-body.ts` is the
   single renderer and the single `gh issue edit --body` on the sync path: the
   command file used to describe the render in prose, so every run re-derived it
   in a fresh heredoc and four unattended runs in one 24-hour window each invented
@@ -351,9 +353,9 @@ on first run in a project that still tracks it, so the migration is automatic.
   erases it. It **refuses** rather than repairs: exit 2 leaves the issue
   untouched when the composed body would drop either region. `--render-only` is
   the create path (nothing to preserve yet), `--body-file` lets a caller own the
-  prose while keeping the surgery, and `./test-sync-issue-body.sh` is the check.
+  prose while keeping the surgery, and `./test-sync-issue-body.ts` is the check.
   **A manual `/speckit-git-issue` with no linked issue checks for a duplicate
-  before it creates anything.** `find-duplicate-issues.sh` is the scan: it
+  before it creates anything.** `find-duplicate-issues.ts` is the scan: it
   reduces the prospective title to its distinctive tokens and searches each one
   **separately**, because GitHub ANDs the terms of a single query and a
   full-sentence search returns nothing; candidates score one point per distinct
@@ -389,7 +391,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   hook under autopilot), saying so when it does; an existing human-set priority is
   never re-asked or overwritten. Label failures are warnings, never errors.
   **A full-stack feature is filed as three issues, not one, and the frontend one
-  is always a mock.** `split-issue.sh` turns the tracking issue into a parent with
+  is always a mock.** `split-issue.ts` turns the tracking issue into a parent with
   `frontend(mock): T`, `backend: T`, and `wire-up: T` children. The frontend child
   is `mock-first`: built against static in-repo fixtures with **no network calls at
   all**, so it starts immediately, is reviewable on its own, and freezes the data
@@ -398,7 +400,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   the **layer term** in `preflight-issues.ts`'s `rank_key`, which ranks
   `frontend` < `backend` < `integration` (and an unlabelled issue level with
   `backend`) between the bug/feature term and the age tiebreak — that is the
-  implementation of "mock first". It used to fall out of `split-issue.sh`'s
+  implementation of "mock first". It used to fall out of `split-issue.ts`'s
   creation order via the age tiebreak, which silently inverted the moment
   anyone raised the backend child's priority, titled it `fix: …`, or let
   `upsert` adopt an older backend issue (issue #56); the wire-up child's body carries
@@ -416,8 +418,8 @@ on first run in a project that still tracks it, so the migration is automatic.
   integration child invisible to re-runs. A child is never split again: it carries a
   layer label and a `Parent: #N` line. Single-layer specs get the layer label and no
   split — and a frontend feature against an API that already exists is `frontend`
-  but **not** `mock-first`. `seed-graph.sh` builds the worktree's knowledge graph at creation
-  (from both `worktree-add.sh` and `create-new-feature.sh`, best-effort, skippable
+  but **not** `mock-first`. `seed-graph.ts` builds the worktree's knowledge graph at creation
+  (from both `worktree-add.ts` and `create-new-feature.ts`, best-effort, skippable
   with `SPECKIT_SKIP_GRAPH=1`) — graph-first navigation was switching itself off in
   exactly the checkout where feature work starts. It passes the worktree path
   explicitly, because a bare `graphify update` rebuilds whichever project the CWD
@@ -426,8 +428,8 @@ on first run in a project that still tracks it, so the migration is automatic.
   accident, while a **tracked** one is left tracked and visible (no exclude, no
   `skip-worktree`, and an earlier run that hid it is healed) — a repo that commits
   its graph so every checkout and CI runner shares one is making a deliberate
-  choice. `./test-graph-tracking.sh` is the check.
-  `install-deps.sh` is its sibling on the same two creation sites (same
+  choice. `./test-graph-tracking.ts` is the check.
+  `install-deps.ts` is its sibling on the same two creation sites (same
   best-effort contract, skippable with `SPECKIT_SKIP_INSTALL=1`): a linked
   worktree gets the tracked files and nothing else, so six autopilot runs in
   three days each rediscovered the empty `node_modules` **mid-implement**,
@@ -452,10 +454,10 @@ on first run in a project that still tracks it, so the migration is automatic.
   checkout's path is likewise read whole out of `git worktree list --porcelain`
   rather than as an awk field: split on the space, `~/My Code/repo` resolved to
   `~/My` and every install was silently skipped for that repo.
-  `./test-worktree-deps.sh` is the check.
+  `./test-worktree-deps.ts` is the check.
   **`/speckit-git-clean` never re-derives its own safety check.** Every
   destructive step — the `--force` reset, the issue close, the worktree removal,
-  the `branch -D` — sits behind `verify-landed.sh <branch>`, and a non-zero exit
+  the `branch -D` — sits behind `verify-landed.ts <branch>`, and a non-zero exit
   refuses unless `--force` is passed. It exists because this repo squash-merges
   and a squash breaks ancestry: `git branch -d`, `git branch --merged` and
   `git merge-base --is-ancestor` all report "not merged" for work that is safely
@@ -479,12 +481,12 @@ on first run in a project that still tracks it, so the migration is automatic.
   feature against a base that predates its own merge and forces the operator onto
   `--force`. **`UNKNOWN` is a refusal, never a pass**: an unresolvable base or
   an unknown branch exits 2 and the branch stays — and so is an *unrunnable*
-  check. `clean.sh` fails closed rather than skipping: a detached HEAD (no branch
+  check. `clean.ts` fails closed rather than skipping: a detached HEAD (no branch
   name) is verified by its commit sha, and no resolvable HEAD or a missing /
-  non-executable `verify-landed.sh` refuses unless `--force`. A condition that
+  non-executable `verify-landed.ts` refuses unless `--force`. A condition that
   silently skips on those turns exactly the unverifiable cases into an unverified
-  delete. `./test-verify-landed.sh` is the check.
-  `create-new-feature.sh --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.sh` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`), and **`scrub-commit-exclude.sh` is the single handler for them** — it unstages those paths, restores tracked edits to HEAD, drops untracked output, and reports every line it discarded. The untracked list is re-read **after** the unstage, never before: `git restore --staged` turns a staged *addition* into an untracked file, so the one reading taken up front is stale in exactly the case this exists for — a freshly generated dated snapshot swept up by the flow's own `git add -A` — and the scrub reported success while leaving `?? graphify-out/` for the next `git add` to commit. `create-pr.sh` and `clean.sh` call it, since those are where stray output could reach a branch (issue #62). `auto-commit.sh` does **not**: scrubbing at every phase boundary discarded each graph rebuild before the next phase could use it; it only holds the paths out of its commit with a `:(exclude)` pathspec and unstages any already staged (issue #109). One handler also replaces the six improvisations each phase had for a background graph rebuild dirtying the tree on its own, which blocked the squash, the pull, and the cleanup step in three different ways; a rebuild **in flight** is waited for on a bounded timeout rather than raced, and `--require-clean` exits 2 when anything outside the excluded paths is dirty, since that is real work and the caller should still refuse (issue #55). `create-pr.sh` additionally resets them to the base before opening the PR: the working tree is the handler's job, but a divergence already **committed** on the branch is invisible to it. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. `./test-commit-exclude.sh` is the check. The extension ships **bash only** (see *No PowerShell* above) — the twin was deleted rather than taught the same rules, since a second copy of a handler whose whole point is being the single one is a second place for it to drift. Empty by default (issue #22)
+  delete. `./test-verify-landed.ts` is the check.
+  `create-new-feature.ts --source-issue N` binds a worktree to an **already existing** issue: it skips `gh issue create`, numbers from `N` unless `GIT_BRANCH_NAME`/`--number`/`--timestamp` fixes the name, writes the `source_issue` linkage into `.specify/feature.json` itself, and leaves the pre-existing issue title alone (only stubs it created get the `NNN: ` prefix). Without it, `GIT_BRANCH_NAME` alone leaves the worktree unlinked and every such caller had to post-patch `feature.json` in a second step (issue #44). `/speckit-git-pr --draft` is the human-review handoff mode: it passes `--draft` to `gh pr create` directly (no create-then-`gh pr ready --undo`) **and** skips the `/speckit-archive-feature` pre-step, so the tracking issue stays open and the spec stays unarchived until a human merges — autopilot's Step 9 uses it (issue #28). Every PR it opens is titled `#N: <spec H1>` — a prefix, never a trailing `(#N)`, since GitHub appends `(#<pr>)` itself on a squash merge and a title with both reads as two PR numbers; the squash commit subject uses the same string. It also inherits the tracking issue's **labels** (`pr_copy_labels`, default on) and carries an **agent-session footer** (`pr_session_footer`, default on) — the `claude --resume` id, the git author, and the claude.ai link. Both are read by `create-pr.ts` from `gh`, `git config`, and `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_BRIDGE_SESSION_ID` in the environment — **never passed in from the agent prompt**, because a model reporting its own session id hallucinates it and a wrong resume id is worse than none. Labels go on with `gh pr edit` *after* the PR exists, not `gh pr create --label`, which fails the whole create on one unknown label; `autopilot:*` is filtered out as run-state. `commit_exclude:` in `git-config.yml` lists repo-tracked generated artifacts whose canonical copy CI rebuilds on the default branch (`graphify-out/`), and **`scrub-commit-exclude.ts` is the single handler for them** — it unstages those paths, restores tracked edits to HEAD, drops untracked output, and reports every line it discarded. The untracked list is re-read **after** the unstage, never before: `git restore --staged` turns a staged *addition* into an untracked file, so the one reading taken up front is stale in exactly the case this exists for — a freshly generated dated snapshot swept up by the flow's own `git add -A` — and the scrub reported success while leaving `?? graphify-out/` for the next `git add` to commit. `create-pr.ts` and `clean.ts` call it, since those are where stray output could reach a branch (issue #62). `auto-commit.ts` does **not**: scrubbing at every phase boundary discarded each graph rebuild before the next phase could use it; it only holds the paths out of its commit with a `:(exclude)` pathspec and unstages any already staged (issue #109). One handler also replaces the six improvisations each phase had for a background graph rebuild dirtying the tree on its own, which blocked the squash, the pull, and the cleanup step in three different ways; a rebuild **in flight** is waited for on a bounded timeout rather than raced, and `--require-clean` exits 2 when anything outside the excluded paths is dirty, since that is real work and the caller should still refuse (issue #55). `create-pr.ts` additionally resets them to the base before opening the PR: the working tree is the handler's job, but a divergence already **committed** on the branch is invisible to it. The reset removes the path from the index *before* restoring the base's copy, because `git checkout <base> -- <dir>` leaves branch-added files behind and a dated snapshot dir is entirely branch-added. `./test-commit-exclude.ts` is the check. The extension ships **one implementation only** (see *No PowerShell* above) — the twin was deleted rather than taught the same rules, since a second copy of a handler whose whole point is being the single one is a second place for it to drift. Empty by default (issue #22)
 - `progress` — companion to the `progress-report` preset: `before_tasks`/`before_implement` lifecycle hooks that mark those two phases active on the dashboard card. Exists because presets can't declare hooks and the preset's `wrap` is clobbered whenever another preset **replaces** the same command body; a hook fires regardless. Since #25 the `before_implement` half is belt-and-braces — `/speckit-implement` now composes properly — but `explicit-task-dependencies` still **replaces** `speckit.tasks`, so the `before_tasks` hook remains the only thing covering that phase. Owns no writer — resolves the preset's `progress_report.ts` and no-ops if absent. Install alongside the preset.
 - `review` — multi-agent code review, **one engine for every scope**: `/speckit-review-run`
   reviews the feature branch (Mode A), the working directory (Mode B), or a GitHub PR
@@ -517,7 +519,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   subagent inherits the session cwd — regularly the main checkout on `main`, not the
   feature worktree — so a reviewer once produced confident findings about an unrelated
   working tree, and a review of the wrong tree reads exactly like a review that passed
-  (issue #52). `detect-changed-files.sh` therefore emits `repo_root` (absolute) and
+  (issue #52). `detect-changed-files.ts` therefore emits `repo_root` (absolute) and
   `diff_base` (the merge-base, empty in Mode B) alongside the file list, and
   step 6a of `run.md` requires both verbatim in every reviewer prompt, with a
   `SCOPE ERROR:` refusal — not a review of whatever was lying around — when the branch
@@ -533,14 +535,14 @@ on first run in a project that still tracks it, so the migration is automatic.
   reviews the committed half of the change and calls it a pass. The PowerShell twin
   was deleted rather than kept in sync: nothing here runs on Windows, and a second
   copy of this logic is a second place for it to drift.
-  `./test-review-scope.sh` is the check
+  `./test-review-scope.ts` is the check
 - `stale-tasks-guard` — `before_implement` lifecycle hook that halts `/speckit-implement` when `spec.md` was modified more recently than `tasks.md` (the signal that a late `/speckit-clarify`/`/speckit-specify` edit invalidated the task plan), directing the operator to re-run `/speckit-tasks`; `--force` bypasses with a logged acknowledgement. Shipped as an extension rather than a preset wrap/replace so it fires regardless of which preset owns the `/speckit-implement` command body.
 
 **Presets**
 - `claude-ask-questions` — interactive clarify/checklist for Claude
 - `explicit-task-dependencies` — `tasks-template` with explicit dependency edges + Execution Wave DAG; overrides `/speckit-implement` to fan each wave's `[P]` tasks out to subagents in parallel
 - `functional-constitution` — `/speckit-constitution` **wrapper** that injects and normalizes a mandatory functional-programming governance section. Stacks with `parse-dont-validate`'s constitution layer: both match their section by title (not roman numeral) and renumber all principle sections sequentially, so neither clobbers the other (issue #37)
-- `spec-minimal` — one job: artifact minimalism. Wraps `/speckit-specify` to strip `## Assumptions`, `### Key Entities`, and `## Success Criteria` from `spec.md`; wraps `/speckit-plan` to hold the feature tree to `spec.md`, `plan.md`, `tasks.md`, `checklists/`, and optional `quickstart.md`/`research.md` — only `data-model.md` and `contracts/` are forbidden. `checklists/requirements.md` is written by core's own `/speckit-specify` and `research.md` by the stacked `library-research` preset, so forbidding either made the enforcer delete a file another shipped item had just written; the allow-list is `ALLOWED` in `enforce-minimal-tree.sh` and this line has been wrong often enough to get the same bug filed three times (#27, #31, #46). Enforced by a mandatory prompt rule plus the self-healing `scripts/bash/enforce-minimal-tree.sh`, which folds any forbidden artifact into `plan.md` under a sentinel block and deletes it; unknown top-level entries only warn, so stacking is safe
+- `spec-minimal` — one job: artifact minimalism. Wraps `/speckit-specify` to strip `## Assumptions`, `### Key Entities`, and `## Success Criteria` from `spec.md`; wraps `/speckit-plan` to hold the feature tree to `spec.md`, `plan.md`, `tasks.md`, `checklists/`, and optional `quickstart.md`/`research.md` — only `data-model.md` and `contracts/` are forbidden. `checklists/requirements.md` is written by core's own `/speckit-specify` and `research.md` by the stacked `library-research` preset, so forbidding either made the enforcer delete a file another shipped item had just written; the allow-list is `ALLOWED` in `enforce-minimal-tree.ts` and this line has been wrong often enough to get the same bug filed three times (#27, #31, #46). Enforced by a mandatory prompt rule plus the self-healing `scripts/ts/enforce-minimal-tree.ts`, which folds any forbidden artifact into `plan.md` under a sentinel block and deletes it; unknown top-level entries only warn, so stacking is safe
 - `diff-minimal` — sibling to `spec-minimal`, and the distinction is the whole
   point: that one makes the **spec** shorter, this one makes the **change**
   smaller. A spec that faithfully restates an issue's seven-file wish list yields
@@ -554,10 +556,10 @@ on first run in a project that still tracks it, so the migration is automatic.
   the tracking issue for free because `/speckit-git-issue` renders whatever
   sections `spec.md` contains, and `## Scope discipline`, whose
   `**MUST NOT touch:**` backticked-glob list is the machine-checkable half.
-  `check-scope-sections.sh` asserts both exist and are populated after specify —
+  `check-scope-sections.ts` asserts both exist and are populated after specify —
   `None.` is an accepted answer for either, since a spec with no corrections
   should say so rather than invent one — and the `/speckit-plan` wrap runs
-  `check-plan-scope.sh`, which fails with `file:line` when `plan.md`/`tasks.md`
+  `check-plan-scope.ts`, which fails with `file:line` when `plan.md`/`tasks.md`
   plan work in a forbidden path. It reads the **artifacts, not the diff**: at
   plan time there is no diff, and the plan is the cheap moment to catch it.
   Two exemptions keep it from crying wolf (a checker that does gets disabled
@@ -588,13 +590,13 @@ on first run in a project that still tracks it, so the migration is automatic.
   `## Actions & Buttons` table (screen, label, `button`/`link`, primary/secondary/
   tertiary, destructive safeguard) or an explicit `None — no user-facing UI.`; the
   plan gets `## Button System` with five populated markers (Component, Color roles,
-  States, Touch targets, Placement). `check-buttons.sh spec|plan` is the gate and
+  States, Touch targets, Placement). `check-buttons.ts spec|plan` is the gate and
   checks only what is mechanical: at most one primary per screen, links take no
   role, 1–3 word non-generic button labels, destructive labels name their object and
   carry a confirm/type/undo safeguard, no touch target under 44×44. Jargon,
   "match the moment", and placement quality stay prompt-only, because a checker
   that guesses at prose cries wolf. A screen with buttons and no primary is a
-  note, not a failure: a toolbar has none. `selftest-button-design.sh` is the check
+  note, not a failure: a toolbar has none. `selftest-button-design.ts` is the check
 - `tdd` — `wrap` layer on `speckit.implement` that runs every behaviour-changing
   task through Red-Green-Refactor: list the scenarios, then per scenario write one
   test, run the whole suite and see it fail **for the expected reason** (a syntax
@@ -621,8 +623,8 @@ on first run in a project that still tracks it, so the migration is automatic.
   the environment only. The SDK is installed by `post-install.ts` into
   `~/.cache/speckit-squads/tdd-jev`, never into `.specify/` (consumers commit
   it) or the project's dependencies. The whole preset is TypeScript on bun, and
-  `install.sh` runs a `scripts/ts/post-install.ts` the same way it runs a
-  `scripts/bash/post-install.sh`. `selftest-tdd.ts` is the check
+  `install.ts` runs a `scripts/ts/post-install.ts` the same way it runs a
+  `scripts/ts/post-install.ts`. `selftest-tdd.ts` is the check
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
   (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the
@@ -632,11 +634,11 @@ on first run in a project that still tracks it, so the migration is automatic.
   rung-1 item is cut and a rung-2–6 item is rewritten in `plan.md`, not merely
   noted. The record is a mandatory `## Ladder` table (`Item | Kind | Rung | Reason`)
   or `None — extends existing code only.`; a new dependency (rung 7) needs a
-  `**Dependency justification:**` line. `check-ladder.sh` checks only the mechanical
+  `**Dependency justification:**` line. `check-ladder.ts` checks only the mechanical
   half. **Priority 8**, so it wraps outside `parse-dont-validate` (9) and every
   default-10 plan layer and judges what they wrote; sharing 8 with
   `implement-prelude-skills` is harmless since that one targets implement only. The
-  ladder is embedded, so the plugin is optional. `selftest-ponytail-plan.sh` is the
+  ladder is embedded, so the plugin is optional. `selftest-ponytail-plan.ts` is the
   check
 - `portfolio-audit` — portfolio-wide `/speckit-analyze` override
 - `worktree-isolation` — forces `/speckit-implement` to run inside the feature worktree
@@ -666,7 +668,7 @@ on first run in a project that still tracks it, so the migration is automatic.
   is an error rather than a silent skip. It also resolves `typescript` from each
   scanned file's own directory before the cwd, so a monorepo package with its own
   `node_modules` scans while the driver stays anchored at the repo root for git
-  paths — no `NODE_PATH` bridging. `./test-pdv-changeset.sh`
+  paths — no `NODE_PATH` bridging. `./test-pdv-changeset.ts`
   is the check
 - `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
 
@@ -675,20 +677,20 @@ on first run in a project that still tracks it, so the migration is automatic.
 ## When you add a new extension or preset
 
 1. Drop the new directory under `extensions/<id>/` or `presets/<id>/` with a valid manifest. The install/uninstall scripts will pick it up automatically — do **not** edit them.
-1a. **Declare every script under `provides.scripts:`** with `file:` and, when one command owns it, `command:`. This is not decoration — `check-cli-usage.sh` fails the install when a command file references a script that is undeclared or missing, and `scripts/gen-agent-index.ts` builds the consumer's command→script table from these entries. An undeclared script is invisible to agents working in a consumer project.
+1a. **Declare every script under `provides.scripts:`** with `file:` and, when one command owns it, `command:`. This is not decoration — `check-cli-usage.ts` fails the install when a command file references a script that is undeclared or missing, and `scripts/gen-agent-index.ts` builds the consumer's command→script table from these entries. An undeclared script is invisible to agents working in a consumer project.
 1b. If the item needs harness-level wiring (a `.claude/settings.json` hook, a
-    `CLAUDE.md` rule), ship it as `scripts/bash/post-install.sh` plus a
-    `scripts/bash/pre-uninstall.sh` that reverses it exactly. Declare both under
+    `CLAUDE.md` rule), ship it as `scripts/ts/post-install.ts` plus a
+    `scripts/ts/pre-uninstall.ts` that reverses it exactly. Declare both under
     `provides.scripts:`.
 2. Update the **Currently shipped** list above with one bullet: `` `<id>` — one-line description ``.
 3. Update the matching list in `README.md` so the user-facing doc stays in sync.
-4. If a consumer project should pick it up, run `./install.sh --force <project>` from there.
+4. If a consumer project should pick it up, run `./install.ts --force <project>` from there.
 
 ## When you remove an extension or preset
 
 1. `rm -rf extensions/<id>` or `presets/<id>`.
 2. Delete its bullet from **Currently shipped** above and from `README.md`.
-3. Run `./uninstall.sh <project>` in any consumer that still has it registered, or `specify {extension,preset} remove <id>` ad-hoc.
+3. Run `./uninstall.ts <project>` in any consumer that still has it registered, or `specify {extension,preset} remove <id>` ad-hoc.
 
 ## Manifest references
 

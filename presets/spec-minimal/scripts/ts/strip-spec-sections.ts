@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 // spec-minimal preset: strip-spec-sections.ts
-// Helper for scripts/bash/strip-spec-sections.sh, which validates the argument
-// and then runs this with bun. Removes the Assumptions, Key Entities, and
-// Success Criteria sections from a spec.md, in place. Idempotent.
+// Removes the Assumptions, Key Entities, and Success Criteria sections from a
+// spec.md, in place. Idempotent. Exit 2 on bad usage.
 //
 // Section boundary rule: a section starts at its heading line and ends at the
 // next heading of the same-or-shallower level, or EOF.
@@ -13,7 +12,7 @@
 //
 // Usage: strip-spec-sections.ts <spec.md>
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 
 // Python's str whitespace set, so heading detection matches what the original
 // python helper accepted (JS `\s` differs at the edges: U+FEFF, \x1c-\x1f).
@@ -50,8 +49,14 @@ function splitLines(text: string): string[] {
 }
 
 const arg = process.argv[2];
-if (arg === undefined) {
+if (!arg) {
   console.error("error: spec.md path required");
+  process.exit(2);
+}
+let isFile = false;
+try { isFile = statSync(arg).isFile(); } catch {}
+if (!isFile) {
+  console.error(`error: not a file: ${arg}`);
   process.exit(2);
 }
 const path = pyPath(arg);

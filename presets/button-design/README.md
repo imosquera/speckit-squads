@@ -5,8 +5,8 @@ cheapest moments to get them right: the spec and the plan.
 
 | Layer | Adds | Checked by |
 |---|---|---|
-| `speckit.specify` wrap | `## Actions & Buttons`: a table of every action per screen (label, button vs link, primary/secondary/tertiary, destructive safeguard), or `None — no user-facing UI.` | `check-buttons.sh spec <spec.md>` |
-| `speckit.plan` wrap | `## Button System`: the component to reuse, color roles, states and contrast, touch targets, placement | `check-buttons.sh plan <feature-dir>` |
+| `speckit.specify` wrap | `## Actions & Buttons`: a table of every action per screen (label, button vs link, primary/secondary/tertiary, destructive safeguard), or `None — no user-facing UI.` | `check-buttons.ts spec <spec.md>` |
+| `speckit.plan` wrap | `## Button System`: the component to reuse, color roles, states and contrast, touch targets, placement | `check-buttons.ts plan <feature-dir>` |
 
 ## What is enforced vs. prompted
 
@@ -38,5 +38,5 @@ same hierarchy as the table.
 ## Test
 
 ```bash
-./presets/button-design/scripts/bash/selftest-button-design.sh
+bun presets/button-design/scripts/ts/selftest-button-design.ts
 ```

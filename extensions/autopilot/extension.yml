@@ -18,33 +18,33 @@ requires:
 
 provides:
   scripts:
-    - name: autopilot-schedule.sh
-      file: scripts/bash/autopilot-schedule.sh
+    - name: autopilot-schedule.ts
+      file: scripts/ts/autopilot-schedule.ts
       executable: true
-    - name: autopilot-run.sh
-      file: scripts/bash/autopilot-run.sh
+    - name: autopilot-run.ts
+      file: scripts/ts/autopilot-run.ts
       executable: true
     - name: stream-decode.ts
       file: scripts/ts/stream-decode.ts
       executable: true
-    - name: bind-feature-issue.sh
-      file: scripts/bash/bind-feature-issue.sh
+    - name: bind-feature-issue.ts
+      file: scripts/ts/bind-feature-issue.ts
       executable: true
       command: speckit.autopilot.run
-    - name: fetch-open-issues.sh
-      file: scripts/bash/fetch-open-issues.sh
+    - name: fetch-open-issues.ts
+      file: scripts/ts/fetch-open-issues.ts
       executable: true
       command: speckit.autopilot.run
     - name: preflight-issues.ts
       file: scripts/ts/preflight-issues.ts
       executable: true
       command: speckit.autopilot.run
-    - name: park-issue.sh
-      file: scripts/bash/park-issue.sh
+    - name: park-issue.ts
+      file: scripts/ts/park-issue.ts
       executable: true
       command: speckit.autopilot.run
-    - name: check-target-repo.sh
-      file: scripts/bash/check-target-repo.sh
+    - name: check-target-repo.ts
+      file: scripts/ts/check-target-repo.ts
       executable: true
       command: speckit.autopilot.run
     - name: resolve-path.ts

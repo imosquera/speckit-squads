@@ -3,9 +3,9 @@
  * Generate the agent-facing script index INTO a consumer project.
  *
  * The installed layout does not match this repo's layout, and command names do not
- * predict script names (`/speckit-git-feature` runs `create-new-feature.sh`). An agent
+ * predict script names (`/speckit-git-feature` runs `create-new-feature.ts`). An agent
  * working in a consumer project cannot see this repo's CLAUDE.md, so the mapping has to
- * travel with the install. Writes two files, both regenerated on every `install.sh --force`:
+ * travel with the install. Writes two files, both regenerated on every `install.ts --force`:
  *
  *   <project>/.specify/extensions/AGENTS.md    command -> script table + layout rules
  *   <project>/.specify/scripts/bash/README.md  breadcrumb in the flat core tree
@@ -85,7 +85,7 @@ function main(): void {
 # Extension & preset scripts — where they actually live
 
 **Do not guess a script path.** Command names do not predict script names:
-\`/speckit-git-feature\` runs \`create-new-feature.sh\`, not \`feature.sh\`.
+\`/speckit-git-feature\` runs \`create-new-feature.ts\`, not \`feature.ts\`.
 
 ## Layout
 
@@ -99,8 +99,8 @@ There are two script trees, and they never merge:
 
 \`.specify/scripts/bash/<extension-id>/\` does not exist and never will — \`specify\`
 copies each extension whole into \`.specify/extensions/<id>/\` and never merges its
-scripts into the core tree. Note also that \`create-new-feature.sh\` exists in *both*
-trees as two different files.
+scripts into the core tree. Note also that \`create-new-feature\` exists in *both*
+trees as two different scripts: core \`.sh\` and the git extension's \`.ts\`.
 
 ## Command → script
 
@@ -114,7 +114,7 @@ Sourced or shared by the above; no single command owns them.
 
 ${lib}
 
-Regenerate with \`./install.sh --force <project>\` from the speckit-squads repo.
+Regenerate with \`./install.ts --force <project>\` from the speckit-squads repo.
 `;
 
   const breadcrumb = `${GENERATED}
@@ -123,7 +123,7 @@ Regenerate with \`./install.sh --force <project>\` from the speckit-squads repo.
 Extension and preset scripts are **not** here and never will be. There is no
 \`<extension-id>/\` subdirectory in this tree.
 
-Look in \`.specify/extensions/<id>/scripts/bash/\` or \`.specify/presets/<id>/scripts/bash/\`.
+Look in \`.specify/extensions/<id>/scripts/ts/\` or \`.specify/presets/<id>/scripts/ts/\`.
 The full command → script table is at \`.specify/extensions/AGENTS.md\`.
 `;
 

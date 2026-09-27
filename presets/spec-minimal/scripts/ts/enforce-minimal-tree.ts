@@ -1,17 +1,24 @@
 #!/usr/bin/env bun
 // spec-minimal preset: enforce-minimal-tree.ts
-// Helper for scripts/bash/enforce-minimal-tree.sh, which validates the argument
-// and then runs this with bun. The wrapper's header documents the mechanism,
-// the five SAFETY INVARIANTS, and the exit codes; this file implements them and
-// must keep every message and exit code identical to what that header states.
+// The single, self-healing enforcer for spec-minimal; the last step of the
+// wrapped /speckit-plan.
 //
 // ALLOWED top-level entries:  spec.md, plan.md, tasks.md, quickstart.md,
 //                             research.md, checklists (dir)
 // FORBIDDEN (any form):       data-model.md, contracts (file or dir)
+// Anything else only warns (stacked presets write here); dotfiles are ignored.
 //
-// Forbidden artifacts are folded into plan.md inside idempotent sentinel blocks
-// (written atomically, BEFORE anything is removed), then removed. Unknown
-// entries only warn. Dotfiles are ignored.
+// Safety invariants (this script deletes files):
+// 1. Write-before-remove: plan.md is rebuilt in memory and written atomically
+//    (temp + fsync + rename, mode preserved) before anything is removed.
+// 2. Inlined content has sentinel prefixes escaped, so blocks parse unambiguously.
+// 3. Unbalanced sentinels in plan.md: write nothing, remove nothing, exit 1.
+// 4. Symlinks are never followed; only the link is removed.
+// 5. A missing plan.md is created, never an excuse to leave an artifact behind.
+//
+// Exit: 0 tree clean (may have healed/warned); 1 HEALING IMPOSSIBLE (nothing
+// changed) or PARTIALLY HEALED (inlined, but an artifact is still on disk) --
+// stderr always says which; 2 bad usage.
 //
 // Usage: enforce-minimal-tree.ts <feature-dir>
 
@@ -197,8 +204,12 @@ function isDir(p: string): boolean {
 // ---------------------------------------------------------------- state
 
 const argDir = process.argv[2];
-if (argDir === undefined) {
+if (!argDir) {
   console.error("error: feature directory argument required");
+  process.exit(2);
+}
+if (!isDir(argDir)) {
+  console.error(`error: not a directory: ${argDir}`);
   process.exit(2);
 }
 const featureDir = pyPath(argDir);

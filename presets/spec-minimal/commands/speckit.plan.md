@@ -47,7 +47,7 @@ After the entire core flow above has completed, and before reporting success, ru
 the enforcer as the final step:
 
 ```bash
-.specify/presets/spec-minimal/scripts/bash/enforce-minimal-tree.sh "$SPECIFY_FEATURE_DIRECTORY"
+bun .specify/presets/spec-minimal/scripts/ts/enforce-minimal-tree.ts "$SPECIFY_FEATURE_DIRECTORY"
 ```
 
 The enforcer is self-healing: if a forbidden artifact is on disk it folds the

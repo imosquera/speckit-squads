@@ -91,7 +91,7 @@ function file(name: string, keep: "head" | "tail" = "head"): string {
 // ---------------------------------------------------------------- the SDK
 // Resolved at runtime, never bundled: the project's own copy, then the copy
 // beside this script (the speckit-squads checkout), then the cache the
-// preset's post-install.sh fills. None found is a fallback, not an error.
+// preset's post-install.ts fills. None found is a fallback, not an error.
 async function client(caseName: string): Promise<Client> {
   const fallback: (reason: string) => never = reason =>
     emit({ case: caseName, source: "fallback", decision: null, reason, record: `jev ${caseName}: unavailable (${reason})` }, FALLBACK);

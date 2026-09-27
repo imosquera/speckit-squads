@@ -58,13 +58,13 @@
  *
  * This script only ever *reads*. A confirmed cross-repo delivery still needs the
  * durable `autopilot:blocked` park, and that write belongs to the caller — via the
- * shared `park-issue.sh`, the single writer of the label and sentinel.
+ * shared `park-issue.ts`, the single writer of the label and sentinel.
  *
  * To make that possible for *every* caller, a cross-repo finding is also emitted as
  * machine-readable `DELIVERED: <n> <url> (<state>)` lines after the verdict line.
  * Two callers need them and neither can recover the finding from the verdict prose:
  *
- *   * `autopilot-run.sh` exits on `SKIP:` **before** launching the skill, so when a
+ *   * `autopilot-run.ts` exits on `SKIP:` **before** launching the skill, so when a
  *     delivered issue leaves nothing else eligible the skill — the only component
  *     that used to park — never runs at all. The finding would be rediscovered, with
  *     the same GitHub lookups, on every scheduled tick forever.
@@ -103,7 +103,7 @@
  * STALE downgrades the verdict on exactly one path: an **attended** explicit-issue
  * run, where a human typed the number and is owed resume-or-clean rather than a
  * refusal. The unattended paths — auto-pick, and the explicit path under
- * `SPECKIT_AUTOPILOT_UNATTENDED=1` (exported by `autopilot-run.sh`) — keep the hard
+ * `SPECKIT_AUTOPILOT_UNATTENDED=1` (exported by `autopilot-run.ts`) — keep the hard
  * SKIP, because there guessing is genuinely unsafe and nobody is reading the
  * evidence anyway.
  *
@@ -176,7 +176,7 @@ const PR_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/
 
 // ------------------------------------------------------------ dependencies ---
 // `/speckit-git-issue` splits a full-stack feature into frontend(mock), backend,
-// and wire-up children (`split-issue.sh`). The wire-up child cannot be started
+// and wire-up children (`split-issue.ts`). The wire-up child cannot be started
 // until both siblings land, and says so in its own body:
 //
 //     Blocked by: #43, #44
@@ -187,7 +187,7 @@ const PR_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/
 // fetched — a dependency that is not in it is closed (or not in this repo) and
 // therefore satisfied — so the test costs no `gh` calls at all.
 //
-// The parent of a split needs no rule here: `split-issue.sh` labels it `epic`,
+// The parent of a split needs no rule here: `split-issue.ts` labels it `epic`,
 // which is already in BLOCK.
 const BLOCKED_BY_RE = new RegExp(`^[ \\t>*\\-]*blocked[ _\\-]?by${S}*:?${S}*(.*)$`, "iu");
 const ISSUE_REF_RE = /#(\d+)/g;
@@ -216,7 +216,7 @@ const DELIVERED_STATES = ["MERGED", "OPEN"];
 const MAX_PR_LOOKUPS = 10;
 
 // ---------------------------------------------------------------- ordering ---
-// The backlog arrives oldest-first (`fetch-open-issues.sh` sorts by createdAt),
+// The backlog arrives oldest-first (`fetch-open-issues.ts` sorts by createdAt),
 // but "oldest" is not the same as "most important": a P0 outage filed this
 // morning sat behind a year-old chore, every tick, until a human intervened.
 // Eligible candidates are therefore ordered by (priority, kind, layer, age)
@@ -248,10 +248,10 @@ const BUG_TITLE_RE = new RegExp(`^${S}*(?:\\[[^\\]]*\\]${S}*)?(?:bug|fix|hotfix)
 // Within one priority tier and one kind, the mock-first split's frontend child
 // comes before its backend sibling: the mock freezes the data shape the backend
 // then implements, so building the backend first hands the UI a contract it did
-// not get to choose. This used to fall out of `split-issue.sh`'s creation order
+// not get to choose. This used to fall out of `split-issue.ts`'s creation order
 // via the age tiebreak, which held only while both children kept equal priority,
 // equal kind, and their original relative age — none of which is enforced
-// (issue #56). The labels are the ones `label-issue.sh` writes (`LAYERS`).
+// (issue #56). The labels are the ones `label-issue.ts` writes (`LAYERS`).
 // An issue with no layer label ranks in the middle, level with `backend`, so an
 // unlabelled backlog sorts exactly as it did before.
 const LAYER_RANKS: Record<string, number> = { frontend: 0, backend: 1, integration: 2 };
@@ -439,7 +439,7 @@ let LIVE_WINDOW_SEC = 120 * 60;
 /**
  * True when nobody is reading the output.
  *
- * `autopilot-run.sh` exports `SPECKIT_AUTOPILOT_UNATTENDED=1` before launching
+ * `autopilot-run.ts` exports `SPECKIT_AUTOPILOT_UNATTENDED=1` before launching
  * the session, so the skill's explicit-issue preflight can tell a scheduled
  * tick apart from a human who typed the issue number. There is no other seam:
  * both paths arrive as the same `preflight-issues.ts <file> <N>` call.
@@ -502,7 +502,7 @@ function has_open_pr(n: PyValue): PrAnswer {
     const ref = new RegExp(`#${pyStr(n)}(?!${W})`, "u");
     // Not just a parse error: a payload that is valid JSON but not a list of
     // objects (`{"message": "rate limited"}`, `null`, `[1]`) is not an answer.
-    // `main()` has no top-level handler and `autopilot-run.sh` discards stderr,
+    // `main()` has no top-level handler and `autopilot-run.ts` discards stderr,
     // so an escape here does not answer one issue wrong — it collapses the whole
     // preflight to empty output.
     prs = pyIter(parsed);

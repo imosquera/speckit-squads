@@ -73,5 +73,5 @@ phases' summaries are preserved across rewrites, then emits the exact schema.
 
 ```bash
 specify preset add --dev /path/to/speckit-squads/presets/progress-report
-# or, for the whole repo:  /path/to/speckit-squads/install.sh <project>
+# or, for the whole repo:  /path/to/speckit-squads/install.ts <project>
 ```

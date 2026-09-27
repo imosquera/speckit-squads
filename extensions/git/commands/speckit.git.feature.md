@@ -50,7 +50,7 @@ forgetting to left downstream commands pointed at the previous feature's issue
 
 ```bash
 GIT_BRANCH_NAME="090-automatic-arrival" \
-  .specify/extensions/git/scripts/bash/create-new-feature.sh \
+  bun .specify/extensions/git/scripts/ts/create-new-feature.ts \
     --json --source-issue 90 --short-name "automatic-arrival" "Automatic arrival detection"
 ```
 
@@ -78,7 +78,7 @@ Generate a concise short name (2-4 words) for the branch — this is the **only*
 
 Then run the script exactly once, passing the short name and the feature description:
 
-- **Bash**: `.specify/extensions/git/scripts/bash/create-new-feature.sh --json --short-name "<short-name>" "<feature description>"`
+- **Bash**: `bun .specify/extensions/git/scripts/ts/create-new-feature.ts --json --short-name "<short-name>" "<feature description>"`
 
 Everything deterministic is handled by the script:
 - Detecting whether the working directory is a git repo (warns and skips branch creation if not)

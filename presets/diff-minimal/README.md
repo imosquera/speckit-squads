@@ -48,13 +48,13 @@ Two sections become mandatory in `spec.md`:
 **Scope justification:** <only when the change is inherently wide>
 ```
 
-`check-scope-sections.sh` asserts after the core flow that both headings exist
+`check-scope-sections.ts` asserts after the core flow that both headings exist
 and are populated. `None.` is an accepted answer for either — a spec with no
 corrections should say so, not invent one.
 
 ### `speckit.plan` — the contract
 
-`## Scope discipline` is binding on the plan. `check-plan-scope.sh` parses the
+`## Scope discipline` is binding on the plan. `check-plan-scope.ts` parses the
 `MUST NOT touch:` list out of `spec.md` and scans `plan.md`, `tasks.md`, and any
 `quickstart.md` / `research.md` for work in those paths, failing with `file:line`
 for each hit.

@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 // button-design preset: check-buttons.ts
-// Helper for scripts/bash/check-buttons.sh, which validates the arguments and
-// then runs this with bun. Deterministic half of the button-design rules.
+// Deterministic half of the button-design rules.
 // Read-only: never edits a file.
 //
 //   spec <spec.md>       `## Actions & Buttons` exists and is either `None.` or a
@@ -303,12 +302,17 @@ function checkPlan(fdir: string): Result {
   return [problems, []];
 }
 
-const mode = process.argv[2];
-const targetArg = process.argv[3];
-if ((mode !== "spec" && mode !== "plan") || targetArg === undefined) {
+const mode = process.argv[2] ?? "";
+const targetArg = process.argv[3] ?? "";
+function usage(): never {
   console.error("usage: check-buttons.ts spec <spec.md> | plan <feature-dir>");
   process.exit(2);
 }
+if (mode === "spec") {
+  if (!isFile(targetArg)) { console.error(`error: not a file: ${targetArg}`); usage(); }
+} else if (mode === "plan") {
+  if (!isFile(`${targetArg}/plan.md`)) { console.error(`error: no plan.md in: ${targetArg}`); usage(); }
+} else usage();
 const target = pyPath(targetArg);
 
 let result: Result;

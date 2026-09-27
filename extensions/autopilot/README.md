@@ -6,7 +6,10 @@ Registers two commands:
   (or a given issue number) from backlog to a reviewed **draft PR**, driving the whole
   speckit pipeline unattended — pick → worktree → specify → clarify (auto-answered)
   → plan → tasks → implement → review → draft PR — and posting progress to the issue
-  at every stage.
+  at every stage. It serves both kinds of project: a **web / Node / Python** repo is
+  gated on its typecheck, tests and lint; an **iOS/Swift** repo on `xcodebuild
+  build/test` against an iOS Simulator (or `swift build` / `swift test` for a pure
+  package). Preflight tells them apart (see [Build and test gates](#build-and-test-gates-web-vs-ios---kind-sim-destinationts)).
 - **`/speckit-autopilot-schedule`** — put `/speckit-autopilot-run` on a recurring
   **launchd** timer so the backlog drains itself (default **every 2h**, configurable
   via `--interval-hours N`). Opt-in and macOS-only; also `uninstall`, `status`, and
@@ -131,6 +134,44 @@ BLOCKED: 1 of 2 target(s) not in /Users/iam/Code/lead-drop
 A non-zero exit is a *Durable* stop: park with `park-issue.ts`, naming the repo the
 fix belongs in. There is no claim to release — that is the point of running it here.
 A human moves the issue; autopilot does not guess.
+
+In an iOS repo the output also carries a `KIND: …` line (see below) just before the
+verdict; a web repo's output is unchanged. The verdict is always the last line and
+alone decides the exit code.
+
+## Build and test gates: web vs. iOS (`--kind`, `sim-destination.ts`)
+
+Autopilot's gates build and test the project, unattended, so the skill resolves
+*how* once in its Preflight and reuses it for the whole run:
+
+- **`check-target-repo.ts --kind`** names the repo's iOS target:
+  `KIND: workspace App.xcworkspace` › `KIND: project App.xcodeproj` ›
+  `KIND: package Package.swift` (that preference order; shallowest first; bundles
+  are not descended into, so the `project.xcworkspace` inside every `.xcodeproj`
+  never counts; `.build`, `DerivedData`, `Pods`, `Carthage`, `node_modules` are
+  skipped). Exit 1 with `KIND: none` — the skill then checks for an XcodeGen
+  `project.yml` or Tuist `Project.swift` to generate from, and if there is none it
+  treats the repo as **web / Node / Python** and keeps the typecheck / tests / lint
+  gates. Everything below applies only to an iOS `KIND`.
+- **`sim-destination.ts`** prints an `xcodebuild -destination` —
+  `platform=iOS Simulator,id=<udid>` — from `xcrun simctl list devices available -j`:
+  a booted iPhone if there is one, else an iPhone on the newest installed iOS runtime.
+  `SPECKIT_AUTOPILOT_SIM_DESTINATION` overrides it verbatim. Exit 1 when no iOS
+  runtime is installed or `simctl` is missing (only the Command Line Tools
+  selected): a *Missing capability* stop, because installing a runtime or selecting
+  Xcode is interactive. `--selftest` runs its fixtures.
+
+iOS gates are then `xcodebuild build|test -workspace|-project … -scheme … -destination "$DEST"`
+for an app, or `swift build` / `swift test` for a pure package; a project's own
+documented command (Makefile, fastlane lane, test plan) wins over the generic form.
+**A scheduled run on an iOS repo needs full Xcode selected and at least one iOS
+Simulator runtime installed on the machine** — launchd gives the job no UI, but
+`xcodebuild test` boots the simulator headlessly, so no logged-in Simulator.app is
+required. Signing is never touched: Simulator builds need no team. The fast-path
+"nothing structural" rule and the *Missing capability* stop gain iOS-specific
+entries (SPM/framework deps, model migrations, entitlements and privacy-manifest
+entries; Xcode not selected, no Simulator runtime, license not accepted) that apply
+only to iOS repos.
 
 ## Stale worktree vs. live run (`liveness()`)
 

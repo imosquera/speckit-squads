@@ -44,11 +44,13 @@ function entries(block: string): [string, string | null][] {
   return out;
 }
 
-function collect(repo: string): { owned: Row[]; shared: Row[] } {
+function collect(repo: string, project: string): { owned: Row[]; shared: Row[] } {
   const owned: Row[] = [];
   const shared: Row[] = [];
   for (const [kind, manifest] of KINDS) {
     for (const { path, id } of manifests(repo, kind, manifest)) {
+      // Skip items not installed here (e.g. the web half of an X / X-ios pair in iOS mode).
+      if (!isDir(join(project, ".specify", kind, id))) continue;
       const block = scriptsBlock(readFileSync(path, "utf8"));
       for (const [rel, cmd] of entries(block)) {
         const installed = `.specify/${kind}/${id}/${rel}`;
@@ -76,7 +78,7 @@ function main(): void {
     process.exit(1);
   }
   const [repo, project] = args as [string, string];
-  const { owned, shared } = collect(repo);
+  const { owned, shared } = collect(repo, project);
 
   const rows = owned.map((r) => `| \`/${(r.cmd ?? "").replaceAll(".", "-")}\` | \`${r.installed}\` |`).join("\n");
   const lib = shared.map((r) => `- \`${r.installed}\``).join("\n");

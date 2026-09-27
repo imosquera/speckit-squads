@@ -3,17 +3,23 @@
 // `specify ... add --dev`. --dev COPIES the directory (no symlink), so edits here
 // are not live: re-run with --force after changing anything to refresh the target.
 //
-// Usage: ./install.ts [--force] <project-dir>
+// Presets named `X-ios` replace their base `X` in an iOS project (and are skipped
+// otherwise); see selectPresets() in scripts/manifest.ts. The mode is auto-detected
+// from the project (a *.xcodeproj, *.xcworkspace or Package.swift at the root or one
+// level down) unless --ios / --no-ios forces it.
+//
+// Usage: ./install.ts [--force] [--ios|--no-ios] <project-dir>
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { KINDS, cmp, manifests } from "./scripts/manifest.ts";
+import { KINDS, cmp, detectIos, manifests, presetPriority, selectPresets } from "./scripts/manifest.ts";
 
 const REPO_DIR = import.meta.dir;
 const BUN = process.execPath;
 const ME = basename(process.argv[1] ?? "install.ts");
-const USAGE = `usage: ${ME} [--force|-f] <project-dir>`;
+const USAGE = `usage: ${ME} [--force|-f] [--ios|--no-ios] <project-dir>`;
 
 let force = false;
+let iosFlag: boolean | null = null;
 let projectArg = "";
 for (const arg of process.argv.slice(2)) {
   if (arg === "-h" || arg === "--help") {
@@ -21,6 +27,13 @@ for (const arg of process.argv.slice(2)) {
     process.exit(0);
   } else if (arg === "-f" || arg === "--force") {
     force = true;
+  } else if (arg === "--ios" || arg === "--no-ios") {
+    const v = arg === "--ios";
+    if (iosFlag !== null && iosFlag !== v) {
+      console.error("error: --ios and --no-ios are mutually exclusive");
+      process.exit(2);
+    }
+    iosFlag = v;
   } else if (arg.startsWith("-")) {
     console.error(`error: unknown flag: ${arg}`);
     console.error(USAGE);
@@ -53,6 +66,14 @@ const PROJECT_DIR = resolve(projectArg);
 process.chdir(PROJECT_DIR);
 // ponytail: no "bun on PATH" check — this file already runs under bun.
 
+const marker = iosFlag === null ? detectIos(PROJECT_DIR) : null;
+const IOS = iosFlag ?? marker !== null;
+console.log(
+  `==> mode: ${IOS ? "iOS" : "web"} (${
+    iosFlag !== null ? `forced by ${iosFlag ? "--ios" : "--no-ios"}` : marker ? `detected ${marker}` : "no *.xcodeproj, *.xcworkspace or Package.swift found"
+  })`,
+);
+
 // Pre-flight: CLI verbs, script paths, typecheck.
 if (Bun.spawnSync([BUN, join(REPO_DIR, "check-cli-usage.ts")], { stdio: ["inherit", "inherit", "inherit"] }).exitCode !== 0)
   process.exit(1);
@@ -64,7 +85,8 @@ if (Bun.spawnSync([BUN, join(REPO_DIR, "check-cli-usage.ts")], { stdio: ["inheri
 //   5 worktree-isolation (the cd precedes every write), 7 progress-report,
 //   8 implement-prelude-skills, 9 parse-dont-validate (also orders the
 //   /speckit-constitution pair), 11 tdd, 20 explicit-task-dependencies.
-// Everything else installs at the CLI default of 10.
+// Everything else installs at the CLI default of 10. An `X-ios` preset takes X's
+// number (presetPriority), so tdd-ios is 11 and parse-dont-validate-ios is 9.
 const PRIORITY: Record<string, number> = {
   "worktree-isolation": 5,
   "progress-report": 7,
@@ -119,17 +141,46 @@ function installOne(kind: string, name: string, src: string, priority?: number):
   return false;
 }
 
+/**
+ * --force only: de-register the other member of a web/iOS pair if it is installed,
+ * so switching modes never leaves both wrappers of one command in place.
+ */
+function removeCounterpart(other: string): boolean {
+  if (!isDir(join(".specify/presets", other))) return true;
+  const rm = specify(["preset", "remove", other]);
+  if (rm.rc === 0 || /not installed|not found|unknown/i.test(rm.out)) {
+    console.log(`  removed ${other} (other mode's counterpart)`);
+    return true;
+  }
+  console.log(`  FAILED removing ${other}:`);
+  indentErr(rm.out);
+  return false;
+}
+
 let exit = 0;
+const skipped = new Set<string>(); // presets of the other mode: no post-install either
 for (const [kind, manifest] of KINDS) {
-  for (const { id } of manifests(REPO_DIR, kind, manifest)) {
-    const src = join(REPO_DIR, kind, id) + "/";
-    if (kind === "extensions") {
+  const ids = manifests(REPO_DIR, kind, manifest).map((m) => m.id);
+  if (kind === "extensions") {
+    for (const id of ids) {
       console.log(`==> extension: ${id}`);
-      if (!installOne("extension", id, src)) exit = 1;
-    } else {
-      const prio = PRIORITY[id] ?? 10;
-      console.log(`==> preset: ${id} (priority ${prio})`);
-      if (!installOne("preset", id, src, prio)) exit = 1;
+      if (!installOne("extension", id, join(REPO_DIR, kind, id) + "/")) exit = 1;
+    }
+    continue;
+  }
+  const { install, skip, counterpart } = selectPresets(ids, IOS);
+  for (const id of skip) skipped.add(id);
+  if (skip.length) console.log(`==> skipping ${IOS ? "web" : "iOS"} presets: ${skip.join(", ")}`);
+  for (const id of install) {
+    const prio = presetPriority(PRIORITY, id);
+    console.log(`==> preset: ${id} (priority ${prio})`);
+    if (!installOne("preset", id, join(REPO_DIR, kind, id) + "/", prio)) exit = 1;
+    const other = counterpart[id];
+    if (other === undefined) continue;
+    if (force) {
+      if (!removeCounterpart(other)) exit = 1;
+    } else if (isDir(join(".specify/presets", other))) {
+      console.log(`  warning: ${other} (other mode) is also installed; re-run with --force to remove it`);
     }
   }
 }
@@ -141,7 +192,7 @@ for (const [kind] of KINDS) {
   const ids = existsSync(dir) ? readdirSync(dir).filter((n) => !n.startsWith(".") && isDir(join(dir, n))).sort(cmp) : [];
   for (const id of ids) {
     const post = join(dir, id, "scripts/ts/post-install.ts");
-    if (!existsSync(post)) continue;
+    if (!existsSync(post) || (kind === "presets" && skipped.has(id))) continue;
     console.log(`==> post-install: ${id}`);
     if (Bun.spawnSync([BUN, post, PROJECT_DIR], { stdio: ["inherit", "inherit", "inherit"] }).exitCode !== 0) exit = 1;
   }

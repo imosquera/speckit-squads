@@ -592,11 +592,24 @@ on first run in a project that still tracks it, so the migration is automatic.
   a story's test tasks are the Red wave, confirmed failing before the
   implementation wave starts. **Priority 11**, inside `parse-dont-validate` (9),
   outside `explicit-task-dependencies` (20). Gated on a green suite and
-  `check-tests-accompany.sh` (exit 1 when production source changed since the
+  `check-tests-accompany.ts` (exit 1 when production source changed since the
   merge-base with no test file changed; 4 on an empty change set, which is not a
   pass). Red-before-green itself is recorded per scenario in the report, not
   checked mechanically. That same release made tests mandatory in
-  `explicit-task-dependencies`' tasks template. `selftest-tdd.sh` is the check
+  `explicit-task-dependencies`' tasks template.
+  **Jev assist (1.1.0, issue #116)** is optional: `jev-judge.ts` answers the
+  four bounded judgment calls (Red reason, baseline regression, scenario
+  coverage, test exemption) with TypeSafe's Jev through `@typesafe-ai/sdk`.
+  Exit 0 acts on the decision; exit 3 (no `TYPESAFE_API_KEY`, no SDK, any API
+  error, confidence under 0.85, `none_of_these`) means decide exactly as before
+  Jev, and every call's `record` goes into the per-scenario record.
+  `red-reason` runs in **shadow mode** until `TDD_JEV_AUTOMATE_RED=1`: it may
+  only decide after `measure` has replayed past Red records. The key comes from
+  the environment only. The SDK is installed by `post-install.ts` into
+  `~/.cache/speckit-squads/tdd-jev`, never into `.specify/` (consumers commit
+  it) or the project's dependencies. The whole preset is TypeScript on bun, and
+  `install.sh` runs a `scripts/ts/post-install.ts` the same way it runs a
+  `scripts/bash/post-install.sh`. `selftest-tdd.ts` is the check
 - `library-research` — `/speckit-plan` wrapper (chainable via `{CORE_TEMPLATE}`) that, after the plan is written, uses live web search to check whether existing libraries can replace hand-rolled build-it-yourself surface area (auth, parsing, queues, retries, etc.); writes findings + a recommendation per unknown to `research.md` and revises `plan.md` in place when a library is a clear win. No-ops when the plan has no such surface area.
 - `ponytail-plan` — `wrap` layer on `speckit.plan` that applies the ponytail ladder
   (YAGNI → reuse → stdlib → native → installed dep → one line → new code) at the

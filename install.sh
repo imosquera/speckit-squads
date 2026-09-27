@@ -199,13 +199,24 @@ done
 # A preset/extension can register Spec Kit commands, scripts, and lifecycle hooks,
 # but nothing in its manifest reaches the Claude Code harness (.claude/settings.json)
 # or the project's CLAUDE.md. Any item that needs that ships a
-# `scripts/bash/post-install.sh <project-dir>`, run here after registration.
-# Auto-discovered — there is no list to maintain.
+# `scripts/bash/post-install.sh <project-dir>` or a TypeScript
+# `scripts/ts/post-install.ts <project-dir>` (run with bun), run here after
+# registration. Auto-discovered — there is no list to maintain.
 for item_dir in "$REPO_DIR"/extensions/*/ "$REPO_DIR"/presets/*/; do
   post="$item_dir/scripts/bash/post-install.sh"
-  [[ -x "$post" ]] || continue
-  echo "==> post-install: $(basename "$item_dir")"
-  "$post" "$PROJECT_DIR" || EXIT=1
+  post_ts="$item_dir/scripts/ts/post-install.ts"
+  if [[ -x "$post" ]]; then
+    echo "==> post-install: $(basename "$item_dir")"
+    "$post" "$PROJECT_DIR" || EXIT=1
+  elif [[ -f "$post_ts" ]]; then
+    echo "==> post-install: $(basename "$item_dir")"
+    if command -v bun >/dev/null 2>&1; then
+      bun "$post_ts" "$PROJECT_DIR" || EXIT=1
+    else
+      echo "  bun not on PATH — skipped $post_ts" >&2
+      EXIT=1
+    fi
+  fi
 done
 
 # The installed layout does not match this repo's, and command names do not predict

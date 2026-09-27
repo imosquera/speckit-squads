@@ -22,7 +22,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 Read `plan.md` and the project's manifests (`package.json`, `pyproject.toml`,
 `go.mod`, `Cargo.toml`, `Makefile`, …) and settle on the **one command that runs
 the whole suite**. Run it once now and record the baseline: how many tests, and
-which ones (if any) already fail. A test failing at baseline is not yours to fix
+which ones (if any) already fail. Save the full output to a file outside the
+repo; Jev assist's `baseline` check reads it. A test failing at baseline is not yours to fix
 and must not be mistaken for your Red later.
 
 If the project has no test harness, setting up the smallest one the ecosystem
@@ -49,13 +50,15 @@ the core flow dispatches (see *Subagents* below):
 >    test file, a misconfigured harness — fix those and run again, they are not
 >    Red. A new test that **passes immediately** is flawed or the behaviour
 >    already exists: find out which before going on. Never count it as Red.
+>    Classify the result with **Jev assist** `red-reason` first.
 > 4. **Green — write the simplest code that passes the new test.** Hard-coding
 >    and inelegance are allowed; step 6 cleans them up. Add no code beyond what
 >    the tests exercise.
 > 5. **Run the whole suite. Everything must pass** — the new test and every test
 >    that passed at baseline. If something fails, fix it with the smallest
 >    change. If you are debugging instead of fixing, revert to the last green
->    state and take a smaller step.
+>    state and take a smaller step. For each failing test this cycle did not
+>    write, ask **Jev assist** `baseline` whether it is yours before chasing it.
 > 6. **Refactor — test code and production code, with the suite green.** Remove
 >    hard-coded test data from production code, remove duplication, make names
 >    self-documenting, move code to where it belongs, split long functions. Run
@@ -69,7 +72,52 @@ the core flow dispatches (see *Subagents* below):
 > unless there is a stated reason to distrust that library.
 >
 > For every scenario, keep a one-line record: `scenario — test name — the Red
-> failure line — green`. Report it back with your result.
+> failure line — green`, followed by the `record` line of every Jev call made
+> for it. Report it back with your result.
+
+### Jev assist (optional — the same block goes to every subagent)
+
+> Jev (TypeSafe's System One model) answers the cycle's bounded judgment calls
+> in one fast call. It **only** replaces those pauses: you still write every
+> test and every line of code. Call it through the preset's helper:
+>
+> ```bash
+> PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
+> JEV="$PROJECT_DIR/.specify/presets/tdd/scripts/ts/jev-judge.ts"
+> bun "$JEV" red-reason --scenario "<scenario line>" --test <test file> --output <suite output file>
+> bun "$JEV" baseline   --failure <this test's failure output file> --baseline <baseline run output file>
+> bun "$JEV" covers     --scenario "<scenario line>" --test <test file>
+> bun "$JEV" exempt     --path <file> --diff <file holding its diff>
+> ```
+>
+> Save the suite output to a file first; `-` reads one argument from stdin.
+> Every call prints one JSON line. Copy its `record` field into the
+> per-scenario record, whatever the outcome.
+>
+> - **Exit 0: act on `decision`.**
+>   - `red-reason`: `expected_red` → go to Green. `harness_error` → fix the
+>     test or harness and rerun. `passes_immediately` → stop and investigate,
+>     as step 3 says.
+>   - `baseline`: `regression` → yours: smallest fix, or revert to the last
+>     green state. `baseline_failure` → not yours; carry on.
+>   - `covers`: `flag` → name the pair under **Flagged scenario records** in
+>     the completion report. `covered` → nothing more.
+>   - `exempt`: `refused` → run the cycle for that file. `exempt` → the
+>     exemption stands.
+> - **Exit 3: decide exactly as you would without Jev.** That covers no
+>   `TYPESAFE_API_KEY`, no SDK, an API error, a low-confidence answer, and
+>   `red-reason` in shadow mode. Read the output yourself (step 3), rerun
+>   against the base branch (step 5), or keep the exemption you stated.
+> - **Exit 2**: your call was malformed. Fix it; never read it as a decision.
+>
+> Never pass the API key on the command line or put it in a prompt, a file,
+> or a record. The helper reads `TYPESAFE_API_KEY` from the environment only.
+>
+> `red-reason` runs in **shadow mode** until `TDD_JEV_AUTOMATE_RED=1` is set:
+> it logs its answer but always exits 3, so you still make the Red call. Set
+> the variable only after `bun "$JEV" measure --records <file.jsonl>` has been
+> run over past Red records (`{scenario, test, output, label}` per line) and
+> its agreement rate and confident share justify it.
 
 ### Tasks that are already split into test and code
 
@@ -87,8 +135,9 @@ spread over two waves:
 ### Subagents
 
 When the core flow dispatches tasks to subagents, every subagent prompt MUST
-include **The TDD Cycle** block above verbatim, plus the suite command and the
-baseline failures from the first step. A subagent that reports back without its
+include **The TDD Cycle** and **Jev assist** blocks above verbatim, plus the
+suite command, the baseline failures from the first step, and the saved
+baseline run output file. A subagent that reports back without its
 per-scenario record has not shown Red, and its task is not done.
 
 ### Core Flow
@@ -103,7 +152,7 @@ per-scenario record has not shown Red, and its task is not done.
 
 ```bash
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}"
-"$PROJECT_DIR/.specify/presets/tdd/scripts/bash/check-tests-accompany.sh"
+bun "$PROJECT_DIR/.specify/presets/tdd/scripts/ts/check-tests-accompany.ts"
 ```
 
 Run it from the feature worktree; it resolves its own root and base
@@ -112,7 +161,9 @@ Run it from the feature worktree; it resolves its own root and base
 - **`0`**: production changes are accompanied by test changes. Proceed.
 - **`1`**: production source changed with no test file changed. Go back and run
   the cycle for the listed files. The one way past it is the exemption above,
-  named file by file in the report. A missing test is not an exemption.
+  named file by file in the report. A missing test is not an exemption. Check
+  every claimed exemption with **Jev assist** `exempt`; a `refused` file goes
+  back through the cycle.
 - **`2`**: the check could not run (no base, not a worktree). Fix the cause and
   re-run; never read this as a pass.
 - **`4`**: nothing changed. Proceed only if this run truly wrote no code.
@@ -125,5 +176,7 @@ On success, include:
 - The per-scenario records (`scenario — test — Red failure — green`), grouped
   by task.
 - Any test that passed on first run and what that turned out to mean.
-- Exempt files, each with its reason.
-- The `check-tests-accompany.sh` result.
+- Exempt files, each with its reason and its Jev `exempt` record.
+- **Flagged scenario records**: every pair Jev `covers` flagged, or `none`.
+- Whether Jev was used, and if not, why (the `reason` of the first fallback).
+- The `check-tests-accompany.ts` result.

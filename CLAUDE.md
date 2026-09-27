@@ -11,6 +11,8 @@ install.ts         install every extension+preset into a Spec Kit project
 uninstall.ts       remove every extension+preset from a Spec Kit project
 check-cli-usage.ts validate `specify <verb>` calls AND every script path in command files
 scripts/           gen-agent-index.ts (the consumer-side command->script index, run by install.ts) + check-script-paths.ts + jev.ts (the canonical Jev helper, see *Jev*)
+                   + manifest.ts (detectIos/selectPresets/presetPriority) + ci-ios-smoke.ts
+.github/workflows/ci.yml   `test` job + `ios-smoke` job (real Xcode, needs xcodegen)
 ```
 
 **Installed layout is not the same shape.** In a consumer project, `specify` copies each
@@ -77,6 +79,15 @@ Python's whitespace, JSON and `repr` rules. The PDV driver scans Python *source*
 with its own tokenizer now, not `ast`: identical on a 2,300-finding corpus, but a
 file with an indentation-only syntax error is scanned rather than rejected.
 
+**iOS targets don't change this.** Helper scripts for `-ios` presets and the iOS paths of
+the extensions are TypeScript/bun too. A script in an `-ios` twin that shares a filename
+with its base's script needs `export {}` so tsc treats it as a module, not as a
+global-scope clash with the other copy.
+
+**Testing.** `bun run test` runs every `test-*.ts`, every `selftest-*.ts` and
+`sim-destination.ts --selftest`. The CI `ios-smoke` job runs `scripts/ci-ios-smoke.ts`
+on real Xcode; locally, `bun scripts/ci-ios-smoke.ts` with Xcode installed.
+
 ## Install / uninstall
 
 Both scripts auto-discover every directory under `extensions/` and `presets/` that contains a manifest — there is **no hardcoded list to maintain**.
@@ -84,9 +95,17 @@ Both scripts auto-discover every directory under `extensions/` and `presets/` th
 Both require a `<project-dir>` argument — there is no implicit `$PWD` default, so you can't accidentally install into the wrong place.
 
 ```bash
-./install.ts /path/to/spec-kit-project
+./install.ts [--force] [--ios|--no-ios] /path/to/spec-kit-project
 ./uninstall.ts /path/to/spec-kit-project
 ```
+
+**iOS vs web mode.** Without a flag, `install.ts` calls `detectIos()` (`scripts/manifest.ts`):
+a `*.xcodeproj`, `*.xcworkspace` or `Package.swift` at the root or one level down, skipping
+`Pods`/`Carthage`/`DerivedData`/`node_modules` and dot-dirs. It prints the mode and why.
+`selectPresets()` gives a project exactly one of each `X` / `X-ios` pair: iOS installs `X-ios`
+and skips `X`, web the reverse; an `-ios` preset with no base is iOS-only. `--force` removes
+the opposite twin, which is how a project switches modes. `gen-agent-index.ts` indexes only
+installed items. Extensions are not twinned; one copy serves both kinds of project.
 
 Every install uses `specify ... add --dev <repo-path>`. **`--dev` records this repo as the install source; it does not symlink.** Verified in the installed specify-cli:
 
@@ -110,7 +129,8 @@ that default silently disabled five `/speckit-implement` presets at once. Always
 declare `strategy:` explicitly. There is no `replaces:` key; it is not in the
 schema and is silently dropped. Presets are ordered by `(priority ASC, id ASC)`,
 lowest number outermost, and priority is an **install-time** argument, not a
-manifest field — so `install.ts`'s `preset_priority()` map is load-bearing
+manifest field — so `install.ts`'s `PRIORITY` map (read via `presetPriority()`, which
+gives an `-ios` preset its base's number) is load-bearing
 wherever more than one preset targets a command. The `/speckit-implement`
 ordering contract is tabulated in `README.md`; keep the two in sync.
 
@@ -664,6 +684,16 @@ on first run in a project that still tracks it, so the migration is automatic.
   stays anchored at the repo root for git paths. `./test-pdv-changeset.ts`
   is the check
 - `progress-report` — wraps the five cycle commands (specify/plan/tasks/implement/review) to keep a per-branch status card current in an agent-os dashboard repo (default `~/Code/agent-os`, configurable via `AGENT_OS_DASHBOARD`); rewrites `<dashboard>/branches/<slug>.md` with per-phase status + review substeps on each transition, no-op when the dashboard is absent. The `wrap` on tasks/implement is dropped when another preset **replaces** those bodies, so pair it with the `progress` **extension** (above), whose lifecycle hooks cover those two phases clobber-immune.
+
+- `tdd-ios` — `tdd` for iOS: detects Swift/ObjC/Metal tests and runs `swift test` or `xcodebuild test` on an iOS Simulator
+- `button-design-ios` — `button-design` against a SwiftUI/HIG table, with a SwiftUI Button System
+- `parse-dont-validate-ios` — 2.0.0: a Swift-only lexer gate, rules PDV001–005 (`Any`/`AnyObject`, `JSONSerialization` etc., `Bool` validators, `as!`, `try!`); needs only bun. `./test-pdv-ios-changeset.ts` is the check
+- `library-research-ios` — `library-research` searching Apple frameworks, then `apple/swift-*` packages, then Swift Package Index
+
+**iOS in the extensions** (one copy each, serving both kinds of project):
+- `git` — `install-deps.ts` adds CocoaPods, Carthage, `swift package resolve` and `xcodebuild -resolvePackageDependencies`, running Node/Python first and iOS after (for React Native). The `XCODE_ARTIFACTS` guard (`DerivedData/`, `.build/`, `xcuserdata/`, `*.xcuserstate`, `.swiftpm/xcode/xcuserdata/`, `Pods/`, `*.xcresult`) keeps untracked artifacts out of auto-commits in every project, and initialize-repo writes them to `.gitignore`; already-tracked paths are left alone.
+- `review` — 2.2.0: Swift/iOS checklist subsections, a `languages:` line from the coordinator, and an `ignored_files` JSON key for Xcode churn.
+- `autopilot` — preflight runs `check-target-repo.ts --kind`. On iOS it resolves the scheme and a destination via `sim-destination.ts` (override: `SPECKIT_AUTOPILOT_SIM_DESTINATION`) and gates with xcodebuild/swift; needs full Xcode plus a Simulator runtime. Web gates are unchanged.
 
 `spec-minimal` 2.0.0 is a breaking split: UI preview → `spec-ui-preview`, issue sync → the `git` extension. See the migration note in `README.md`.
 

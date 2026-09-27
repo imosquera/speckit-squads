@@ -79,14 +79,20 @@ const server = Bun.serve({
     if (auth !== "Bearer test-key") return new Response("{}", { status: 401 });
     const s = body.state, q = body.questions, text = JSON.stringify(s);
     if (text.includes("FORCE_400")) return new Response('{"error":"bad"}', { status: 400 });
+    const keys = q.red_reason ? Object.keys(q.red_reason.criteria) : [];
     const choice = (pick: string, conf: number) => ({
       type: "choice", choice: pick, confidence: conf,
-      probabilities: Object.fromEntries(Object.keys(q.red_reason.criteria).map(k => [k, k === pick ? conf : (1 - conf) / 3])),
+      probabilities: Object.fromEntries(keys.map(k => [k, k === pick ? conf : (1 - conf) / (keys.length - 1)])),
     });
     let answers: Json;
     if (q.red_reason) {
       const out: string = s.suite_output, conf = text.includes("AMBIGUOUS") ? 0.5 : 0.93;
-      answers = { red_reason: /SyntaxError|Cannot find module/.test(out) ? choice("harness_error", conf)
+      // A missing symbol splits across the two "missing" options: neither tops
+      // 0.85 alone, their fold into expected_red does.
+      const split = { type: "choice", choice: "missing_code", confidence: 0.5, probabilities: Object.fromEntries(keys.map(k =>
+        [k, k === "missing_code" ? 0.5 : k === "missing_module" ? 0.4 : 0.1 / (keys.length - 2)])) };
+      answers = { red_reason: /is not a function/.test(out) ? split
+        : /SyntaxError|Cannot find module/.test(out) ? choice("harness_error", conf)
         : /\b0 fail/.test(out) ? choice("passes_immediately", conf)
         : /Expected/.test(out) ? choice("expected_red", conf) : choice("none_of_these", conf) };
     } else {
@@ -104,6 +110,7 @@ const fixtures: Record<string, string> = {
   "red.out": "error: Expected: 3\nReceived: undefined\n 0 pass\n 1 fail\n",
   "harness.out": "SyntaxError: Unexpected token ')'\n 0 pass\n 1 fail\n",
   "passes.out": " 1 pass\n 0 fail\n",
+  "missing.out": "TypeError: add is not a function\n 0 pass\n 1 fail\n",
   "fail.out": "✗ totals > sums rows\n",
   "base-pass.out": "✓ totals > sums rows\n",
   "base-fail.out": "✗ totals > sums rows\n",
@@ -133,6 +140,7 @@ const red = (out: string, scenario = "adds two numbers") =>
 await jev("red-real", 0, "expected_red", A, ...red("red.out"));
 await jev("red-harness", 0, "harness_error", A, ...red("harness.out"));
 await jev("red-passes", 0, "passes_immediately", A, ...red("passes.out"));
+await jev("red-missing-fold", 0, "expected_red", A, ...red("missing.out"));
 // ...and shadow mode (the default) and low confidence both fall back
 await jev("red-shadow", 3, null, {}, ...red("red.out"));
 await jev("red-lowconf", 3, null, A, ...red("red.out", "AMBIGUOUS"));

@@ -107,7 +107,7 @@ Everything here installs through Spec Kit's `specify` CLI. Install it once with 
 ```bash
 uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@vX.Y.Z
 # e.g. the current release:
-uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v0.12.4
+uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.4
 ```
 
 This puts `specify` on your PATH (`~/.local/bin`). Check the [latest release](https://github.com/github/spec-kit/releases/latest) for the newest `vX.Y.Z`, and re-run the same command to upgrade. Verify with `specify --version`.

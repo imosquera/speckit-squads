@@ -748,6 +748,9 @@ real SDK against a fake server and checks the copies.
 
 1. Drop the new directory under `extensions/<id>/` or `presets/<id>/` with a valid manifest. The install/uninstall scripts will pick it up automatically — do **not** edit them.
 1a. **Declare every script under `provides.scripts:`** with `file:` and, when one command owns it, `command:`. This is not decoration — `check-cli-usage.ts` fails the install when a command file references a script that is undeclared or missing, and `scripts/gen-agent-index.ts` builds the consumer's command→script table from these entries. An undeclared script is invisible to agents working in a consumer project.
+    The `name:` is a bare `^[a-z0-9-]+$` slug (`create-new-feature`, not
+    `create-new-feature.ts`): specify 1.2 rejects anything else and lists the
+    whole extension as Corrupted. `check-script-paths.ts` enforces it.
 1b. If the item needs harness-level wiring (a `.claude/settings.json` hook, a
     `CLAUDE.md` rule), ship it as `scripts/ts/post-install.ts` plus a
     `scripts/ts/pre-uninstall.ts` that reverses it exactly. Declare both under

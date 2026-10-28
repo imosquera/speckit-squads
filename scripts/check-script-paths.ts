@@ -38,6 +38,9 @@ for (const [kind, manifest] of KINDS) {
     const files = new Set<string>();
     for (const m of block.matchAll(/^\s*file:\s*["']?([^"'\s]+)/gm)) if (m[1]) files.add(m[1]);
     declared.set(`${kind}/${id}`, files);
+    // specify >=1.2 rejects any other name and lists the extension as Corrupted.
+    for (const m of block.matchAll(/^\s*- name:\s*["']?([^"'\s]+)/gm))
+      if (!/^[a-z0-9-]+$/.test(m[1] ?? "")) problems.push(`${path}: script name "${m[1]}" must match ^[a-z0-9-]+$ (drop the extension: the file: path carries it)`);
     for (const f of [...files].sort(cmp)) {
       if (f.endsWith(".sh")) problems.push(`${path}: declares a bash script: ${f} — ${BASH_RETIRED}`);
       else if (!isFile(join(kind, id, f))) problems.push(`${path}: declared script does not exist: ${f}`);
